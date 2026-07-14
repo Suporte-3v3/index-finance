@@ -30,7 +30,8 @@ import {
   INITIAL_DOCUMENTS,
   INITIAL_AUDIT_LOGS,
   INITIAL_NOTIFICATIONS,
-  BANK_STATEMENTS_TO_IMPORT
+  BANK_STATEMENTS_TO_IMPORT,
+  DEMO_PASSWORD
 } from '../services/mockData';
 
 interface BPOContextType {
@@ -50,8 +51,11 @@ interface BPOContextType {
   currentUser: User;
   activeCompany: Company | null;
   activeTenant: Tenant | null;
-  
+  isAuthenticated: boolean;
+
   // Controls
+  login: (email: string, password: string) => { success: boolean; error?: string };
+  logout: () => void;
   switchUser: (userId: string) => void;
   switchCompany: (companyId: string) => void;
   hasPermission: (permission: string) => boolean;
@@ -141,6 +145,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => loadState('currentUserId', 'u-client-admin')); // Default to Naylton Nobre
   const [activeCompanyId, setActiveCompanyId] = useState<string>(() => loadState('activeCompanyId', 'c-101'));
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => loadState('isAuthenticated', false));
 
   // Sync to local storage on changes
   useEffect(() => {
@@ -158,7 +163,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('bpo_saas_statementItems', JSON.stringify(statementItems));
     localStorage.setItem('bpo_saas_currentUserId', JSON.stringify(currentUserId));
     localStorage.setItem('bpo_saas_activeCompanyId', JSON.stringify(activeCompanyId));
-  }, [tenants, companies, users, bankAccounts, accountsPayable, accountsReceivable, approvals, documents, auditLogs, notifications, reports, statementItems, currentUserId, activeCompanyId]);
+    localStorage.setItem('bpo_saas_isAuthenticated', JSON.stringify(isAuthenticated));
+  }, [tenants, companies, users, bankAccounts, accountsPayable, accountsReceivable, approvals, documents, auditLogs, notifications, reports, statementItems, currentUserId, activeCompanyId, isAuthenticated]);
 
   // Derived current user, active company, and tenant
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
@@ -212,6 +218,68 @@ export function BPOProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (permission: string): boolean => {
     return currentUser.permissions.includes(permission) || currentUser.role === 'BPO_ADMIN';
+  };
+
+  // --- AUTHENTICATION ---
+  const login = (email: string, password: string): { success: boolean; error?: string } => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const targetUser = users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+    if (!targetUser) {
+      return { success: false, error: 'E-mail não encontrado. Verifique e tente novamente.' };
+    }
+    if (targetUser.status !== 'ACTIVE') {
+      return { success: false, error: 'Este usuário está inativo. Contate o administrador.' };
+    }
+    if (password !== DEMO_PASSWORD) {
+      return { success: false, error: 'Senha incorreta.' };
+    }
+
+    setCurrentUserId(targetUser.id);
+    setIsAuthenticated(true);
+
+    if (targetUser.role === 'BPO_ADMIN' || targetUser.role === 'ACCOUNTANT') {
+      setActiveCompanyId('c-101');
+    } else if (targetUser.companies && targetUser.companies.length > 0) {
+      setActiveCompanyId(targetUser.companies[0]);
+    }
+
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      tenantId: targetUser.role === 'BPO_ADMIN' ? 't-1111-1111' : (companies.find(c => targetUser.companies?.includes(c.id))?.tenantId || 't-1111-1111'),
+      userId: targetUser.id,
+      userName: targetUser.name,
+      role: targetUser.role,
+      action: 'SESSAO_LOGIN',
+      entityType: 'User',
+      entityId: targetUser.id,
+      timestamp: new Date().toISOString(),
+      ipAddress: '189.23.41.221',
+      userAgent: navigator.userAgent,
+      origin: 'Tela de Login'
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+
+    return { success: true };
+  };
+
+  const logout = () => {
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      tenantId: activeTenant?.id || 't-1111-1111',
+      userId: currentUser.id,
+      userName: currentUser.name,
+      role: currentUser.role,
+      action: 'SESSAO_LOGOUT',
+      entityType: 'User',
+      entityId: currentUser.id,
+      timestamp: new Date().toISOString(),
+      ipAddress: '189.23.41.221',
+      userAgent: navigator.userAgent,
+      origin: 'Workspace'
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+    setIsAuthenticated(false);
   };
 
   // Create an audit log entry helper
@@ -860,6 +928,9 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         currentUser,
         activeCompany,
         activeTenant,
+        isAuthenticated,
+        login,
+        logout,
         switchUser,
         switchCompany,
         hasPermission,

@@ -18,6 +18,9 @@ import {
   ReportRecord
 } from '../types';
 
+// Demo password shared by all mock accounts (sandbox environment, no real backend auth).
+export const DEMO_PASSWORD = '123456';
+
 export const INITIAL_TENANTS: Tenant[] = [
   {
     id: 't-1111-1111',

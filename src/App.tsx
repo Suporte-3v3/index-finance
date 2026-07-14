@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { BPOProvider, useBPOState } from './hooks/useBPOState';
 
 // View Imports
+import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import OperationsCenter from './views/OperationsCenter';
 import CashFlowView from './views/CashFlowView';
@@ -42,7 +43,8 @@ import {
   Sparkles,
   Info,
   Crown,
-  Gem
+  Gem,
+  LogOut
 } from 'lucide-react';
 
 type ViewType = 
@@ -60,18 +62,19 @@ type ViewType =
   | 'audit-logs';
 
 function BPOWorkspaceShell() {
-  const { 
-    currentUser, 
-    activeCompany, 
-    companies, 
-    users, 
-    switchUser, 
-    switchCompany, 
-    hasPermission, 
+  const {
+    currentUser,
+    activeCompany,
+    companies,
+    users,
+    switchUser,
+    switchCompany,
+    hasPermission,
     approvals,
     notifications,
     markNotificationRead,
-    clearNotifications
+    clearNotifications,
+    logout
   } = useBPOState();
 
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
@@ -182,11 +185,20 @@ function BPOWorkspaceShell() {
           </button>
 
           {/* Hamburger Menu */}
-          <button 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-1.5 text-[#ffefd1]/80 hover:text-white cursor-pointer"
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+
+          {/* Logout Button */}
+          <button
+            onClick={logout}
+            title="Sair"
+            className="p-1.5 text-[#ffefd1]/80 hover:text-white cursor-pointer"
+          >
+            <LogOut className="h-5 w-5" />
           </button>
         </div>
       </header>
@@ -323,10 +335,17 @@ function BPOWorkspaceShell() {
 
           <div className="flex items-center gap-3 bg-white/5 p-2.5 rounded-lg border border-white/10">
             <img src={currentUser.avatar} className="h-8 w-8 rounded-full object-cover border border-white/20 shrink-0" alt={currentUser.name} />
-            <div className="space-y-0.5 truncate">
+            <div className="space-y-0.5 truncate grow">
               <span className="text-[10px] font-black text-white block truncate leading-tight">{currentUser.name}</span>
               <span className="text-[9px] text-[#ffefd1]/80 font-bold block truncate">{currentUser.title || 'Membro do Time'}</span>
             </div>
+            <button
+              onClick={logout}
+              title="Sair"
+              className="p-1.5 text-[#ffefd1]/70 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer shrink-0"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -430,10 +449,15 @@ function BPOWorkspaceShell() {
   );
 }
 
+function AppGate() {
+  const { isAuthenticated } = useBPOState();
+  return isAuthenticated ? <BPOWorkspaceShell /> : <LoginView />;
+}
+
 export default function App() {
   return (
     <BPOProvider>
-      <BPOWorkspaceShell />
+      <AppGate />
     </BPOProvider>
   );
 }
