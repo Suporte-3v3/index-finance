@@ -101,8 +101,8 @@ export default function LoginView() {
             <LayoutDashboard className="h-6 w-6 text-[#ffefd1]" />
           </div>
           <div>
-            <h1 className="font-black text-white text-lg tracking-tight leading-none">Index Finance</h1>
-            <span className="text-[10px] text-[#ffefd1] font-bold uppercase tracking-wider block mt-1">Elegância & Precisão</span>
+            <h1 className="font-black text-white text-lg tracking-tight leading-none">Idex Finance</h1>
+            <span className="text-[10px] text-[#ffefd1] font-bold uppercase tracking-wider block mt-1">Gestão que move resultados</span>
           </div>
         </div>
 
@@ -116,7 +116,7 @@ export default function LoginView() {
         </div>
 
         <div className="relative text-[10px] text-[#ffefd1]/50 font-semibold">
-          © {new Date().getFullYear()} Index Finance. Ambiente de testes / sandbox.
+          © {new Date().getFullYear()} Idex Finance. Ambiente de testes / sandbox.
         </div>
       </div>
 
@@ -129,7 +129,7 @@ export default function LoginView() {
             <div className="p-2 bg-[#d20010] text-white rounded-lg">
               <LayoutDashboard className="h-5 w-5 text-[#ffefd1]" />
             </div>
-            <span className="font-black text-[#00304c] text-base tracking-tight">Index Finance</span>
+            <span className="font-black text-[#00304c] text-base tracking-tight">Idex Finance</span>
           </div>
 
           <div className="space-y-1.5 text-center lg:text-left">
@@ -200,9 +200,9 @@ export default function LoginView() {
           </form>
 
           <div className="flex items-center gap-3">
-            <div className="h-px bg-zinc-200 flex-grow" />
+            <div className="h-px bg-zinc-200 grow" />
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Acesso rápido de teste</span>
-            <div className="h-px bg-zinc-200 flex-grow" />
+            <div className="h-px bg-zinc-200 grow" />
           </div>
 
           <div className="grid grid-cols-3 gap-2">

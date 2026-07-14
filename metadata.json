@@ -1,6 +1,6 @@
 {
-  "name": "Index Finance",
-  "description": "Plataforma SaaS multi-tenant elegante para operação, aprovação, conciliação e gestão de BPO Financeiro baseada na paleta de cores Index.",
+  "name": "Idex Finance",
+  "description": "Plataforma SaaS multi-tenant elegante para operação, aprovação, conciliação e gestão de BPO Financeiro baseada na paleta de cores Idex.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

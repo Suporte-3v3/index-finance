@@ -24,14 +24,14 @@ export const DEMO_PASSWORD = '123456';
 export const INITIAL_TENANTS: Tenant[] = [
   {
     id: 't-1111-1111',
-    name: 'Index Finance SaaS',
+    name: 'Idex Finance SaaS',
     createdAt: '2026-01-10T10:00:00Z',
     plan: 'Premium Enterprise',
     status: 'ACTIVE',
   },
   {
     id: 't-2222-2222',
-    name: 'Index Finance Premium',
+    name: 'Idex Finance Premium',
     createdAt: '2026-03-15T09:00:00Z',
     plan: 'Professional',
     status: 'ACTIVE',

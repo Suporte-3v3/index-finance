@@ -167,7 +167,7 @@ function BPOWorkspaceShell() {
           <div className="p-1.5 bg-[#d20010] text-white rounded-lg">
             <LayoutDashboard className="h-5 w-5 text-[#ffefd1]" />
           </div>
-          <span className="font-bold text-sm tracking-tight text-[#ffefd1]">Index Finance</span>
+          <span className="font-bold text-sm tracking-tight text-[#ffefd1]">Idex Finance</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -218,9 +218,9 @@ function BPOWorkspaceShell() {
               </div>
               <div>
                 <h1 className="font-black text-white text-sm tracking-tight leading-none flex items-center gap-1">
-                  Index Finance
+                  Idex Finance
                 </h1>
-                <span className="text-[9px] text-[#ffefd1] font-bold uppercase tracking-wider block mt-1">Elegância & Precisão</span>
+                <span className="text-[9px] text-[#ffefd1] font-bold uppercase tracking-wider block mt-1">Gestão que move resultados</span>
               </div>
             </div>
 
@@ -357,7 +357,7 @@ function BPOWorkspaceShell() {
         <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-[#00304c]/10 shrink-0 sticky top-0 z-30 shadow-xs">
           <div className="flex items-center gap-2">
             <span className="text-[#00304c] font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <LayoutDashboard className="h-3.5 w-3.5 text-[#d20010]" /> Index Finance Workspace
+              <LayoutDashboard className="h-3.5 w-3.5 text-[#d20010]" /> Idex Finance Workspace
             </span>
             <span className="text-zinc-300">/</span>
             <span className="text-[#00304c] font-bold text-xs flex items-center gap-1.5 bg-[#00304c]/5 border-l-2 border-[#d20010] border-y border-r border-[#00304c]/15 px-3 py-1.5 rounded-lg shadow-2xs">

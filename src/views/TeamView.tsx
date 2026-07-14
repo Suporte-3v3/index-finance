@@ -144,7 +144,7 @@ export default function TeamView() {
             <div className="p-5 border-b border-zinc-100 bg-gradient-to-r from-[#00304c] to-[#d20010] text-white flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Enviar Convite à Plataforma</h3>
-                <p className="text-[10px] text-[#ffefd1] mt-0.5">Defina alçadas operacionais do Index Finance.</p>
+                <p className="text-[10px] text-[#ffefd1] mt-0.5">Defina alçadas operacionais do Idex Finance.</p>
               </div>
               <button onClick={() => setIsFormOpen(false)} className="text-[#ffefd1] hover:text-white font-bold cursor-pointer">Fechar</button>
             </div>
@@ -366,7 +366,7 @@ export default function TeamView() {
 
                 <div className="bg-[#00304c] border-l-4 border-[#d20010] border-y border-r border-white/10 p-3.5 rounded-lg text-[10px] text-white/90 leading-normal font-sans flex items-start gap-2 font-semibold shadow-xs">
                   <ShieldAlert className="h-4 w-4 text-[#d20010] shrink-0 mt-0.5" />
-                  <span>As políticas de segurança corporativa do Grupo Index Finance exigem a checagem dupla do IP de origem para auditoria contínua de modificações de contas.</span>
+                  <span>As políticas de segurança corporativa do Grupo Idex Finance exigem a checagem dupla do IP de origem para auditoria contínua de modificações de contas.</span>
                 </div>
               </div>
             )}
