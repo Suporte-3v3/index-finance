@@ -77,9 +77,14 @@ function BPOWorkspaceShell() {
     logout
   } = useBPOState();
 
-  const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const getDefaultView = (role: string): ViewType => role === 'BPO_ADMIN' ? 'operations-center' : 'dashboard';
+
+  const [activeView, setActiveView] = useState<ViewType>(() => getDefaultView(currentUser.role));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  // BPO Admin starts in the global multi-company view; per-company modules only surface once a company is entered.
+  const [bpoInCompanyContext, setBpoInCompanyContext] = useState(false);
+  const isBpoGlobalMode = currentUser.role === 'BPO_ADMIN' && !bpoInCompanyContext;
 
   if (!activeCompany) {
     return (
@@ -104,7 +109,7 @@ function BPOWorkspaceShell() {
   // Navigation schema configured with permissions checks
   const navigationItems = [
     { id: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard, view: 'dashboard' as const, permission: null },
-    { id: 'operations-center', label: 'Cockpit Multiempresas', icon: Layers, view: 'operations-center' as const, permission: 'operations-center.view' },
+    { id: 'operations-center', label: 'Centro de Operação', icon: Layers, view: 'operations-center' as const, permission: 'operations-center.view' },
     { id: 'cash-flow', label: 'Fluxo de Caixa', icon: LineChart, view: 'cash-flow' as const, permission: null },
     { id: 'payable', label: 'Contas a Pagar', icon: ArrowDownLeft, view: 'payable' as const, permission: 'accounts-payable.view' },
     { id: 'receivable', label: 'Contas a Receber', icon: ArrowUpRight, view: 'receivable' as const, permission: 'accounts-receivable.view' },
@@ -127,7 +132,7 @@ function BPOWorkspaceShell() {
       case 'dashboard':
         return <DashboardView onNavigate={(view) => setActiveView(view as any)} />;
       case 'operations-center':
-        return <OperationsCenter onEnterCompany={() => setActiveView('dashboard')} />;
+        return <OperationsCenter onEnterCompany={() => { setBpoInCompanyContext(true); setActiveView('dashboard'); }} />;
       case 'cash-flow':
         return <CashFlowView />;
       case 'payable':
@@ -156,6 +161,10 @@ function BPOWorkspaceShell() {
   const handleSwitchView = (view: ViewType) => {
     setActiveView(view);
     setMobileMenuOpen(false);
+    // Returning to the operations center exits the single-company workspace back to the global BPO view.
+    if (view === 'operations-center') {
+      setBpoInCompanyContext(false);
+    }
   };
 
   return (
@@ -224,25 +233,30 @@ function BPOWorkspaceShell() {
               </div>
             </div>
 
-            {/* Client / Tenant switcher */}
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold text-[#ffefd1]/60 uppercase tracking-wider block">Empresa Operada</label>
-              <div className="relative">
-                <Building2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[#ffefd1]/65" />
-                <select
-                  className="w-full bg-[#002236] border border-white/10 text-white text-xs pl-8 pr-2 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-[#d20010] font-bold shadow-2xs"
-                  value={activeCompany.id}
-                  onChange={(e) => switchCompany(e.target.value)}
-                >
-                  {companies
-                    .filter(c => currentUser.role === 'BPO_ADMIN' || currentUser.role === 'ACCOUNTANT' || currentUser.companies?.includes(c.id))
-                    .map(c => (
-                      <option key={c.id} value={c.id} className="bg-[#002236] text-white">{c.tradeName}</option>
-                    ))
-                  }
-                </select>
+            {/* Client / Tenant switcher — hidden in BPO global mode; use the Operations Center to enter a company instead */}
+            {!isBpoGlobalMode && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-[#ffefd1]/60 uppercase tracking-wider block">Empresa Operada</label>
+                <div className="relative">
+                  <Building2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[#ffefd1]/65" />
+                  <select
+                    className="w-full bg-[#002236] border border-white/10 text-white text-xs pl-8 pr-2 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-[#d20010] font-bold shadow-2xs"
+                    value={activeCompany.id}
+                    onChange={(e) => {
+                      switchCompany(e.target.value);
+                      if (currentUser.role === 'BPO_ADMIN') setBpoInCompanyContext(true);
+                    }}
+                  >
+                    {companies
+                      .filter(c => currentUser.role === 'BPO_ADMIN' || currentUser.role === 'ACCOUNTANT' || currentUser.companies?.includes(c.id))
+                      .map(c => (
+                        <option key={c.id} value={c.id} className="bg-[#002236] text-white">{c.tradeName}</option>
+                      ))
+                    }
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Navigation Links List */}
@@ -250,6 +264,8 @@ function BPOWorkspaceShell() {
             <span className="text-[9px] font-bold text-[#ffefd1]/40 uppercase tracking-wider px-3 block mb-2">Painéis Operacionais</span>
             {navigationItems.map(item => {
               if (item.permission && !hasPermission(item.permission)) return null;
+              // In BPO global mode, only the Operations Center is shown until a company is entered.
+              if (isBpoGlobalMode && item.id !== 'operations-center') return null;
 
               const isSelected = activeView === item.view;
               const Icon = item.icon;
@@ -323,8 +339,10 @@ function BPOWorkspaceShell() {
               className="w-full bg-[#002236] border border-white/10 text-white text-[10px] py-1.5 px-2 rounded cursor-pointer font-bold focus:outline-none"
               value={currentUser.id}
               onChange={(e) => {
+                const targetUser = users.find(u => u.id === e.target.value);
                 switchUser(e.target.value);
-                setActiveView('dashboard');
+                setBpoInCompanyContext(false);
+                setActiveView(getDefaultView(targetUser?.role || 'CLIENT'));
               }}
             >
               {users.map(u => (
