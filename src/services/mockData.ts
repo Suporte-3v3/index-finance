@@ -18,8 +18,8 @@ import {
   ReportRecord
 } from '../types';
 
-// Demo password shared by all mock accounts (sandbox environment, no real backend auth).
-export const DEMO_PASSWORD = '123456';
+// Temporary client-side password while authentication is not backed by a server.
+export const ACCESS_PASSWORD = import.meta.env.VITE_ACCESS_PASSWORD || '123456';
 
 export const INITIAL_TENANTS: Tenant[] = [
   {
@@ -94,13 +94,12 @@ export const INITIAL_COMPANIES: Company[] = [
 
 export const INITIAL_USERS: User[] = [
   {
-    id: 'u-bpo-admin',
-    name: 'Ana Paula (BPO Admin)',
-    email: 'anapaula.bpo@exemplo.com.br',
+    id: 'u-bpo-owner',
+    name: 'Administrador Idex Finance',
+    email: 'admin@idexfinance.com.br',
     role: 'BPO_ADMIN',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
     status: 'ACTIVE',
-    title: 'Diretora de Operações BPO',
+    title: 'Administrador do BPO',
     companies: ['c-101', 'c-102', 'c-103'],
     permissions: [
       'operations-center.view',
@@ -119,45 +118,21 @@ export const INITIAL_USERS: User[] = [
       'approvals.approve',
       'documents.upload',
       'documents.download',
+      'reports.view',
       'reports.generate',
       'reconciliation.execute',
       'notifications.manage'
     ]
   },
   {
-    id: 'u-bpo-analyst',
-    name: 'Pedro Analista (BPO Team)',
-    email: 'pedro.analista@exemplo.com.br',
-    role: 'BPO_TEAM',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-    status: 'ACTIVE',
-    title: 'Analista Financeiro Pleno',
-    companies: ['c-101', 'c-102'], // Assigned only to 2 companies
-    permissions: [
-      'accounts-payable.view',
-      'accounts-payable.create',
-      'accounts-payable.update',
-      'accounts-payable.cancel',
-      'accounts-receivable.view',
-      'accounts-receivable.create',
-      'accounts-receivable.update',
-      'accounts-receivable.cancel',
-      'approvals.request',
-      'documents.upload',
-      'documents.download',
-      'reports.generate',
-      'reconciliation.execute'
-    ]
-  },
-  {
     id: 'u-client-admin',
-    name: 'Naylton Nobre (Cliente Alfa)',
-    email: 'nayltonnobre@gmail.com', // Active user
+    name: 'Naylton Nobre',
+    email: 'nayltonnobre@gmail.com',
     role: 'CLIENT',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
     status: 'ACTIVE',
     title: 'Diretor Financeiro Alfa',
-    companies: ['c-101'], // Isolated access
+    companies: ['c-101'],
     permissions: [
       'dashboard.view',
       'approvals.approve',
@@ -168,32 +143,15 @@ export const INITIAL_USERS: User[] = [
     ]
   },
   {
-    id: 'u-client-sabor',
-    name: 'Isabella Costa (Cliente Sabor)',
-    email: 'isabella.sabor@exemplo.com.br',
-    role: 'CLIENT',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150',
-    status: 'ACTIVE',
-    title: 'Gerente Geral Sabor',
-    companies: ['c-102'], // Isolated access
-    permissions: [
-      'dashboard.view',
-      'approvals.approve',
-      'documents.upload',
-      'documents.download',
-      'reports.view'
-    ]
-  },
-  {
-    id: 'u-accountant',
-    name: 'Contador Silva (Contador)',
-    email: 'silva.contabil@exemplo.com.br',
+    id: 'u-accountant-professional',
+    name: 'Contabilidade Parceira',
+    email: 'contador@idexfinance.com.br',
     role: 'ACCOUNTANT',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
     status: 'ACTIVE',
-    title: 'Contador Credenciado CRC',
+    title: 'Contador responsável',
     companies: ['c-101', 'c-102', 'c-103'],
     permissions: [
+      'dashboard.view',
       'documents.download',
       'reports.view',
       'reports.generate'
@@ -518,7 +476,7 @@ export const INITIAL_DOCUMENTS: Document[] = [
     mimeType: 'application/pdf',
     hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     relatedEntityId: 'ap-202',
-    status: 'Validado',
+    status: 'Lançado',
     signedUrl: 'https://bpo-storage.com/c-101/doc-501?token=xyz987_valid'
   },
   {
@@ -535,7 +493,7 @@ export const INITIAL_DOCUMENTS: Document[] = [
     mimeType: 'application/pdf',
     hash: '5f4dcc3b5aa765d61d8327deb882cf99',
     relatedEntityId: 'ap-201',
-    status: 'Pendente',
+    status: 'Aguardando Análise',
     signedUrl: 'https://bpo-storage.com/c-101/doc-502?token=abc123_pending'
   },
   {
@@ -551,47 +509,12 @@ export const INITIAL_DOCUMENTS: Document[] = [
     fileSize: '45 KB',
     mimeType: 'text/xml',
     hash: '8f4305dfecba77209',
-    status: 'Validado',
+    status: 'Lançado',
     signedUrl: 'https://bpo-storage.com/c-102/doc-503?token=ofx6543'
   }
 ];
 
-export const INITIAL_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'log-601',
-    tenantId: 't-1111-1111',
-    companyId: 'c-101',
-    companyName: 'Alfa Tecnologia',
-    userId: 'u-bpo-analyst',
-    userName: 'Pedro Analista',
-    role: 'BPO_TEAM',
-    action: 'CRIAR_CONTA_PAGAR',
-    entityType: 'AccountPayable',
-    entityId: 'ap-201',
-    nextData: '{"description":"Assinatura AWS","supplier":"AWS","amount":15420.00}',
-    timestamp: '2026-07-02T10:00:00Z',
-    ipAddress: '177.34.82.109',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    origin: 'Web App'
-  },
-  {
-    id: 'log-602',
-    tenantId: 't-1111-1111',
-    companyId: 'c-101',
-    companyName: 'Alfa Tecnologia',
-    userId: 'u-bpo-analyst',
-    userName: 'Pedro Analista',
-    role: 'BPO_TEAM',
-    action: 'CONFIRMAR_PAGAMENTO',
-    entityType: 'AccountPayable',
-    entityId: 'ap-202',
-    nextData: '{"status":"Paga","paymentDate":"2026-07-08","finalAmount":1150.00}',
-    timestamp: '2026-07-08T09:30:00Z',
-    ipAddress: '177.34.82.109',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    origin: 'Web App'
-  }
-];
+export const INITIAL_AUDIT_LOGS: AuditLog[] = [];
 
 export const INITIAL_NOTIFICATIONS: Notification[] = [
   {

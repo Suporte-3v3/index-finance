@@ -1,11 +1,11 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState } from 'react';
 import { useBPOState } from '../hooks/useBPOState';
-import { User } from '../types';
+import { UserRole } from '../types';
 import { 
   Plus, 
   ShieldAlert, 
@@ -35,8 +35,9 @@ export default function TeamView() {
   // Invitation Form
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'BPO_ADMIN' | 'BPO_TEAM' | 'ACCOUNTANT'>('BPO_TEAM');
+  const [role, setRole] = useState<UserRole>('BPO_TEAM');
   const [title, setTitle] = useState('');
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
 
   if (currentUser.role !== 'BPO_ADMIN') {
     return (
@@ -75,28 +76,38 @@ export default function TeamView() {
       alert('Preencha os campos obrigatórios.');
       return;
     }
+    if (role !== 'BPO_ADMIN' && selectedCompanyIds.length === 0) {
+      alert(role === 'CLIENT' ? 'Selecione a empresa deste usuário cliente.' : 'Selecione pelo menos uma empresa para este usuário.');
+      return;
+    }
+
+    const permissionsByRole: Record<UserRole, string[]> = {
+      BPO_ADMIN: [],
+      BPO_TEAM: ['accounts-payable.view', 'accounts-payable.create', 'accounts-receivable.view', 'documents.upload', 'documents.download'],
+      ACCOUNTANT: ['dashboard.view', 'documents.download', 'reports.view', 'reports.generate'],
+      CLIENT: ['dashboard.view', 'approvals.approve', 'documents.upload', 'documents.download', 'reports.view', 'reports.generate']
+    };
+
+    const defaultTitles: Record<UserRole, string> = {
+      BPO_ADMIN: 'Administrador do BPO', BPO_TEAM: 'Analista de BPO', ACCOUNTANT: 'Contador responsável', CLIENT: 'Usuário do cliente'
+    };
 
     addTeamMember({
       name,
       email,
       role,
-      title: title || 'Analista de BPO',
+      title: title || defaultTitles[role],
       status: 'ACTIVE',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      companies: ['c-101', 'c-102'], // Assigned default companies
-      permissions: [
-        'accounts-payable.view',
-        'accounts-payable.create',
-        'accounts-receivable.view',
-        'documents.upload',
-        'documents.download'
-      ]
+      companies: role === 'BPO_ADMIN' ? companies.map(company => company.id) : selectedCompanyIds,
+      permissions: permissionsByRole[role]
     });
 
     setName('');
     setEmail('');
     setRole('BPO_TEAM');
     setTitle('');
+    setSelectedCompanyIds([]);
     setIsFormOpen(false);
   };
 
@@ -120,33 +131,48 @@ export default function TeamView() {
     updateTeamMemberPermissions(userId, target.permissions, isCurrentlyActive ? 'INACTIVE' : 'ACTIVE');
   };
 
+  const handleUserCompanyToggle = (companyId: string) => {
+    if (!selectedUser || selectedUser.role === 'BPO_ADMIN') return;
+    const currentCompanies = selectedUser.companies || [];
+    const updatedCompanies = selectedUser.role === 'CLIENT'
+      ? [companyId]
+      : currentCompanies.includes(companyId)
+        ? currentCompanies.filter(id => id !== companyId)
+        : [...currentCompanies, companyId];
+    if (updatedCompanies.length === 0) {
+      alert('Este perfil precisa permanecer vinculado a pelo menos uma empresa.');
+      return;
+    }
+    updateTeamMemberPermissions(selectedUser.id, selectedUser.permissions, undefined, updatedCompanies);
+  };
+
   return (
     <div id="team-root" className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 font-sans">
         <div>
-          <h2 id="team-title" className="text-xl font-bold text-zinc-900 tracking-tight">Equipe BPO e Controle de Acesso (RBAC)</h2>
-          <p className="text-zinc-500 text-xs">Adicione analistas de BPO, limite os acessos por empresa e gerencie detalhadamente as chaves de segurança de cada colaborador.</p>
+          <h2 id="team-title" className="text-xl font-bold text-zinc-900 tracking-tight">Usuários e Controle de Acesso (RBAC)</h2>
+          <p className="text-zinc-500 text-xs">Cadastre a equipe BPO, contadores e usuários dos clientes com acesso restrito às empresas vinculadas.</p>
         </div>
 
         <button
           onClick={() => setIsFormOpen(true)}
-          className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#d20010] hover:bg-[#850000] px-3.5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-xs"
+          className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#C8102E] hover:bg-[#8F071B] px-3.5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-xs"
         >
-          <UserPlus className="h-4 w-4" /> Convidar Colaborador
+          <UserPlus className="h-4 w-4" /> Cadastrar usuário
         </button>
       </div>
 
       {/* Invite Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans text-xs">
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-sm w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-            <div className="p-5 border-b border-zinc-100 bg-gradient-to-r from-[#00304c] to-[#d20010] text-white flex items-center justify-between">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+            <div className="p-5 border-b border-zinc-100 bg-gradient-to-r from-[#0B2C52] to-[#C8102E] text-white flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white">Enviar Convite à Plataforma</h3>
-                <p className="text-[10px] text-[#ffefd1] mt-0.5">Defina alçadas operacionais do Idex Finance.</p>
+                <h3 className="text-sm font-bold text-white">Cadastrar usuário na plataforma</h3>
+                <p className="text-[10px] text-[#F2D3A0] mt-0.5">Defina o perfil e as empresas que poderão ser acessadas.</p>
               </div>
-              <button onClick={() => setIsFormOpen(false)} className="text-[#ffefd1] hover:text-white font-bold cursor-pointer">Fechar</button>
+              <button onClick={() => setIsFormOpen(false)} className="text-[#F2D3A0] hover:text-white font-bold cursor-pointer">Fechar</button>
             </div>
 
             <form onSubmit={handleInvite} className="p-5 space-y-3">
@@ -180,11 +206,17 @@ export default function TeamView() {
                   <select
                     className="w-full p-2 bg-zinc-50 border border-zinc-200 rounded-lg text-xs cursor-pointer"
                     value={role}
-                    onChange={(e) => setRole(e.target.value as any)}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setRole(nextRole);
+                      if (nextRole === 'BPO_ADMIN') setSelectedCompanyIds(companies.map(company => company.id));
+                      if (nextRole === 'CLIENT' && selectedCompanyIds.length > 1) setSelectedCompanyIds(selectedCompanyIds.slice(0, 1));
+                    }}
                   >
                     <option value="BPO_TEAM">Analista BPO</option>
                     <option value="BPO_ADMIN">Admin BPO</option>
                     <option value="ACCOUNTANT">Contador</option>
+                    <option value="CLIENT">Usuário do cliente</option>
                   </select>
                 </div>
 
@@ -200,6 +232,22 @@ export default function TeamView() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-500 block">Empresas vinculadas *</label>
+                  <p className="text-[9px] text-zinc-400 mt-0.5">{role === 'CLIENT' ? 'Selecione a empresa à qual este usuário pertence.' : role === 'ACCOUNTANT' ? 'Selecione uma ou várias empresas atendidas pelo contador.' : role === 'BPO_ADMIN' ? 'Administradores possuem acesso global.' : 'Selecione as empresas operadas por este colaborador.'}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-zinc-200 rounded-lg p-2 bg-zinc-50">
+                  {companies.map(company => {
+                    const checked = role === 'BPO_ADMIN' || selectedCompanyIds.includes(company.id);
+                    return <label key={company.id} className="flex items-center gap-2 bg-white border border-zinc-200 rounded-lg p-2 cursor-pointer">
+                      <input type={role === 'CLIENT' ? 'radio' : 'checkbox'} name="linked-company" checked={checked} disabled={role === 'BPO_ADMIN'} onChange={() => setSelectedCompanyIds(role === 'CLIENT' ? [company.id] : checked ? selectedCompanyIds.filter(id => id !== company.id) : [...selectedCompanyIds, company.id])} />
+                      <span className="text-[10px] font-semibold text-zinc-700 truncate">{company.tradeName}</span>
+                    </label>;
+                  })}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 border-t border-zinc-100 pt-3 mt-4">
                 <button
                   type="button"
@@ -210,9 +258,9 @@ export default function TeamView() {
                 </button>
                 <button
                   type="submit"
-                  className="bg-[#d20010] hover:bg-[#850000] text-white font-bold px-4 py-2 rounded-lg cursor-pointer"
+                  className="bg-[#C8102E] hover:bg-[#8F071B] text-white font-bold px-4 py-2 rounded-lg cursor-pointer"
                 >
-                  Enviar Convite
+                  Cadastrar usuário
                 </button>
               </div>
             </form>
@@ -226,14 +274,12 @@ export default function TeamView() {
         {/* Left Column: Team list */}
         <div className="bg-white rounded-xl border border-zinc-200 shadow-xs lg:col-span-1 overflow-hidden">
           <div className="p-4 bg-zinc-50/50 border-b border-zinc-100">
-            <h3 className="text-xs font-bold text-zinc-800 uppercase tracking-wide">Colaboradores de BPO</h3>
-            <p className="text-[10px] text-zinc-400">Clique em um perfil para abrir e configurar chaves de segurança (RBAC) à direita.</p>
+            <h3 className="text-xs font-bold text-zinc-800 uppercase tracking-wide">Usuários cadastrados</h3>
+            <p className="text-[10px] text-zinc-400">Equipe BPO, contadores e usuários vinculados aos clientes.</p>
           </div>
 
           <div className="divide-y divide-zinc-200">
-            {users
-              .filter(u => u.role !== 'CLIENT') // only display internal BPO analysts/accountants here
-              .map(user => {
+            {users.map(user => {
                 const isSelected = selectedUserId === user.id;
                 const isActive = user.status === 'ACTIVE';
 
@@ -251,6 +297,7 @@ export default function TeamView() {
                         <h4 className="text-xs font-bold text-zinc-900 leading-tight">{user.name}</h4>
                         <span className="text-[10px] text-zinc-400 block font-normal">{user.title || 'Membro do Time'}</span>
                         <span className="text-[9px] font-mono text-zinc-400 font-normal">{user.email}</span>
+                        <span className="text-[9px] text-[#0B2C52] font-semibold block font-normal">{user.role === 'BPO_ADMIN' ? 'Todas as empresas' : `${user.companies?.length || 0} empresa(s) vinculada(s)`}</span>
                       </div>
                     </div>
 
@@ -300,6 +347,30 @@ export default function TeamView() {
                   <div className="space-y-1">
                     <h4 className="font-bold text-zinc-900 uppercase">Perfil de Regulação de Acessos</h4>
                     <p className="text-zinc-500">As marcações abaixo representam as permissões vigentes que controlam a renderização dinâmica de botões e ações no faturamento deste colaborador.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="font-bold text-zinc-900 uppercase">Empresas permitidas</h4>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">
+                      {selectedUser.role === 'CLIENT' ? 'O usuário cliente deve permanecer vinculado a uma única empresa.' : selectedUser.role === 'ACCOUNTANT' ? 'O contador pode atender uma ou várias empresas clientes.' : selectedUser.role === 'BPO_ADMIN' ? 'Administradores BPO possuem acesso global a todas as empresas.' : 'Defina quais operações este colaborador pode acessar.'}
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {companies.map(company => {
+                      const checked = selectedUser.role === 'BPO_ADMIN' || selectedUser.companies?.includes(company.id);
+                      return <label key={company.id} className={`flex items-center gap-2 border rounded-lg p-2.5 ${selectedUser.role === 'BPO_ADMIN' ? 'bg-zinc-50 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-[#0B2C52]/40'}`}>
+                        <input
+                          type={selectedUser.role === 'CLIENT' ? 'radio' : 'checkbox'}
+                          name={`company-${selectedUser.id}`}
+                          checked={Boolean(checked)}
+                          disabled={selectedUser.role === 'BPO_ADMIN'}
+                          onChange={() => handleUserCompanyToggle(company.id)}
+                        />
+                        <span className="text-[10px] font-semibold text-zinc-700">{company.tradeName}</span>
+                      </label>;
+                    })}
                   </div>
                 </div>
 
@@ -364,8 +435,8 @@ export default function TeamView() {
                   </div>
                 </div>
 
-                <div className="bg-[#00304c] border-l-4 border-[#d20010] border-y border-r border-white/10 p-3.5 rounded-lg text-[10px] text-white/90 leading-normal font-sans flex items-start gap-2 font-semibold shadow-xs">
-                  <ShieldAlert className="h-4 w-4 text-[#d20010] shrink-0 mt-0.5" />
+                <div className="bg-[#0B2C52] border-l-4 border-[#C8102E] border-y border-r border-white/10 p-3.5 rounded-lg text-[10px] text-white/90 leading-normal font-sans flex items-start gap-2 font-semibold shadow-xs">
+                  <ShieldAlert className="h-4 w-4 text-[#C8102E] shrink-0 mt-0.5" />
                   <span>As políticas de segurança corporativa do Grupo Idex Finance exigem a checagem dupla do IP de origem para auditoria contínua de modificações de contas.</span>
                 </div>
               </div>

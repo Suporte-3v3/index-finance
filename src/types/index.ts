@@ -3,16 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'BPO_ADMIN' | 'BPO_TEAM' | 'CLIENT' | 'ACCOUNTANT';
+export type UserRole = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 
-export type CompanyStatus = 'Em dia' | 'OK' | 'Atenção' | 'Atraso' | 'Sem movimentação' | 'Implantação' | 'Inativo';
+export type CompanyStatus =
+  | "Em dia"
+  | "OK"
+  | "Atenção"
+  | "Atraso"
+  | "Sem movimentação"
+  | "Implantação"
+  | "Inativo";
 
 export interface Tenant {
   id: string; // UUID
   name: string; // Tenant name (e.g. "Grupo Nobre")
   createdAt: string;
   plan: string; // Premium, Basic, Custom
-  status: 'ACTIVE' | 'INACTIVE';
+  status: "ACTIVE" | "INACTIVE";
 }
 
 export interface Company {
@@ -39,7 +46,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: "ACTIVE" | "INACTIVE";
   title?: string;
   companies?: string[]; // Allowed company IDs
   permissions: string[]; // Granular permission list
@@ -51,8 +58,26 @@ export interface BankAccount {
   bankName: string;
   agency: string;
   accountNumber: string;
-  type: 'Corrente' | 'Poupança' | 'Investimento';
+  type: "Corrente" | "Poupança" | "Investimento";
   balance: number;
+}
+
+export type MasterDataType =
+  | "CATEGORY"
+  | "SUBCATEGORY"
+  | "PAYMENT_METHOD"
+  | "COST_CENTER"
+  | "DOCUMENT_TYPE"
+  | "SUPPLIER"
+  | "CUSTOMER";
+export interface MasterDataOption {
+  id: string;
+  companyId: string;
+  type: MasterDataType;
+  name: string;
+  parentId?: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface AccountPayable {
@@ -72,12 +97,22 @@ export interface AccountPayable {
   finalAmount: number;
   paymentMethod: string;
   bankAccountId: string;
-  recurrence: 'Nenhuma' | 'Semanal' | 'Mensal' | 'Trimestral' | 'Anual';
+  recurrence: "Nenhuma" | "Semanal" | "Mensal" | "Trimestral" | "Anual";
   documentNumber: string;
   notes: string;
   attachmentUrl?: string;
   attachmentName?: string;
-  status: 'Rascunho' | 'Pendente' | 'Aguardando aprovação' | 'Aprovada' | 'Agendada' | 'Paga' | 'Vencida' | 'Rejeitada' | 'Cancelada';
+  status:
+    | "Rascunho"
+    | "Pendente"
+    | "Aguardando aprovação"
+    | "A vencer"
+    | "Aprovada"
+    | "Agendada"
+    | "Paga"
+    | "Vencida"
+    | "Rejeitada"
+    | "Cancelada";
   responsibleId: string;
   needsApproval: boolean;
   paymentDate?: string;
@@ -103,12 +138,26 @@ export interface AccountReceivable {
   receivedAmount: number;
   paymentMethod: string;
   bankAccountId: string;
-  recurrence: 'Nenhuma' | 'Semanal' | 'Mensal' | 'Trimestral' | 'Anual';
+  recurrence: "Nenhuma" | "Semanal" | "Mensal" | "Trimestral" | "Anual";
   documentNumber: string;
   notes: string;
   attachmentUrl?: string;
   attachmentName?: string;
-  status: 'Rascunho' | 'Pendente' | 'Emitida' | 'Parcialmente recebida' | 'Recebida' | 'Vencida' | 'Em cobrança' | 'Negociada' | 'Cancelada';
+  status:
+    | "Rascunho"
+    | "Pendente"
+    | "Emitida"
+    | "A receber"
+    | "Parcialmente recebido"
+    | "Parcialmente recebida"
+    | "Recebido"
+    | "Recebida"
+    | "Vencido"
+    | "Vencida"
+    | "Em cobrança"
+    | "Negociada"
+    | "Cancelado"
+    | "Cancelada";
   responsibleId: string;
   receiptDate?: string;
   createdAt: string;
@@ -118,7 +167,7 @@ export interface AccountReceivable {
 export interface Approval {
   id: string;
   companyId: string;
-  type: 'PAGAMENTO' | 'DOCUMENTO' | 'SENSIVEL';
+  type: "PAGAMENTO" | "DOCUMENTO" | "SENSIVEL";
   relatedId: string; // Reference to AccountPayable or Document
   description: string;
   amount: number;
@@ -126,7 +175,13 @@ export interface Approval {
   requesterId: string;
   requesterName: string;
   dueDateApproval: string;
-  status: 'Pendente' | 'Aprovada' | 'Rejeitada' | 'Cancelada' | 'Expirada';
+  status:
+    | "Pendente"
+    | "Aprovada"
+    | "Rejeitada"
+    | "Ajuste solicitado"
+    | "Cancelada"
+    | "Expirada";
   justification?: string;
   attachmentUrl?: string;
   attachmentName?: string;
@@ -139,7 +194,7 @@ export interface ApprovalStep {
   userId: string;
   userName: string;
   role: UserRole;
-  decision: 'Aprovada' | 'Rejeitada' | 'Cancelada';
+  decision: "Aprovada" | "Rejeitada" | "Ajuste solicitado" | "Cancelada";
   comment: string;
   timestamp: string;
   ipAddress: string;
@@ -149,7 +204,16 @@ export interface ApprovalStep {
 export interface Document {
   id: string;
   companyId: string;
-  category: 'Nota fiscal' | 'Boleto' | 'Comprovante' | 'Extrato' | 'Contrato' | 'Recibo' | 'Relatório' | 'Documento contábil' | 'Outros';
+  category:
+    | "Nota fiscal"
+    | "Boleto"
+    | "Comprovante"
+    | "Extrato"
+    | "Contrato"
+    | "Recibo"
+    | "Relatório"
+    | "Documento contábil"
+    | "Outros";
   name: string;
   description: string;
   competenceMonth: string; // YYYY-MM
@@ -160,8 +224,29 @@ export interface Document {
   mimeType: string;
   hash: string;
   relatedEntityId?: string; // e.g. payable or receivable ID
-  status: 'Pendente' | 'Validado' | 'Arquivado';
+  status:
+    "Aguardando Análise" | "Aguardando Aprovação" | "Lançado" | "Cancelado";
   signedUrl?: string;
+  aiSummary?: string;
+  extractedData?: Record<string, string>;
+  processingConfidence?: number;
+  supplier?: string;
+  dueDate?: string;
+  expenseType?: string;
+  documentNumber?: string;
+  amount?: number;
+  analysisWarnings?: string[];
+  entryType?: "Conta a Pagar" | "Conta a Receber" | "Transferência";
+  costCenter?: string;
+  bankAccountId?: string;
+  destinationBankAccountId?: string;
+  paymentMethod?: string;
+  recurrence?: "Nenhuma" | "Semanal" | "Mensal" | "Trimestral" | "Anual";
+  notes?: string;
+  origin?: "Manual" | "Documento";
+  launchedById?: string;
+  launchedByName?: string;
+  launchedAt?: string;
 }
 
 export interface BankStatementItem {
@@ -171,7 +256,12 @@ export interface BankStatementItem {
   amount: number; // positive for income, negative for expense
   documentNumber?: string;
   isReconciled: boolean;
-  reconciliationStatus: 'Pendente' | 'Conciliada' | 'Parcialmente conciliada' | 'Divergente' | 'Ignorada';
+  reconciliationStatus:
+    | "Pendente"
+    | "Conciliada"
+    | "Parcialmente conciliada"
+    | "Divergente"
+    | "Ignorada";
   matchedTransactionId?: string;
 }
 
@@ -181,7 +271,7 @@ export interface ReconciliationRecord {
   bankAccountId: string;
   statementItemId: string;
   financialRecordId: string; // AccountPayable or AccountReceivable
-  type: 'A_PAGAR' | 'A_RECEBER';
+  type: "A_PAGAR" | "A_RECEBER";
   reconciledAt: string;
   reconciledById: string;
   reconciledByName: string;
@@ -213,7 +303,7 @@ export interface Notification {
   userId?: string; // if targeted, otherwise global
   title: string;
   message: string;
-  type: 'INFO' | 'WARNING' | 'SUCCESS' | 'ALERT';
+  type: "INFO" | "WARNING" | "SUCCESS" | "ALERT";
   isRead: boolean;
   createdAt: string;
   relatedLink?: string;
@@ -230,4 +320,56 @@ export interface ReportRecord {
   generatedByName: string;
   fileUrl: string;
   fileSize: string;
+}
+
+export type SupportTicketStatus =
+  | "ABERTO"
+  | "EM_ATENDIMENTO"
+  | "AGUARDANDO_SOLICITANTE"
+  | "RESOLVIDO"
+  | "ENCERRADO";
+export type SupportTicketPriority = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
+
+export interface SupportAttachment {
+  id: string;
+  name: string;
+  url: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface SupportMessage {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+  attachments?: SupportAttachment[];
+}
+
+export interface SupportTicket {
+  id: string;
+  protocol: string;
+  companyId: string;
+  requesterId: string;
+  requesterName: string;
+  requesterRole: UserRole;
+  category:
+    | "FINANCEIRO"
+    | "DOCUMENTOS"
+    | "PAGAMENTOS"
+    | "RECEBIMENTOS"
+    | "CONTABIL"
+    | "ACESSO"
+    | "OUTROS";
+  subject: string;
+  description: string;
+  priority: SupportTicketPriority;
+  status: SupportTicketStatus;
+  assignedToId?: string;
+  assignedToName?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: SupportMessage[];
 }

@@ -1,355 +1,925 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useRef } from 'react';
-import { useBPOState } from '../hooks/useBPOState';
-import { Document } from '../types';
-import { 
-  Upload, 
-  Search, 
-  Filter, 
-  FileText, 
-  Download, 
-  Trash2, 
-  Paperclip, 
-  ShieldAlert, 
-  Layers, 
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useBPOState } from "../hooks/useBPOState";
+import { Document } from "../types";
+import { analyzeDocumentVisually } from "../services/documentAnalysis";
+import FileTypeIcon from "../components/FileTypeIcon";
+import {
+  Bot,
+  Check,
+  CheckCircle2,
+  Clock3,
   Database,
-  ArrowRight,
+  Download,
+  Filter,
+  FolderOpen,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+  Pencil,
+  Save,
+  Search,
+  Send,
   Sparkles,
-  RefreshCw,
-  FolderOpen
-} from 'lucide-react';
+  Trash2,
+  X,
+} from "lucide-react";
+
+interface PendingAnalysis {
+  file: File;
+  category: Document["category"];
+  summary: string;
+  competenceMonth: string;
+  formattedSize: string;
+  confidence: number;
+  extractedData: Record<string, string>;
+  supplier: string;
+  dueDate: string;
+  expenseType: string;
+  companyId: string;
+  documentNumber: string;
+  amount: number;
+  warnings: string[];
+  source: "visual-ai" | "local-fallback";
+}
+
+const CATEGORIES: Document["category"][] = [
+  "Nota fiscal",
+  "Boleto",
+  "Comprovante",
+  "Extrato",
+  "Contrato",
+  "Recibo",
+  "Relatório",
+  "Documento contábil",
+  "Outros",
+];
+
+function identifyCategory(fileName: string): Document["category"] {
+  const name = fileName.toLocaleLowerCase("pt-BR");
+  if (/boleto|cobranca|cobrança/.test(name)) return "Boleto";
+  if (/nota|nfe|nf-|nf_/.test(name)) return "Nota fiscal";
+  if (/comprovante|pix|pagamento/.test(name)) return "Comprovante";
+  if (/extrato|ofx/.test(name)) return "Extrato";
+  if (/contrato/.test(name)) return "Contrato";
+  if (/recibo/.test(name)) return "Recibo";
+  if (/relatorio|relatório|dre/.test(name)) return "Relatório";
+  if (/contabil|contábil|balancete/.test(name)) return "Documento contábil";
+  return "Outros";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () =>
+      reject(new Error("Não foi possível preparar o arquivo para envio."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function inferDocumentDetails(fileName: string) {
+  const name = fileName.toLocaleLowerCase("pt-BR");
+  const rules = [
+    {
+      pattern: /aluguel|locacao|locação/,
+      supplier: "Imobiliária / Locador",
+      expenseType: "Aluguel e ocupação",
+    },
+    {
+      pattern: /energia|eletric/,
+      supplier: "Concessionária de energia",
+      expenseType: "Energia elétrica",
+    },
+    {
+      pattern: /telefone|telefonia|internet/,
+      supplier: "Operadora de telecomunicações",
+      expenseType: "Telefonia e internet",
+    },
+    {
+      pattern: /aws|amazon/,
+      supplier: "Amazon Web Services",
+      expenseType: "Tecnologia e infraestrutura",
+    },
+    {
+      pattern: /marketing|publicidade/,
+      supplier: "Fornecedor de marketing",
+      expenseType: "Marketing e publicidade",
+    },
+    {
+      pattern: /imposto|tributo|das|darf/,
+      supplier: "Órgão arrecadador",
+      expenseType: "Impostos e tributos",
+    },
+    {
+      pattern: /limpeza|conservacao|conservação/,
+      supplier: "Fornecedor de serviços",
+      expenseType: "Limpeza e conservação",
+    },
+  ];
+  const match = rules.find((rule) => rule.pattern.test(name));
+  const brDate = name.match(/(\d{2})[-_.](\d{2})[-_.](\d{4})/);
+  const isoDate = name.match(/(\d{4})[-_.](\d{2})[-_.](\d{2})/);
+  return {
+    supplier: match?.supplier || "A confirmar",
+    expenseType: match?.expenseType || "Outras despesas",
+    dueDate: brDate
+      ? `${brDate[3]}-${brDate[2]}-${brDate[1]}`
+      : isoDate
+        ? `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`
+        : "",
+  };
+}
 
 export default function DocumentsView() {
-  const { 
-    activeCompany, 
-    documents, 
-    uploadDocument, 
-    deleteDocument, 
+  const {
+    activeCompany,
+    companies,
+    documents,
+    uploadDocument,
+    deleteDocument,
     currentUser,
-    hasPermission 
+    hasPermission,
   } = useBPOState();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | Document["status"]>(
+    "ALL",
+  );
+  const [pending, setPending] = useState<PendingAnalysis | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [chatPrompt, setChatPrompt] = useState("");
+  const [error, setError] = useState("");
+  const [editingAnalysis, setEditingAnalysis] = useState(false);
+  const [visualAiAvailable, setVisualAiAvailable] = useState<boolean | null>(
+    null,
+  );
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
-  
-  // Drag and drop states
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    fetch("/api/documents/status")
+      .then(async (response) =>
+        response.ok
+          ? (response.json() as Promise<{ available: boolean }>)
+          : { available: false },
+      )
+      .then((status) => setVisualAiAvailable(status.available))
+      .catch(() => setVisualAiAvailable(false));
+  }, []);
 
-  // Upload simulated states
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [simulatedFileName, setSimulatedFileName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<Document['category']>('Nota fiscal');
-  const [docDescription, setDocDescription] = useState('');
+  const availableCompanies =
+    currentUser.role === "BPO_ADMIN"
+      ? companies
+      : companies.filter((company) =>
+          currentUser.companies?.includes(company.id),
+        );
+
+  const companyDocuments = useMemo(
+    () =>
+      documents
+        .filter((document) => document.companyId === activeCompany?.id)
+        .sort(
+          (first, second) =>
+            new Date(second.uploadedAt).getTime() -
+            new Date(first.uploadedAt).getTime(),
+        ),
+    [activeCompany?.id, documents],
+  );
+
+  const filteredDocuments = companyDocuments.filter((document) => {
+    const query = search.toLocaleLowerCase("pt-BR");
+    const matchesSearch =
+      !query ||
+      `${document.name} ${document.description} ${document.category} ${document.uploadedByName}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(query);
+    return (
+      matchesSearch &&
+      (statusFilter === "ALL" || document.status === statusFilter)
+    );
+  });
 
   if (!activeCompany) return null;
 
-  const companyDocs = documents.filter(d => d.companyId === activeCompany.id);
-
-  const filteredDocs = companyDocs.filter(doc => {
-    const matchesSearch = 
-      doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'ALL' || doc.category === categoryFilter;
-
-    return matchesSearch && matchesCategory;
-  });
-
-  // Handle Drag Over
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (hasPermission('documents.upload')) {
-      setIsDragging(true);
+  const analyzeFile = async (file: File) => {
+    setError("");
+    if (file.size > 20 * 1024 * 1024) {
+      setError("O arquivo excede o limite de 20 MB.");
+      return;
     }
-  };
+    setIsAnalyzing(true);
+    setPending(null);
+    const now = new Date();
+    const defaultCompetence = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const details = inferDocumentDetails(file.name);
+    const formattedSize = formatSize(file.size);
+    const context = chatPrompt.trim();
 
-  // Handle Drag Leave
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  // Process File upload helper
-  const processUpload = (name: string, sizeBytes: number, type: string) => {
-    setIsUploading(true);
-    setUploadProgress(10);
-    setSimulatedFileName(name);
-
-    // Simulate progress tick
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          
-          // Complete the upload state
-          setTimeout(() => {
-            const sizeKB = (sizeBytes / 1024).toFixed(0);
-            const formattedSize = Number(sizeKB) > 1024 
-              ? (Number(sizeKB) / 1024).toFixed(1) + ' MB' 
-              : sizeKB + ' KB';
-
-            uploadDocument({
-              name,
-              category: selectedCategory,
-              description: docDescription || `Documento operacional do mês de faturamento de ${activeCompany.tradeName}.`,
-              competenceMonth: '2026-07',
-              fileSize: formattedSize,
-              mimeType: type || 'application/pdf',
-            });
-
-            setIsUploading(false);
-            setUploadProgress(0);
-            setSimulatedFileName('');
-            setDocDescription('');
-          }, 400);
-
-          return 100;
-        }
-        return prev + 30;
+    try {
+      const analysis = await analyzeDocumentVisually(
+        file,
+        activeCompany.tradeName,
+        context,
+      );
+      const matchedCompany = availableCompanies.find(
+        (company) =>
+          company.tradeName.toLocaleLowerCase("pt-BR") ===
+            analysis.companyName.toLocaleLowerCase("pt-BR") ||
+          company.corporateName.toLocaleLowerCase("pt-BR") ===
+            analysis.companyName.toLocaleLowerCase("pt-BR"),
+      );
+      setPending({
+        file,
+        formattedSize,
+        source: "visual-ai",
+        category: analysis.documentType,
+        competenceMonth: analysis.competenceMonth || defaultCompetence,
+        confidence: Math.round(analysis.confidence),
+        summary: analysis.summary,
+        supplier: analysis.supplier || "A confirmar",
+        dueDate: analysis.dueDate || "",
+        expenseType: analysis.expenseType || "A confirmar",
+        companyId: matchedCompany?.id || activeCompany.id,
+        documentNumber: analysis.documentNumber || "",
+        amount: Number(analysis.amount) || 0,
+        warnings: analysis.warnings || [],
+        extractedData: {
+          "Tipo identificado": analysis.documentType,
+          Fornecedor: analysis.supplier || "A confirmar",
+          Vencimento: analysis.dueDate || "A confirmar",
+          "Tipo de despesa": analysis.expenseType || "A confirmar",
+          Empresa: matchedCompany?.tradeName || activeCompany.tradeName,
+          Valor: analysis.amount
+            ? `${analysis.currency || "BRL"} ${Number(analysis.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "A confirmar",
+          Documento: analysis.documentNumber || "A confirmar",
+          Competência: analysis.competenceMonth || defaultCompetence,
+          Formato:
+            file.type ||
+            file.name.split(".").pop()?.toUpperCase() ||
+            "Desconhecido",
+          Tamanho: formattedSize,
+          "Enviado por": currentUser.name,
+        },
       });
-    }, 150);
-  };
-
-  // Handle Drop
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (!hasPermission('documents.upload')) return;
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      processUpload(file.name, file.size, file.type);
+    } catch (reason) {
+      const category = identifyCategory(file.name);
+      const fallbackMessage =
+        reason instanceof Error
+          ? reason.message
+          : "Análise visual indisponível.";
+      setPending({
+        file,
+        category,
+        competenceMonth: defaultCompetence,
+        formattedSize,
+        source: "local-fallback",
+        confidence: category === "Outros" ? 30 : 55,
+        summary: `${category} classificado apenas pelos dados do arquivo. Revise todos os campos antes de incluir.`,
+        supplier: details.supplier,
+        dueDate: details.dueDate,
+        expenseType: details.expenseType,
+        companyId: activeCompany.id,
+        documentNumber: "",
+        amount: 0,
+        warnings: [
+          fallbackMessage,
+          "A leitura visual generativa não foi utilizada; os valores abaixo são sugestões locais.",
+        ],
+        extractedData: {
+          "Tipo identificado": category,
+          Fornecedor: details.supplier,
+          Vencimento: details.dueDate || "A confirmar",
+          "Tipo de despesa": details.expenseType,
+          Empresa: activeCompany.tradeName,
+          Competência: defaultCompetence,
+          Formato:
+            file.type ||
+            file.name.split(".").pop()?.toUpperCase() ||
+            "Desconhecido",
+          Tamanho: formattedSize,
+          "Enviado por": currentUser.name,
+        },
+      });
+    } finally {
+      setChatPrompt("");
+      setEditingAnalysis(false);
+      setIsAnalyzing(false);
     }
   };
 
-  // Handle Click select
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      processUpload(file.name, file.size, file.type);
+  const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) analyzeFile(file);
+    event.target.value = "";
+  };
+
+  const confirmDocument = async () => {
+    if (!pending) return;
+    setError("");
+    setIsAnalyzing(true);
+    try {
+      const data = await readFileAsBase64(pending.file);
+      const response = await fetch("/api/documents/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data,
+          fileName: pending.file.name,
+          mimeType: pending.file.type,
+        }),
+      });
+      const result = (await response.json()) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.url)
+        throw new Error(
+          result.error || "Não foi possível armazenar o arquivo.",
+        );
+      uploadDocument({
+        name: pending.file.name,
+        description: pending.summary,
+        category: pending.category,
+        competenceMonth: pending.competenceMonth,
+        fileSize: pending.formattedSize,
+        mimeType: pending.file.type || "application/octet-stream",
+        aiSummary: pending.summary,
+        processingConfidence: pending.confidence,
+        companyId: pending.companyId,
+        supplier: pending.supplier,
+        dueDate: pending.dueDate,
+        expenseType: pending.expenseType,
+        documentNumber: pending.documentNumber,
+        amount: pending.amount,
+        analysisWarnings: pending.warnings,
+        previewUrl: result.url,
+        extractedData: {
+          ...pending.extractedData,
+          "Tipo identificado": pending.category,
+          Fornecedor: pending.supplier,
+          Vencimento: pending.dueDate || "A confirmar",
+          "Tipo de despesa": pending.expenseType,
+          Valor: pending.amount
+            ? `R$ ${pending.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "A confirmar",
+          Documento: pending.documentNumber || "A confirmar",
+          Empresa:
+            companies.find((company) => company.id === pending.companyId)
+              ?.tradeName || activeCompany.tradeName,
+        },
+      });
+      setPending(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Falha ao enviar o documento.",
+      );
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
-  const triggerFileInput = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
+  const handleDelete = (document: Document) => {
+    if (
+      window.confirm(
+        `Excluir “${document.name}”? Esta ação ficará registrada nos logs.`,
+      )
+    )
+      deleteDocument(document.id);
   };
 
-  const handleDownload = (doc: Document) => {
-    alert(`Gerando Link Assinado Temporário para S3 Schedulers:\n\nUrl: ${doc.signedUrl}\n\nToken válido por 15 minutos.`);
-  };
-
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`Tem certeza que deseja excluir o documento "${name}"? Esta ação gerará um log de auditoria.`)) {
-      deleteDocument(id);
-    }
-  };
+  const included = companyDocuments.filter(
+    (document) => document.status === "Lançado",
+  ).length;
+  const pendingCount = companyDocuments.filter(
+    (document) => document.status === "Aguardando Análise",
+  ).length;
+  const rejectedCount = companyDocuments.filter(
+    (document) => document.status === "Cancelado",
+  ).length;
 
   return (
-    <div id="documents-root" className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 id="docs-title" className="text-xl font-bold text-zinc-900 tracking-tight font-sans">Gestor de Documentos</h2>
-          <p className="text-zinc-500 text-xs font-sans">Repositório seguro isolado por empresa. Armazene notas fiscais, boletos e extratos mensais.</p>
+          <h2 className="text-xl font-bold text-zinc-900">
+            Central de Documentos
+          </h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Envie documentos para leitura da IA e acompanhe o pré-lançamento.
+          </p>
         </div>
-
-        <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-100 border border-zinc-200 px-3 py-1.5 rounded-lg font-mono">
-          <Database className="h-3.5 w-3.5" />
-          Armazenamento: AWS S3 Encriptado
+        <div className="flex items-center gap-2 text-[10px] text-zinc-500 bg-white border border-zinc-200 rounded-lg px-3 py-2">
+          <Database className="h-3.5 w-3.5 text-[#0B2C52]" /> Repositório da{" "}
+          {activeCompany.tradeName}
         </div>
       </div>
 
-      {/* Upload Zone & Form */}
-      {hasPermission('documents.upload') && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form setup for classification */}
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-xs p-5 space-y-4 font-sans text-xs">
-            <h3 className="text-sm font-bold text-zinc-800 uppercase tracking-wide">Classificação Pré-envio</h3>
-            <p className="text-zinc-400 text-[11px]">Selecione a categoria e insira a descrição antes de realizar o upload para classificar o arquivo adequadamente.</p>
-            
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase block">Categoria de Destino</label>
-              <select
-                className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 cursor-pointer"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value as any)}
-              >
-                <option value="Nota fiscal">Nota fiscal (NFe)</option>
-                <option value="Boleto">Boleto Bancário</option>
-                <option value="Comprovante">Comprovante de Pagamento</option>
-                <option value="Extrato">Extrato Bancário</option>
-                <option value="Contrato">Contrato de Serviço</option>
-                <option value="Recibo">Recibo / Fatura avulsa</option>
-                <option value="Documento contábil">Documento Contábil</option>
-                <option value="Outros">Outros</option>
-              </select>
+      <div className="grid xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)] gap-5 items-start">
+        <section className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-sm min-h-[680px] flex flex-col">
+          <div className="p-4 border-b border-zinc-200 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-[#F2D3A0]/35 flex items-center justify-center">
+              <Bot className="h-5 w-5 text-[#0B2C52]" />
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase block">Descrição do Arquivo</label>
-              <textarea
-                placeholder="Ex: NF de assessoria mensal de marketing..."
-                rows={3}
-                className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 text-xs"
-                value={docDescription}
-                onChange={(e) => setDocDescription(e.target.value)}
-              />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold">Assistente de Documentos</h3>
+                <span
+                  className={`text-[9px] font-bold ${visualAiAvailable ? "text-emerald-600" : visualAiAvailable === false ? "text-amber-600" : "text-zinc-400"}`}
+                >
+                  ●{" "}
+                  {visualAiAvailable
+                    ? "IA visual ativa"
+                    : visualAiAvailable === false
+                      ? "IA não configurada"
+                      : "Verificando IA..."}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500">
+                Identifica, organiza e resume arquivos antes da inclusão.
+              </p>
             </div>
           </div>
 
-          {/* Interactive Drag & Drop Area */}
-          <div className="lg:col-span-2">
-            <div
-              id="upload-dropzone"
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={triggerFileInput}
-              className={`h-full min-h-[200px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all ${
-                isDragging 
-                  ? 'border-zinc-900 bg-zinc-100/80 scale-[0.99]' 
-                  : 'border-zinc-200 bg-white hover:bg-zinc-50/50 hover:border-zinc-300'
-              }`}
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handleFileSelect}
-                accept=".pdf,.png,.jpg,.jpeg,.ofx,.xlsx,.csv,.xml"
-              />
+          <div className="flex-1 bg-zinc-50/60 p-5 space-y-4 overflow-y-auto max-h-[570px]">
+            <div className="flex items-start gap-2">
+              <div className="h-8 w-8 rounded-full bg-[#F2D3A0]/35 flex items-center justify-center shrink-0">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="bg-white border border-zinc-200 rounded-xl rounded-tl-sm p-3 max-w-[82%]">
+                <p className="text-xs text-zinc-700">
+                  Olá! Envie boletos, notas fiscais, comprovantes, extratos ou
+                  contratos. Vou identificar o arquivo, preparar um resumo e
+                  mostrar os dados para sua confirmação.
+                </p>
+              </div>
+            </div>
 
-              {isUploading ? (
-                <div className="space-y-3 w-full max-w-xs animate-pulse">
-                  <RefreshCw className="h-8 w-8 text-zinc-600 animate-spin mx-auto" />
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-800">Transmitindo {simulatedFileName}</h4>
-                    <p className="text-[10px] text-zinc-400 mt-0.5">Calculando hashes SHA-256 e compactando...</p>
+            {companyDocuments
+              .slice(0, 3)
+              .reverse()
+              .map((document) => (
+                <div key={`chat-${document.id}`} className="space-y-2">
+                  <div className="flex justify-end">
+                    <div className="bg-[#0B2C52] text-white rounded-xl rounded-tr-sm px-3 py-2 max-w-[78%]">
+                      <p className="text-xs">
+                        Documento enviado: <strong>{document.name}</strong>
+                      </p>
+                    </div>
                   </div>
-                  {/* Progress bar */}
-                  <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-zinc-900 h-full transition-all duration-150" style={{ width: `${uploadProgress}%` }} />
+                  <div className="flex items-start gap-2">
+                    <div className="h-8 w-8 rounded-full bg-[#F2D3A0]/35 flex items-center justify-center shrink-0">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl rounded-tl-sm p-3 max-w-[85%]">
+                      <p className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> DOCUMENTO
+                        INCLUÍDO
+                      </p>
+                      <p className="text-xs text-zinc-700 mt-1">
+                        {document.aiSummary || document.description}
+                      </p>
+                      <p className="text-[9px] text-zinc-400 mt-2">
+                        {new Date(document.uploadedAt).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-zinc-500 font-mono font-bold">{uploadProgress}%</span>
                 </div>
-              ) : (
-                <div className="space-y-3 font-sans">
-                  <div className="p-3 bg-zinc-100 text-zinc-700 rounded-full inline-block">
-                    <Upload className="h-6 w-6" />
+              ))}
+
+            {isAnalyzing && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500 bg-white border rounded-xl p-4 w-fit">
+                <Loader2 className="h-4 w-4 animate-spin text-[#C8102E]" />{" "}
+                Lendo e classificando o documento...
+              </div>
+            )}
+
+            {pending && (
+              <div className="flex items-start gap-2">
+                <div className="h-8 w-8 rounded-full bg-[#F2D3A0]/35 flex items-center justify-center shrink-0">
+                  <Sparkles className="h-4 w-4 text-[#C8102E]" />
+                </div>
+                <div className="bg-white border border-zinc-200 rounded-xl rounded-tl-sm p-4 w-full max-w-[92%] space-y-4">
+                  <div className="flex justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] text-emerald-700 font-black">
+                        DOCUMENTO RECEBIDO E ANALISADO
+                      </p>
+                      <h4 className="text-xs font-bold mt-1 break-all">
+                        {pending.file.name}
+                      </h4>
+                    </div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 h-fit px-2 py-1 rounded-full">
+                      Confiança {pending.confidence}%
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-900">Arraste e solte o documento aqui</h4>
-                    <p className="text-xs text-zinc-400 mt-1">Ou clique para selecionar arquivos do seu computador.</p>
+                  <p className="text-xs text-zinc-600 leading-relaxed">
+                    {pending.summary}
+                  </p>
+                  <div
+                    className={`text-[10px] font-bold rounded-lg px-3 py-2 ${pending.source === "visual-ai" ? "bg-blue-50 text-blue-700 border border-blue-100" : "bg-amber-50 text-amber-700 border border-amber-200"}`}
+                  >
+                    {pending.source === "visual-ai"
+                      ? "Leitura visual generativa aplicada ao conteúdo do documento."
+                      : "Fallback local aplicado — revise os campos manualmente."}
                   </div>
-                  <p className="text-[10px] text-zinc-400">Suporta PDF, OFX, XML, PNG, JPG, XLSX até 15MB. Classificação ativa: <strong>{selectedCategory}</strong></p>
+                  {pending.warnings.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-[9px] font-black text-amber-700 uppercase">
+                        Atenções da leitura
+                      </p>
+                      {pending.warnings.map((warning) => (
+                        <p
+                          key={warning}
+                          className="text-[10px] text-amber-800 mt-1"
+                        >
+                          • {warning}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {editingAnalysis ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Tipo de documento
+                        <select
+                          value={pending.category}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              category: event.target
+                                .value as Document["category"],
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs bg-white"
+                        >
+                          {CATEGORIES.map((category) => (
+                            <option key={category}>{category}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Fornecedor
+                        <input
+                          value={pending.supplier}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              supplier: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs"
+                        />
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Vencimento
+                        <input
+                          type="date"
+                          value={pending.dueDate}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              dueDate: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs"
+                        />
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Tipo de despesa
+                        <input
+                          value={pending.expenseType}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              expenseType: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs"
+                        />
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Número do documento
+                        <input
+                          value={pending.documentNumber}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              documentNumber: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs"
+                        />
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500">
+                        Valor
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={pending.amount || ""}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              amount: Number(event.target.value) || 0,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs"
+                        />
+                      </label>
+                      <label className="text-[10px] font-bold text-zinc-500 sm:col-span-2">
+                        Empresa
+                        <select
+                          value={pending.companyId}
+                          onChange={(event) =>
+                            setPending({
+                              ...pending,
+                              companyId: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full border border-zinc-200 rounded-lg p-2 text-xs bg-white"
+                        >
+                          {availableCompanies.map((company) => (
+                            <option key={company.id} value={company.id}>
+                              {company.tradeName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {[
+                        ["Tipo de documento", pending.category],
+                        ["Fornecedor", pending.supplier],
+                        [
+                          "Vencimento",
+                          pending.dueDate
+                            ? new Date(
+                                `${pending.dueDate}T12:00:00`,
+                              ).toLocaleDateString("pt-BR")
+                            : "A confirmar",
+                        ],
+                        ["Tipo de despesa", pending.expenseType],
+                        [
+                          "Número do documento",
+                          pending.documentNumber || "A confirmar",
+                        ],
+                        [
+                          "Valor",
+                          pending.amount
+                            ? `R$ ${pending.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                            : "A confirmar",
+                        ],
+                        [
+                          "Empresa",
+                          companies.find(
+                            (company) => company.id === pending.companyId,
+                          )?.tradeName || activeCompany.tradeName,
+                        ],
+                        ["Competência", pending.competenceMonth],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="bg-zinc-50 border border-zinc-100 rounded-lg p-2"
+                        >
+                          <span className="text-[9px] text-zinc-400 font-bold block">
+                            {label}
+                          </span>
+                          <span className="text-[10px] text-zinc-800 font-semibold">
+                            {value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {editingAnalysis ? (
+                      <button
+                        onClick={() => setEditingAnalysis(false)}
+                        className="flex items-center gap-1.5 bg-[#0B2C52] text-white text-xs font-bold px-3 py-2 rounded-lg cursor-pointer"
+                      >
+                        <Save className="h-4 w-4" /> Salvar informações
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setEditingAnalysis(true)}
+                        className="flex items-center gap-1.5 border border-zinc-200 text-zinc-700 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer"
+                      >
+                        <Pencil className="h-4 w-4" /> Editar informações
+                      </button>
+                    )}
+                    <button
+                      onClick={confirmDocument}
+                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg cursor-pointer"
+                    >
+                      <Check className="h-4 w-4" /> Incluir documento
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPending(null);
+                        setEditingAnalysis(false);
+                      }}
+                      className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer"
+                    >
+                      <X className="h-4 w-4" /> Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {error && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {hasPermission("documents.upload") && (
+            <div className="p-4 border-t border-zinc-200">
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.heic,.ofx,.xml,.xlsx,.csv"
+                className="hidden"
+                onChange={handleFileInput}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => inputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  title="Anexar documento"
+                  className="p-2.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 cursor-pointer"
+                >
+                  <Paperclip className="h-4 w-4 text-zinc-600" />
+                </button>
+                <input
+                  value={chatPrompt}
+                  onChange={(event) => setChatPrompt(event.target.value)}
+                  placeholder="Escreva um contexto e anexe o documento..."
+                  className="flex-1 border border-zinc-200 rounded-lg px-3 text-xs focus:outline-none focus:border-[#0B2C52]"
+                />
+                <button
+                  onClick={() => inputRef.current?.click()}
+                  className="p-2.5 bg-[#0B2C52] text-white rounded-lg cursor-pointer"
+                  title="Selecionar arquivo para enviar"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[9px] text-zinc-400 mt-2">
+                PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV · máximo de 20 MB
+              </p>
+            </div>
+          )}
+        </section>
+
+        <aside className="space-y-4">
+          <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-zinc-200">
+              <h3 className="text-sm font-bold">Histórico de Documentos</h3>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                Inclusões e informações desta empresa.
+              </p>
+            </div>
+            <div className="p-3 border-b border-zinc-100 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar documento..."
+                  className="w-full border border-zinc-200 rounded-lg pl-8 pr-2 py-2 text-xs"
+                />
+              </div>
+              <div className="relative">
+                <Filter className="absolute left-2 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as typeof statusFilter)
+                  }
+                  className="border border-zinc-200 rounded-lg pl-7 pr-2 py-2 text-xs bg-white"
+                >
+                  <option value="ALL">Todos</option>
+                  <option value="Aguardando Análise">Aguardando Análise</option>
+                  <option value="Aguardando Aprovação">
+                    Aguardando Aprovação
+                  </option>
+                  <option value="Lançado">Lançados</option>
+                  <option value="Cancelado">Cancelados</option>
+                </select>
+              </div>
+            </div>
+            <div className="divide-y divide-zinc-100 max-h-[520px] overflow-y-auto">
+              {filteredDocuments.map((document) => (
+                <div key={document.id} className="p-4 hover:bg-zinc-50">
+                  <div className="flex items-start gap-3">
+                    <FileTypeIcon
+                      name={document.name}
+                      mimeType={document.mimeType}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex justify-between gap-2">
+                        <h4
+                          className="text-xs font-bold truncate"
+                          title={document.name}
+                        >
+                          {document.name}
+                        </h4>
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full h-fit ${document.status === "Lançado" ? "bg-emerald-50 text-emerald-700" : document.status.includes("Aguardando") ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-500"}`}
+                        >
+                          {document.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 mt-1">
+                        {document.category} · {document.fileSize}
+                      </p>
+                      <p className="text-[9px] text-zinc-400 mt-1 flex items-center gap-1">
+                        <Clock3 className="h-3 w-3" />{" "}
+                        {new Date(document.uploadedAt).toLocaleString("pt-BR")}{" "}
+                        · {document.uploadedByName}
+                      </p>
+                      <p className="text-[10px] text-zinc-500 mt-2 line-clamp-2">
+                        {document.aiSummary || document.description}
+                      </p>
+                      <div className="flex gap-1 mt-2">
+                        <button
+                          onClick={() =>
+                            alert(
+                              `Link seguro: ${document.signedUrl || "indisponível"}`,
+                            )
+                          }
+                          className="p-1.5 text-[#0B2C52] hover:bg-blue-50 rounded cursor-pointer"
+                          title="Baixar"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        {hasPermission("documents.upload") && (
+                          <button
+                            onClick={() => handleDelete(document)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                            title="Excluir"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredDocuments.length === 0 && (
+                <div className="p-10 text-center text-zinc-400">
+                  <FolderOpen className="h-8 w-8 mx-auto mb-2" />
+                  <p className="text-xs">Nenhum documento encontrado.</p>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Filters & Search */}
-      <div className="bg-white rounded-xl border border-zinc-200 shadow-xs p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96 font-sans">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nome do arquivo ou descrição..."
-            className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-50 hover:bg-zinc-100/50 focus:bg-white rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-900 transition-colors"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto font-sans">
-          <div className="flex items-center gap-1.5 bg-zinc-50 px-3 py-1.5 rounded-lg border border-zinc-200 text-xs text-zinc-600">
-            <Layers className="h-3.5 w-3.5" />
-            <select
-              className="bg-transparent font-medium focus:outline-none cursor-pointer"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <option value="ALL">Todas as Categorias</option>
-              <option value="Nota fiscal">Nota fiscal (NFe)</option>
-              <option value="Boleto">Boleto Bancário</option>
-              <option value="Comprovante">Comprovantes</option>
-              <option value="Extrato">Extratos Bancários</option>
-              <option value="Contrato">Contratos</option>
-              <option value="Documento contábil">Documentos Contábeis</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Documents List Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredDocs.length === 0 ? (
-          <div className="col-span-full bg-zinc-50 border border-zinc-200 border-dashed py-12 rounded-xl text-center space-y-2">
-            <FolderOpen className="h-10 w-10 text-zinc-300 mx-auto" />
-            <p className="text-zinc-500 text-sm font-medium">Nenhum documento encontrado.</p>
-            <p className="text-zinc-400 text-xs">Realize um upload ou mude os filtros de busca.</p>
-          </div>
-        ) : (
-          filteredDocs.map(doc => (
-            <div 
-              key={doc.id} 
-              id={`doc-card-${doc.id}`}
-              className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-xs hover:border-zinc-300 transition-colors flex flex-col justify-between"
-            >
-              <div className="p-5 space-y-3.5">
-                {/* Header info */}
-                <div className="flex items-start justify-between gap-2 font-sans">
-                  <div className="space-y-1">
-                    <span className="text-[9px] bg-zinc-100 text-zinc-600 border border-zinc-200 font-bold px-2 py-0.5 rounded font-mono uppercase tracking-wider">
-                      {doc.category}
-                    </span>
-                    <h3 className="text-xs font-bold text-zinc-900 line-clamp-1 mt-1.5" title={doc.name}>{doc.name}</h3>
-                  </div>
-                  <span className="text-[10px] text-zinc-400 font-mono shrink-0">{doc.fileSize}</span>
-                </div>
-
-                <p className="text-zinc-500 text-xs line-clamp-2 leading-relaxed font-sans">{doc.description}</p>
-
-                {/* Audit Hash information */}
-                <div className="p-2 bg-zinc-50 rounded-lg font-mono text-[9px] text-zinc-400 break-all leading-normal border border-zinc-100">
-                  SHA-256 HASH: {doc.hash.substring(0, 32)}...
-                </div>
-              </div>
-
-              {/* Action bar */}
-              <div className="px-4 py-3 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between text-xs font-sans">
-                <span className="text-zinc-400 font-medium">Enviado por: {doc.uploadedByName.split(' ')[0]}</span>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownload(doc)}
-                    className="p-1.5 hover:bg-zinc-200 rounded text-zinc-700 cursor-pointer"
-                    title="Baixar via URL assinada"
-                  >
-                    <Download className="h-4 w-4" />
-                  </button>
-                  {hasPermission('documents.upload') && (
-                    <button
-                      onClick={() => handleDelete(doc.id, doc.name)}
-                      className="p-1.5 hover:bg-rose-100 rounded text-rose-600 cursor-pointer"
-                      title="Deletar documento"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4 gap-2">
+            <div className="bg-white border rounded-xl p-3">
+              <p className="text-[9px] text-zinc-400 font-bold uppercase">
+                Enviados
+              </p>
+              <p className="text-xl font-black mt-1">
+                {companyDocuments.length}
+              </p>
             </div>
-          ))
-        )}
+            <div className="bg-white border rounded-xl p-3">
+              <p className="text-[9px] text-emerald-600 font-bold uppercase">
+                Lançados
+              </p>
+              <p className="text-xl font-black mt-1 text-emerald-700">
+                {included}
+              </p>
+            </div>
+            <div className="bg-white border rounded-xl p-3">
+              <p className="text-[9px] text-amber-600 font-bold uppercase">
+                Aguardando análise
+              </p>
+              <p className="text-xl font-black mt-1 text-amber-700">
+                {pendingCount}
+              </p>
+            </div>
+            <div className="bg-white border border-rose-200 rounded-xl p-3">
+              <p className="text-[9px] text-rose-600 font-bold uppercase">
+                Cancelados
+              </p>
+              <p className="text-xl font-black mt-1 text-rose-700">
+                {rejectedCount}
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

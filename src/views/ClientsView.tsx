@@ -1,71 +1,78 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { useBPOState } from '../hooks/useBPOState';
-import { Company, Tenant } from '../types';
-import { 
-  Plus, 
-  Building2, 
-  Layers, 
-  User, 
-  Mail, 
-  ShieldCheck, 
-  Search, 
-  Award, 
+import React, { useState } from "react";
+import { useBPOState } from "../hooks/useBPOState";
+import { Company, Tenant } from "../types";
+import {
+  Plus,
+  Building2,
+  Layers,
+  User,
+  Mail,
+  ShieldCheck,
+  Search,
+  Award,
   Calendar,
-  DollarSign
-} from 'lucide-react';
+  DollarSign,
+  Pencil,
+} from "lucide-react";
 
 export default function ClientsView() {
-  const { 
-    tenants, 
-    companies, 
-    addCompany, 
-    updateCompanyStatus, 
-    currentUser 
+  const {
+    tenants,
+    companies,
+    addCompany,
+    updateCompany,
+    updateCompanyStatus,
+    currentUser,
   } = useBPOState();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Form Fields
-  const [corporateName, setCorporateName] = useState('');
-  const [tradeName, setTradeName] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [segment, setSegment] = useState('');
-  const [taxRegime, setTaxRegime] = useState('Simples Nacional');
-  const [accountantName, setAccountantName] = useState('');
-  const [accountantEmail, setAccountantEmail] = useState('');
-  const [primaryContactName, setPrimaryContactName] = useState('');
-  const [primaryContactEmail, setPrimaryContactEmail] = useState('');
-  const [approvalLimit, setApprovalLimit] = useState<string>('10000');
+  const [corporateName, setCorporateName] = useState("");
+  const [tradeName, setTradeName] = useState("");
+  const [cnpj, setCnpj] = useState("");
+  const [segment, setSegment] = useState("");
+  const [taxRegime, setTaxRegime] = useState("Simples Nacional");
+  const [accountantName, setAccountantName] = useState("");
+  const [accountantEmail, setAccountantEmail] = useState("");
+  const [primaryContactName, setPrimaryContactName] = useState("");
+  const [primaryContactEmail, setPrimaryContactEmail] = useState("");
+  const [approvalLimit, setApprovalLimit] = useState<string>("10000");
+  const [companyStatus, setCompanyStatus] =
+    useState<Company["status"]>("Implantação");
 
-  if (currentUser.role !== 'BPO_ADMIN') {
+  if (currentUser.role !== "BPO_ADMIN") {
     return (
       <div className="bg-white border border-zinc-200 rounded-xl p-8 text-center text-zinc-500 text-xs italic">
-        Apenas usuários com perfil "Administrador do BPO" possuem permissão para gerenciar clientes e faturamentos de inquilinos.
+        Apenas usuários com perfil "Administrador do BPO" possuem permissão para
+        gerenciar clientes e faturamentos de inquilinos.
       </div>
     );
   }
 
-  const filteredCompanies = companies.filter(c => 
-    c.tradeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.corporateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.cnpj.includes(searchTerm)
+  const filteredCompanies = companies.filter(
+    (c) =>
+      c.tradeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.corporateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.cnpj.includes(searchTerm),
   );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!corporateName || !tradeName || !cnpj || !segment) {
-      alert('Por favor, preencha todos os campos obrigatórios.');
+      alert("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
 
-    addCompany({
-      tenantId: 't-1111-1111', // default to main simulated tenant
+    const data = {
+      tenantId: "t-1111-1111", // default to main simulated tenant
       cnpj,
       corporateName,
       tradeName,
@@ -75,25 +82,61 @@ export default function ClientsView() {
       accountantEmail,
       primaryContactName,
       primaryContactEmail,
-      bpoResponsibleId: 'u-bpo-analyst',
-      approvalLimit: Number(approvalLimit)
-    });
+      bpoResponsibleId: "u-bpo-analyst",
+      approvalLimit: Number(approvalLimit),
+    };
+    if (editingCompanyId)
+      updateCompany(editingCompanyId, { ...data, status: companyStatus });
+    else addCompany(data);
 
     // Reset Form
-    setCorporateName('');
-    setTradeName('');
-    setCnpj('');
-    setSegment('');
-    setTaxRegime('Simples Nacional');
-    setAccountantName('');
-    setAccountantEmail('');
-    setPrimaryContactName('');
-    setPrimaryContactEmail('');
-    setApprovalLimit('10000');
+    setCorporateName("");
+    setTradeName("");
+    setCnpj("");
+    setSegment("");
+    setTaxRegime("Simples Nacional");
+    setAccountantName("");
+    setAccountantEmail("");
+    setPrimaryContactName("");
+    setPrimaryContactEmail("");
+    setApprovalLimit("10000");
+    setCompanyStatus("Implantação");
+    setEditingCompanyId(null);
     setIsFormOpen(false);
   };
 
-  const handleStatusChange = (id: string, status: Company['status']) => {
+  const openEdit = (company: Company) => {
+    setEditingCompanyId(company.id);
+    setCorporateName(company.corporateName);
+    setTradeName(company.tradeName);
+    setCnpj(company.cnpj);
+    setSegment(company.segment);
+    setTaxRegime(company.taxRegime);
+    setAccountantName(company.accountantName);
+    setAccountantEmail(company.accountantEmail);
+    setPrimaryContactName(company.primaryContactName);
+    setPrimaryContactEmail(company.primaryContactEmail);
+    setApprovalLimit(String(company.approvalLimit));
+    setCompanyStatus(company.status);
+    setIsFormOpen(true);
+  };
+  const openNew = () => {
+    setEditingCompanyId(null);
+    setCorporateName("");
+    setTradeName("");
+    setCnpj("");
+    setSegment("");
+    setTaxRegime("Simples Nacional");
+    setAccountantName("");
+    setAccountantEmail("");
+    setPrimaryContactName("");
+    setPrimaryContactEmail("");
+    setApprovalLimit("10000");
+    setCompanyStatus("Implantação");
+    setIsFormOpen(true);
+  };
+
+  const handleStatusChange = (id: string, status: Company["status"]) => {
     updateCompanyStatus(id, status);
   };
 
@@ -102,13 +145,21 @@ export default function ClientsView() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 font-sans">
         <div>
-          <h2 id="clients-title" className="text-xl font-bold text-zinc-900 tracking-tight">Gestão de Clientes (Tenants)</h2>
-          <p className="text-zinc-500 text-xs">Monitore todas as corporações integradas no monólito, controle regimes tributários e defina alçadas de aprovação.</p>
+          <h2
+            id="clients-title"
+            className="text-xl font-bold text-zinc-900 tracking-tight"
+          >
+            Gestão de Clientes (Tenants)
+          </h2>
+          <p className="text-zinc-500 text-xs">
+            Monitore todas as corporações integradas no monólito, controle
+            regimes tributários e defina alçadas de aprovação.
+          </p>
         </div>
 
         <button
-          onClick={() => setIsFormOpen(true)}
-          className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#d20010] hover:bg-[#850000] px-3.5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-xs"
+          onClick={openNew}
+          className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#C8102E] hover:bg-[#8F071B] px-3.5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-xs"
         >
           <Plus className="h-4 w-4" /> Integrar Novo Cliente
         </button>
@@ -118,18 +169,36 @@ export default function ClientsView() {
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans text-xs">
           <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-5 border-b border-zinc-100 bg-gradient-to-r from-[#00304c] to-[#d20010] text-white flex items-center justify-between">
+            <div className="p-5 border-b border-zinc-100 bg-gradient-to-r from-[#0B2C52] to-[#C8102E] text-white flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold">Cadastrar Novo Cliente e Empresa</h3>
-                <p className="text-[10px] text-[#ffefd1]">Gera um ambiente de dados isolado e parametriza os limites do BPO.</p>
+                <h3 className="text-base font-bold">
+                  {editingCompanyId
+                    ? "Editar Empresa Cliente"
+                    : "Cadastrar Novo Cliente e Empresa"}
+                </h3>
+                <p className="text-[10px] text-[#F2D3A0]">
+                  {editingCompanyId
+                    ? "Atualize todas as informações cadastrais e operacionais."
+                    : "Gera um ambiente de dados isolado e parametriza os limites do BPO."}
+                </p>
               </div>
-              <button onClick={() => setIsFormOpen(false)} className="text-[#ffefd1] hover:text-white font-bold cursor-pointer">Fechar</button>
+              <button
+                onClick={() => {
+                  setIsFormOpen(false);
+                  setEditingCompanyId(null);
+                }}
+                className="text-[#F2D3A0] hover:text-white font-bold cursor-pointer"
+              >
+                Fechar
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">Nome Fantasia *</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Nome Fantasia *
+                  </label>
                   <input
                     type="text"
                     required
@@ -141,7 +210,9 @@ export default function ClientsView() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">Razão Social *</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Razão Social *
+                  </label>
                   <input
                     type="text"
                     required
@@ -155,7 +226,9 @@ export default function ClientsView() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">CNPJ / Inscrição *</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    CNPJ / Inscrição *
+                  </label>
                   <input
                     type="text"
                     required
@@ -167,7 +240,9 @@ export default function ClientsView() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">Segmento Atuação *</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Segmento Atuação *
+                  </label>
                   <input
                     type="text"
                     required
@@ -181,7 +256,9 @@ export default function ClientsView() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">Regime Tributário</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Regime Tributário
+                  </label>
                   <select
                     className="w-full p-2 bg-zinc-50 border border-zinc-200 rounded-lg cursor-pointer text-xs"
                     value={taxRegime}
@@ -194,7 +271,9 @@ export default function ClientsView() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">Limite Aprovação Direta (R$)</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Limite Aprovação Direta (R$)
+                  </label>
                   <input
                     type="number"
                     className="w-full p-2 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-mono"
@@ -205,11 +284,15 @@ export default function ClientsView() {
               </div>
 
               <div className="border-t border-zinc-100 pt-3 space-y-3">
-                <span className="font-bold text-zinc-700 block">Contatos de Referência</span>
-                
+                <span className="font-bold text-zinc-700 block">
+                  Contatos de Referência
+                </span>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">Contato Principal *</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                      Contato Principal *
+                    </label>
                     <input
                       type="text"
                       placeholder="Nome do cliente"
@@ -220,7 +303,9 @@ export default function ClientsView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">Email Contato *</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                      Email Contato *
+                    </label>
                     <input
                       type="email"
                       placeholder="cliente@email.com"
@@ -233,7 +318,9 @@ export default function ClientsView() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">Contador Credenciado</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                      Contador Credenciado
+                    </label>
                     <input
                       type="text"
                       placeholder="Nome do contador"
@@ -244,7 +331,9 @@ export default function ClientsView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">Email Contador</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                      Email Contador
+                    </label>
                     <input
                       type="email"
                       placeholder="contador@email.com"
@@ -256,19 +345,46 @@ export default function ClientsView() {
                 </div>
               </div>
 
+              {editingCompanyId && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block">
+                    Status operacional
+                  </label>
+                  <select
+                    value={companyStatus}
+                    onChange={(e) =>
+                      setCompanyStatus(e.target.value as Company["status"])
+                    }
+                    className="w-full p-2 bg-zinc-50 border border-zinc-200 rounded-lg text-xs"
+                  >
+                    <option>Em dia</option>
+                    <option>Atenção</option>
+                    <option>Atraso</option>
+                    <option>Sem movimentação</option>
+                    <option>Implantação</option>
+                    <option>Inativo</option>
+                  </select>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4 mt-6">
                 <button
                   type="button"
-                  onClick={() => setIsFormOpen(false)}
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    setEditingCompanyId(null);
+                  }}
                   className="text-zinc-500 font-bold px-3 py-2 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="font-bold text-white bg-[#d20010] hover:bg-[#850000] px-4 py-2 rounded-lg cursor-pointer shadow-xs"
+                  className="font-bold text-white bg-[#C8102E] hover:bg-[#8F071B] px-4 py-2 rounded-lg cursor-pointer shadow-xs"
                 >
-                  Ativar Empresa e Banco
+                  {editingCompanyId
+                    ? "Salvar todas as alterações"
+                    : "Ativar Empresa e Banco"}
                 </button>
               </div>
             </form>
@@ -292,9 +408,11 @@ export default function ClientsView() {
 
       {/* Client List Grid */}
       <div className="space-y-4 font-sans text-xs">
-        {filteredCompanies.map(company => (
-          <div key={company.id} className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-xs p-5 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
-            
+        {filteredCompanies.map((company) => (
+          <div
+            key={company.id}
+            className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-xs p-5 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center"
+          >
             {/* General Info */}
             <div className="space-y-2 flex-grow">
               <div className="flex items-center gap-2">
@@ -305,13 +423,24 @@ export default function ClientsView() {
                   ID {company.id}
                 </span>
               </div>
-              <h3 className="text-base font-black text-zinc-900">{company.tradeName}</h3>
+              <h3 className="text-base font-black text-zinc-900">
+                {company.tradeName}
+              </h3>
               <p className="text-zinc-400 text-xs">{company.corporateName}</p>
 
               <div className="flex flex-wrap gap-4 pt-1 text-[11px] text-zinc-500 font-medium">
-                <span className="flex items-center gap-1"><Layers className="h-3.5 w-3.5 text-zinc-400" /> {company.segment}</span>
-                <span className="flex items-center gap-1"><Award className="h-3.5 w-3.5 text-zinc-400" /> {company.taxRegime}</span>
-                <span className="flex items-center gap-1"><DollarSign className="h-3.5 w-3.5 text-zinc-400" /> Alçada Aprovação: R$ {company.approvalLimit.toLocaleString('pt-BR')}</span>
+                <span className="flex items-center gap-1">
+                  <Layers className="h-3.5 w-3.5 text-zinc-400" />{" "}
+                  {company.segment}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Award className="h-3.5 w-3.5 text-zinc-400" />{" "}
+                  {company.taxRegime}
+                </span>
+                <span className="flex items-center gap-1">
+                  <DollarSign className="h-3.5 w-3.5 text-zinc-400" /> Alçada
+                  Aprovação: R$ {company.approvalLimit.toLocaleString("pt-BR")}
+                </span>
               </div>
             </div>
 
@@ -323,24 +452,38 @@ export default function ClientsView() {
               </div>
               <div className="flex items-center gap-1.5">
                 <User className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                <span className="text-zinc-800 font-semibold">{company.primaryContactName}</span>
+                <span className="text-zinc-800 font-semibold">
+                  {company.primaryContactName}
+                </span>
               </div>
               <div className="flex items-center gap-1.5 text-zinc-400 font-mono">
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{company.primaryContactEmail}</span>
               </div>
               <div className="flex items-center gap-1.5 pt-1.5 border-t border-zinc-100">
-                <span className="text-zinc-400">Contador: {company.accountantName}</span>
+                <span className="text-zinc-400">
+                  Contador: {company.accountantName}
+                </span>
               </div>
             </div>
 
             {/* Actions / Status switch */}
             <div className="space-y-2 w-full md:w-36 shrink-0 text-right">
-              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Status do Cliente</span>
+              <button
+                onClick={() => openEdit(company)}
+                className="w-full p-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Editar
+              </button>
+              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                Status do Cliente
+              </span>
               <select
                 className="w-full p-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 rounded-lg text-xs font-bold cursor-pointer"
                 value={company.status}
-                onChange={(e) => handleStatusChange(company.id, e.target.value as any)}
+                onChange={(e) =>
+                  handleStatusChange(company.id, e.target.value as any)
+                }
               >
                 <option value="Em dia">Em dia</option>
                 <option value="Atenção">Atenção</option>
@@ -349,9 +492,10 @@ export default function ClientsView() {
                 <option value="Implantação">Implantação</option>
                 <option value="Inativo">Inativo</option>
               </select>
-              <span className="text-[10px] text-zinc-400 block mt-1">Modificado reflete no Centro de Operações</span>
+              <span className="text-[10px] text-zinc-400 block mt-1">
+                Modificado reflete no Centro de Operações
+              </span>
             </div>
-
           </div>
         ))}
       </div>
