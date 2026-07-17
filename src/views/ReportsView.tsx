@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -146,7 +146,7 @@ export default function ReportsView() {
             <button
               type="submit"
               disabled={!hasPermission('reports.generate')}
-              className="w-full font-bold text-white bg-[#d20010] hover:bg-[#850000] disabled:bg-zinc-300 disabled:text-zinc-500 py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              className="w-full font-bold text-white bg-[#C8102E] hover:bg-[#8F071B] disabled:bg-zinc-300 disabled:text-zinc-500 py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
               <Play className="h-4 w-4 fill-white" />
               Compilar e Gerar Relatório
