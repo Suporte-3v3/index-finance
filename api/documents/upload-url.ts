@@ -16,8 +16,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const uploadUrl = await createDocumentUploadSession(input);
-    return Response.json({ uploadUrl });
+    const session = await createDocumentUploadSession(input);
+    return Response.json(session);
   } catch (error) {
     const status = error instanceof DocumentAssistantError ? error.status : 500;
     const message =

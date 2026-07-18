@@ -56,8 +56,8 @@ app.get('/api/documents/status', (_request, response) => {
 
 app.post('/api/documents/upload-url', async (request, response) => {
   try {
-    const uploadUrl = await createDocumentUploadSession(request.body);
-    response.json({ uploadUrl });
+    const session = await createDocumentUploadSession(request.body);
+    response.json(session);
   } catch (error) {
     const status = error instanceof DocumentAssistantError ? error.status : 500;
     response.status(status).json({
