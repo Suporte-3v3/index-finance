@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import crypto from 'node:crypto';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -18,6 +19,12 @@ export interface DocumentUploadInput {
   fileName: string;
   mimeType: string;
   size: number;
+}
+
+export interface DocumentUploadSession {
+  uploadUrl: string;
+  fileUri: string;
+  uploadedFileName: string;
 }
 
 export interface VisualDocumentAnalysis {
@@ -81,7 +88,7 @@ function getGeminiApiKey(): string {
 
 export async function createDocumentUploadSession(
   input: DocumentUploadInput,
-): Promise<string> {
+): Promise<DocumentUploadSession> {
   const apiKey = getGeminiApiKey();
   if (
     !input.fileName ||
@@ -96,6 +103,7 @@ export async function createDocumentUploadSession(
     );
   }
 
+  const uploadedFileName = `files/${crypto.randomUUID()}`;
   const uploadResponse = await fetch(
     'https://generativelanguage.googleapis.com/upload/v1beta/files',
     {
@@ -108,7 +116,12 @@ export async function createDocumentUploadSession(
         'X-Goog-Upload-Header-Content-Type': input.mimeType,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ file: { display_name: input.fileName } }),
+      body: JSON.stringify({
+        file: {
+          name: uploadedFileName,
+          display_name: input.fileName,
+        },
+      }),
     },
   );
 
@@ -125,7 +138,11 @@ export async function createDocumentUploadSession(
     );
   }
 
-  return uploadUrl;
+  return {
+    uploadUrl,
+    uploadedFileName,
+    fileUri: `https://generativelanguage.googleapis.com/v1beta/${uploadedFileName}`,
+  };
 }
 
 export async function analyzeDocument(

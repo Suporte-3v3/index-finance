@@ -6,14 +6,6 @@ export interface VisualDocumentAnalysis {
   competenceMonth: string; summary: string; confidence: number; warnings: string[];
 }
 
-interface GeminiUploadedFile {
-  file?: {
-    name?: string;
-    uri?: string;
-  };
-  error?: { message?: string };
-}
-
 function inferMimeType(file: File): string {
   if (file.type) return file.type;
   const extension = file.name.split('.').pop()?.toLowerCase();
@@ -43,33 +35,45 @@ async function prepareFileForGemini(file: File): Promise<{
   });
   const session = (await sessionResponse.json()) as {
     uploadUrl?: string;
+    fileUri?: string;
+    uploadedFileName?: string;
     error?: string;
   };
-  if (!sessionResponse.ok || !session.uploadUrl) {
+  if (
+    !sessionResponse.ok ||
+    !session.uploadUrl ||
+    !session.fileUri ||
+    !session.uploadedFileName
+  ) {
     throw new Error(
       session.error || 'Não foi possível preparar o arquivo para análise.',
     );
   }
 
-  const uploadResponse = await fetch(session.uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': mimeType,
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: file,
-  });
-  const uploaded = (await uploadResponse.json()) as GeminiUploadedFile;
-  if (!uploadResponse.ok || !uploaded.file?.uri || !uploaded.file.name) {
-    throw new Error(
-      uploaded.error?.message || 'O Gemini não recebeu o arquivo para análise.',
-    );
+  try {
+    const uploadResponse = await fetch(session.uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': mimeType,
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize',
+      },
+      body: file,
+    });
+    if (!uploadResponse.ok) {
+      throw new Error('O Gemini não recebeu o arquivo para análise.');
+    }
+  } catch (error) {
+    // The Gemini upload endpoint accepts the file but omits the CORS header on
+    // its final response. Browsers surface that successful upload as a
+    // TypeError. The backend already knows the resource id and verifies it
+    // before analysis; genuine upload failures are reported there.
+    if (!(error instanceof TypeError)) throw error;
   }
 
   return {
-    fileUri: uploaded.file.uri,
-    uploadedFileName: uploaded.file.name,
+    fileUri: session.fileUri,
+    uploadedFileName: session.uploadedFileName,
     mimeType,
   };
 }
