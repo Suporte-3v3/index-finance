@@ -11,7 +11,7 @@ import {
   DocumentAssistantError,
   getGeminiModel,
   hasConfiguredGeminiKey,
-} from './backend/document-assistant';
+} from './backend/document-assistant.js';
 
 // `.env.local` is intentionally gitignored and takes precedence over `.env`.
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });

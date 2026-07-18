@@ -2,7 +2,7 @@ import {
   createDocumentUploadSession,
   DocumentAssistantError,
   DocumentUploadInput,
-} from '../../backend/document-assistant';
+} from '../../backend/document-assistant.js';
 
 export async function POST(request: Request): Promise<Response> {
   let input: DocumentUploadInput;

@@ -2,7 +2,7 @@ import {
   analyzeDocument,
   DocumentAssistantError,
   DocumentAnalysisInput,
-} from '../../backend/document-assistant';
+} from '../../backend/document-assistant.js';
 
 export const maxDuration = 60;
 

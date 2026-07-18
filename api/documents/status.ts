@@ -2,7 +2,7 @@ import {
   getGeminiModel,
   hasConfiguredGeminiKey,
   MAX_DOCUMENT_BYTES,
-} from '../../backend/document-assistant';
+} from '../../backend/document-assistant.js';
 
 export function GET(): Response {
   return Response.json(
