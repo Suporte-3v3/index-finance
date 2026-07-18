@@ -139,17 +139,40 @@ npm run build
 npm start
 ```
 
+## Deploy na Vercel
+
+A Vercel publica o frontend Vite e transforma os arquivos em `api/` em funções
+Node.js. Para ativar o Assistente de Documentos:
+
+1. abra o projeto na Vercel e acesse **Settings > Environment Variables**;
+2. crie `GEMINI_API_KEY` com a chave real, sem o prefixo `VITE_`;
+3. opcionalmente, crie `GEMINI_MODEL` (o padrão é `gemini-2.5-flash`);
+4. marque os ambientes em que a chave deve existir, especialmente `Production`;
+5. faça um novo deploy, pois alterações de variáveis só chegam a deployments novos.
+
+Depois do deploy, abra `/api/documents/status` no domínio da aplicação. O JSON
+deve retornar `"available": true`. A chave nunca é enviada ao frontend: a API
+cria uma sessão temporária e o navegador envia o documento diretamente ao
+Gemini. O arquivo temporário é excluído após a análise.
+
+Na hospedagem local, os arquivos incluídos são mantidos em `.data/uploads`. Na
+Vercel, que não oferece disco persistente para esse fluxo, somente os metadados
+extraídos são mantidos no `localStorage`; o arquivo original não é preservado.
+Para persistência real e acesso entre dispositivos, conecte um armazenamento de
+objetos privado e um banco de dados antes de usar o sistema em produção.
+
 ## Análise e upload de documentos
 
-A central aceita arquivos PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV com até **20 MB**. Os uploads são enviados em Base64 ao backend e armazenados em `.data/uploads` com um nome aleatório.
+A central aceita arquivos PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV com até **20 MB**. Localmente, os uploads confirmados são enviados em Base64 ao backend e armazenados em `.data/uploads` com um nome aleatório.
 
-A análise inteligente está disponível para JPEG, PNG, WebP, HEIC, HEIF e PDF. Quando `GEMINI_API_KEY` está configurada, o servidor envia o conteúdo ao modelo e retorna campos estruturados, como fornecedor, vencimento, valor, competência, tipo do documento, resumo, confiança e alertas de legibilidade.
+A análise inteligente está disponível para JPEG, PNG, WebP, HEIC, HEIF e PDF. Quando `GEMINI_API_KEY` está configurada, o servidor autoriza um upload temporário direto ao Gemini e retorna campos estruturados, como fornecedor, vencimento, valor, competência, tipo do documento, resumo, confiança e alertas de legibilidade.
 
 ### Endpoints internos
 
 | Método | Rota | Finalidade |
 | --- | --- | --- |
 | `POST` | `/api/documents/upload` | Armazena um arquivo enviado pela interface |
+| `POST` | `/api/documents/upload-url` | Cria uma sessão temporária de upload direto ao Gemini |
 | `GET` | `/api/documents/status` | Informa se a análise por IA está configurada e qual modelo está ativo |
 | `POST` | `/api/documents/analyze` | Analisa visualmente um documento compatível |
 | `GET` | `/uploads/:arquivo` | Entrega um arquivo armazenado localmente |
@@ -168,7 +191,7 @@ index-finance/
 │   ├── App.tsx             # Shell, navegação e controle de acesso
 │   ├── index.css           # Estilos globais
 │   └── main.tsx            # Ponto de entrada do React
-├── server.ts               # Express, Gemini, uploads e entrega da SPA
+├── local-server.ts         # Express local, uploads e entrega da SPA
 ├── vite.config.ts          # Configuração do Vite e Tailwind CSS
 ├── .env.example            # Modelo de configuração local
 └── package.json            # Dependências e scripts

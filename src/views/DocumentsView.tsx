@@ -158,16 +158,33 @@ export default function DocumentsView() {
   const [visualAiAvailable, setVisualAiAvailable] = useState<boolean | null>(
     null,
   );
+  const [maxDocumentSize, setMaxDocumentSize] = useState(20 * 1024 * 1024);
+  const [persistentUploads, setPersistentUploads] = useState(false);
 
   useEffect(() => {
     fetch("/api/documents/status")
       .then(async (response) =>
         response.ok
-          ? (response.json() as Promise<{ available: boolean }>)
-          : { available: false },
+          ? (response.json() as Promise<{
+              available: boolean;
+              maxFileSize?: number;
+              persistentUploads?: boolean;
+            }>)
+          : {
+              available: false,
+              maxFileSize: undefined,
+              persistentUploads: false,
+            },
       )
-      .then((status) => setVisualAiAvailable(status.available))
-      .catch(() => setVisualAiAvailable(false));
+      .then((status) => {
+        setVisualAiAvailable(status.available);
+        if (status.maxFileSize) setMaxDocumentSize(status.maxFileSize);
+        setPersistentUploads(Boolean(status.persistentUploads));
+      })
+      .catch(() => {
+        setVisualAiAvailable(false);
+        setPersistentUploads(false);
+      });
   }, []);
 
   const availableCompanies =
@@ -206,8 +223,8 @@ export default function DocumentsView() {
 
   const analyzeFile = async (file: File) => {
     setError("");
-    if (file.size > 20 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 20 MB.");
+    if (file.size > maxDocumentSize) {
+      setError(`O arquivo excede o limite de ${formatSize(maxDocumentSize)}.`);
       return;
     }
     setIsAnalyzing(true);
@@ -322,24 +339,33 @@ export default function DocumentsView() {
     setError("");
     setIsAnalyzing(true);
     try {
-      const data = await readFileAsBase64(pending.file);
-      const response = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data,
-          fileName: pending.file.name,
-          mimeType: pending.file.type,
-        }),
-      });
-      const result = (await response.json()) as {
-        url?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(
-          result.error || "Não foi possível armazenar o arquivo.",
+      let previewUrl: string | undefined;
+      const storageWarnings = [...pending.warnings];
+      if (persistentUploads) {
+        const data = await readFileAsBase64(pending.file);
+        const response = await fetch("/api/documents/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data,
+            fileName: pending.file.name,
+            mimeType: pending.file.type,
+          }),
+        });
+        const result = (await response.json()) as {
+          url?: string;
+          error?: string;
+        };
+        if (!response.ok || !result.url)
+          throw new Error(
+            result.error || "Não foi possível armazenar o arquivo.",
+          );
+        previewUrl = result.url;
+      } else {
+        storageWarnings.push(
+          "Neste deploy, somente os dados extraídos são mantidos no navegador; o arquivo original não é armazenado.",
         );
+      }
       uploadDocument({
         name: pending.file.name,
         description: pending.summary,
@@ -355,8 +381,8 @@ export default function DocumentsView() {
         expenseType: pending.expenseType,
         documentNumber: pending.documentNumber,
         amount: pending.amount,
-        analysisWarnings: pending.warnings,
-        previewUrl: result.url,
+        analysisWarnings: storageWarnings,
+        previewUrl,
         extractedData: {
           ...pending.extractedData,
           "Tipo identificado": pending.category,
@@ -775,7 +801,10 @@ export default function DocumentsView() {
                 </button>
               </div>
               <p className="text-[9px] text-zinc-400 mt-2">
-                PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV · máximo de 20 MB
+                PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV · máximo de{" "}
+                {formatSize(maxDocumentSize)}
+                {!persistentUploads &&
+                  " · no acesso remoto, o arquivo original não é persistido"}
               </p>
             </div>
           )}
