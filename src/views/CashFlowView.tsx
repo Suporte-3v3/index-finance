@@ -76,7 +76,7 @@ export default function CashFlowView() {
   const receivables = accountsReceivable.filter(
     (ar) =>
       ar.companyId === activeCompany.id &&
-      !["Cancelado", "Cancelada"].includes(ar.status) && inSelectedPeriod(ar.receiptDate || ar.dueDate),
+      ar.status !== "Cancelado" && inSelectedPeriod(ar.receiptDate || ar.dueDate),
   );
 
   const categories = Array.from(
@@ -132,7 +132,7 @@ export default function CashFlowView() {
         };
       }
 
-      if (ar.status === "Recebido" || ar.status === "Recebida") {
+      if (ar.status === "Recebido") {
         data[date].incomingRealized += ar.receivedAmount;
       } else {
         data[date].incomingProjected += ar.amount - ar.receivedAmount;

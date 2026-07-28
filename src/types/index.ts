@@ -190,21 +190,19 @@ export interface AccountReceivable {
   notes: string;
   attachmentUrl?: string;
   attachmentName?: string;
+  // Forma única e canônica por status (mesmo princípio do AccountPayable acima):
+  // o carregamento em useBPOState normaliza qualquer variante legada ("Emitida",
+  // "Recebida", "Vencida", "Cancelada", "Parcialmente recebida") para estas.
   status:
     | "Rascunho"
     | "Pendente"
-    | "Emitida"
     | "A receber"
     | "Parcialmente recebido"
-    | "Parcialmente recebida"
     | "Recebido"
-    | "Recebida"
     | "Vencido"
-    | "Vencida"
     | "Em cobrança"
     | "Negociada"
-    | "Cancelado"
-    | "Cancelada";
+    | "Cancelado";
   responsibleId: string;
   receiptDate?: string;
   createdAt: string;

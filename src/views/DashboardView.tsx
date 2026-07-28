@@ -96,12 +96,7 @@ export default function DashboardView({
   // 2. Entries (Income) in reference period (e.g. July 2026 or all)
   const totalEntries = companyReceivables
     .filter((ar) =>
-      [
-        "Recebido",
-        "Recebida",
-        "Parcialmente recebido",
-        "Parcialmente recebida",
-      ].includes(ar.status),
+      ["Recebido", "Parcialmente recebido"].includes(ar.status),
     )
     .reduce((sum, ar) => sum + ar.receivedAmount, 0);
 
@@ -126,12 +121,7 @@ export default function DashboardView({
   // 6. Forecasted Balance: Current Balance + Outstanding Receivables - Outstanding Payables
   const outstandingReceivables = companyReceivables
     .filter((ar) =>
-      [
-        "A receber",
-        "Emitida",
-        "Parcialmente recebido",
-        "Parcialmente recebida",
-      ].includes(ar.status),
+      ["A receber", "Parcialmente recebido"].includes(ar.status),
     )
     .reduce((sum, ar) => sum + (ar.amount - ar.receivedAmount), 0);
 

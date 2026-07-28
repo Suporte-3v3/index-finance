@@ -399,6 +399,7 @@ function OpenShiftScreen({
       <Field label="Saldo inicial (troco)">
         <input
           type="number"
+          step="0.01"
           inputMode="decimal"
           placeholder="0,00"
           className={inputClass}
@@ -509,6 +510,7 @@ function NewExpenseScreen({
       <Field label="Valor">
         <input
           type="number"
+          step="0.01"
           inputMode="decimal"
           className={inputClass}
           value={amount}
@@ -606,6 +608,7 @@ function NewWithdrawalScreen({
       <Field label="Valor">
         <input
           type="number"
+          step="0.01"
           inputMode="decimal"
           className={inputClass}
           value={amount}
@@ -688,6 +691,7 @@ function NewPixScreen({
       <Field label="Valor">
         <input
           type="number"
+          step="0.01"
           inputMode="decimal"
           className={inputClass}
           value={amount}
@@ -814,6 +818,7 @@ function CloseScreen({
       <Field label="Saldo final contado">
         <input
           type="number"
+          step="0.01"
           inputMode="decimal"
           className={inputClass}
           value={finalBalance}
@@ -860,6 +865,7 @@ function CloseScreen({
             <div className="w-24 shrink-0">
               <input
                 type="number"
+                step="0.01"
                 inputMode="decimal"
                 className={`${inputClass} py-2.5`}
                 value={row.amount}

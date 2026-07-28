@@ -460,6 +460,7 @@ export default function ClientsView() {
                   </label>
                   <input
                     type="number"
+                    step="0.01"
                     className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm text-xs font-mono"
                     value={approvalLimit}
                     onChange={(e) => setApprovalLimit(e.target.value)}

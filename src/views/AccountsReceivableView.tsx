@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { AccountReceivable } from "../types";
+import QuickAddSelect from "../components/QuickAddSelect";
 import {
   Plus,
   Search,
@@ -94,6 +95,7 @@ export default function AccountsReceivableView({
     currentUser,
     hasPermission,
     masterData,
+    addMasterData,
   } = useBPOState();
   const masterOptions = (type: string) =>
     masterData.filter(
@@ -210,23 +212,19 @@ export default function AccountsReceivableView({
         return "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
       case "Pendente":
         return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/25";
-      case "Emitida":
       case "A receber":
         return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/25";
-      case "Parcialmente recebida":
       case "Parcialmente recebido":
         return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25";
-      case "Recebida":
       case "Recebido":
         return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25";
-      case "Vencida":
       case "Vencido":
         return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/25";
       case "Em cobrança":
         return "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-500/20 dark:text-rose-200 dark:border-rose-500/30";
       case "Negociada":
         return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/25";
-      case "Cancelada":
+      case "Cancelado":
         return "bg-zinc-200 text-zinc-800 border-zinc-300 line-through dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700";
       default:
         return "bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
@@ -485,63 +483,36 @@ export default function AccountsReceivableView({
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
-                      Cliente / Sacado *
-                    </label>
-                    <select
-                      required
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
-                      value={customer}
-                      onChange={(e) => setCustomer(e.target.value)}
-                    >
-                      <option value="">Selecione...</option>
-                      {masterOptions("CUSTOMER").map((item) => (
-                        <option key={item.id} value={item.name}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <QuickAddSelect
+                    label="Cliente / Sacado"
+                    required
+                    labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                    value={customer}
+                    onChange={setCustomer}
+                    options={masterOptions("CUSTOMER")}
+                    onAdd={(name) => addMasterData("CUSTOMER", name)}
+                  />
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
-                        Categoria Receita *
-                      </label>
-                      <select
-                        required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                      >
-                        <option value="">Selecione...</option>
-                        {masterOptions("CATEGORY").map((item) => (
-                          <option key={item.id} value={item.name}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <QuickAddSelect
+                      label="Categoria Receita"
+                      required
+                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      value={category}
+                      onChange={setCategory}
+                      options={masterOptions("CATEGORY")}
+                      onAdd={(name) => addMasterData("CATEGORY", name)}
+                    />
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
-                        Centro de Custo *
-                      </label>
-                      <select
-                        required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
-                        value={costCenter}
-                        onChange={(e) => setCostCenter(e.target.value)}
-                      >
-                        <option value="">Selecione...</option>
-                        {masterOptions("COST_CENTER").map((item) => (
-                          <option key={item.id} value={item.name}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <QuickAddSelect
+                      label="Centro de Custo"
+                      required
+                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      value={costCenter}
+                      onChange={setCostCenter}
+                      options={masterOptions("COST_CENTER")}
+                      onAdd={(name) => addMasterData("COST_CENTER", name)}
+                    />
                   </div>
                 </div>
               )}
@@ -623,22 +594,14 @@ export default function AccountsReceivableView({
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
-                        Forma Recebimento
-                      </label>
-                      <select
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
-                      >
-                        {masterOptions("PAYMENT_METHOD").map((item) => (
-                          <option key={item.id} value={item.name}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <QuickAddSelect
+                      label="Forma Recebimento"
+                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      value={paymentMethod}
+                      onChange={setPaymentMethod}
+                      options={masterOptions("PAYMENT_METHOD")}
+                      onAdd={(name) => addMasterData("PAYMENT_METHOD", name)}
+                    />
 
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
@@ -863,9 +826,7 @@ export default function AccountsReceivableView({
                 const outstanding = ar.amount - ar.receivedAmount;
                 const isOverdue =
                   new Date(ar.dueDate) < new Date() &&
-                  !["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(
-                    ar.status,
-                  );
+                  !["Recebido", "Cancelado"].includes(ar.status);
 
                 return (
                   <React.Fragment key={ar.id}>
@@ -937,12 +898,7 @@ export default function AccountsReceivableView({
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex items-center justify-end gap-1.5">
-                          {![
-                            "Recebido",
-                            "Recebida",
-                            "Cancelado",
-                            "Cancelada",
-                          ].includes(ar.status) &&
+                          {!["Recebido", "Cancelado"].includes(ar.status) &&
                             hasPermission("reconciliation.execute") && (
                               <>
                                 <button
@@ -963,12 +919,7 @@ export default function AccountsReceivableView({
                                 </button>
                               </>
                             )}
-                          {![
-                            "Recebido",
-                            "Recebida",
-                            "Cancelado",
-                            "Cancelada",
-                          ].includes(ar.status) &&
+                          {!["Recebido", "Cancelado"].includes(ar.status) &&
                             hasPermission("accounts-receivable.cancel") && (
                               <button
                                 onClick={() => handleCancel(ar.id)}
@@ -1120,9 +1071,7 @@ export default function AccountsReceivableView({
                                   )}
                                 </div>
 
-                                {["Recebido", "Recebida"].includes(
-                                  ar.status,
-                                ) && (
+                                {ar.status === "Recebido" && (
                                   <div>
                                     <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
                                       Comprovante de Entrada

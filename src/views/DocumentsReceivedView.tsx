@@ -14,6 +14,7 @@ import { useBPOState } from "../hooks/useBPOState";
 import { Document } from "../types";
 import FileTypeIcon from "../components/FileTypeIcon";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
+import QuickAddSelect from "../components/QuickAddSelect";
 
 const STATUS: Document["status"][] = [
   "Aguardando Análise",
@@ -80,6 +81,12 @@ const getAvatarTint = (seed: string) => {
   }
   return DOC_AVATAR_PALETTE[Math.abs(hash) % DOC_AVATAR_PALETTE.length];
 };
+// Estilo dos inputs/selects dentro de <Field>, reaproveitado nos QuickAddSelect
+// para que o botão "+" de cadastro rápido fique visualmente igual aos demais campos.
+const FIELD_LABEL_CLASS =
+  "block text-[9px] font-semibold text-zinc-600 dark:text-zinc-400";
+const FIELD_SELECT_CLASS =
+  "mt-1 w-full rounded-sm border border-blue-200 dark:border-[#3E6DA6]/40 bg-blue-50/60 dark:bg-[#123B6B]/10 px-2.5 py-2 text-xs text-zinc-800 dark:text-zinc-100 shadow-sm transition-colors hover:border-blue-400 dark:hover:border-[#3E6DA6]/70 hover:bg-blue-50 dark:hover:bg-[#123B6B]/20 focus:border-[#0B2C52] dark:focus:border-[#9DB8D9] focus:bg-white dark:focus:bg-[#091320] focus:outline-none focus:ring-2 focus:ring-[#0B2C52]/15 dark:focus:ring-[#9DB8D9]/20 dark:[color-scheme:dark]";
 const categoryOptions: Document["category"][] = [
   "Nota fiscal",
   "Boleto",
@@ -125,6 +132,7 @@ export default function DocumentsReceivedView() {
     submitDocumentForApproval,
     cancelDocument,
     createStandaloneLaunch,
+    addMasterData,
   } = useBPOState();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -175,9 +183,7 @@ export default function DocumentsReceivedView() {
       (selected.entryType === "Conta a Receber"
         ? !linkedReceivable ||
           linkedReceivable.receivedAmount > 0 ||
-          ["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(
-            linkedReceivable.status,
-          )
+          ["Recebido", "Cancelado"].includes(linkedReceivable.status)
         : selected.entryType === "Transferência"
           ? false
           : !linkedPayable ||
@@ -412,17 +418,8 @@ export default function DocumentsReceivedView() {
                   </select>
                 </Field>
               </div>
-              <Field
-                label={
-                  newLaunch.entryType === "Conta a Receber"
-                    ? "Cliente"
-                    : newLaunch.entryType === "Transferência"
-                      ? "Identificação da transferência"
-                      : "Fornecedor"
-                }
-                required
-              >
-                {newLaunch.entryType === "Transferência" ? (
+              {newLaunch.entryType === "Transferência" ? (
+                <Field label="Identificação da transferência" required>
                   <input
                     required
                     value={newLaunch.supplier}
@@ -430,24 +427,37 @@ export default function DocumentsReceivedView() {
                       setNewLaunch({ ...newLaunch, supplier: e.target.value })
                     }
                   />
-                ) : (
-                  <select
-                    required
-                    value={newLaunch.supplier}
-                    onChange={(e) =>
-                      setNewLaunch({ ...newLaunch, supplier: e.target.value })
-                    }
-                  >
-                    <option value="">Selecione</option>
-                    {(newLaunch.entryType === "Conta a Receber"
+                </Field>
+              ) : (
+                <QuickAddSelect
+                  label={
+                    newLaunch.entryType === "Conta a Receber"
+                      ? "Cliente"
+                      : "Fornecedor"
+                  }
+                  required
+                  labelClassName={FIELD_LABEL_CLASS}
+                  selectClassName={FIELD_SELECT_CLASS}
+                  placeholder="Selecione"
+                  value={newLaunch.supplier}
+                  onChange={(value) =>
+                    setNewLaunch({ ...newLaunch, supplier: value })
+                  }
+                  options={
+                    newLaunch.entryType === "Conta a Receber"
                       ? customers
                       : suppliers
-                    ).map((item) => (
-                      <option key={item.id}>{item.name}</option>
-                    ))}
-                  </select>
-                )}
-              </Field>
+                  }
+                  onAdd={(name) =>
+                    addMasterData(
+                      newLaunch.entryType === "Conta a Receber"
+                        ? "CUSTOMER"
+                        : "SUPPLIER",
+                      name,
+                    )
+                  }
+                />
+              )}
               <Field label="Valor" required>
                 <input
                   required
@@ -498,35 +508,30 @@ export default function DocumentsReceivedView() {
                   )}
                 </select>
               </Field>
-              <Field label="Categoria">
-                <select
-                  value={newLaunch.expenseType}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      expenseType: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">Selecione</option>
-                  {financialCategories.map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Centro de custo">
-                <select
-                  value={newLaunch.costCenter}
-                  onChange={(e) =>
-                    setNewLaunch({ ...newLaunch, costCenter: e.target.value })
-                  }
-                >
-                  <option value="">A classificar</option>
-                  {costCenters.map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </Field>
+              <QuickAddSelect
+                label="Categoria"
+                labelClassName={FIELD_LABEL_CLASS}
+                selectClassName={FIELD_SELECT_CLASS}
+                placeholder="Selecione"
+                value={newLaunch.expenseType}
+                onChange={(value) =>
+                  setNewLaunch({ ...newLaunch, expenseType: value })
+                }
+                options={financialCategories}
+                onAdd={(name) => addMasterData("CATEGORY", name)}
+              />
+              <QuickAddSelect
+                label="Centro de custo"
+                labelClassName={FIELD_LABEL_CLASS}
+                selectClassName={FIELD_SELECT_CLASS}
+                placeholder="A classificar"
+                value={newLaunch.costCenter}
+                onChange={(value) =>
+                  setNewLaunch({ ...newLaunch, costCenter: value })
+                }
+                options={costCenters}
+                onAdd={(name) => addMasterData("COST_CENTER", name)}
+              />
               <Field
                 label={
                   newLaunch.entryType === "Transferência"
@@ -581,22 +586,18 @@ export default function DocumentsReceivedView() {
                   </select>
                 </Field>
               )}
-              <Field label="Forma de pagamento">
-                <select
-                  value={newLaunch.paymentMethod}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      paymentMethod: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">A definir</option>
-                  {paymentMethods.map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </Field>
+              <QuickAddSelect
+                label="Forma de pagamento"
+                labelClassName={FIELD_LABEL_CLASS}
+                selectClassName={FIELD_SELECT_CLASS}
+                placeholder="A definir"
+                value={newLaunch.paymentMethod}
+                onChange={(value) =>
+                  setNewLaunch({ ...newLaunch, paymentMethod: value })
+                }
+                options={paymentMethods}
+                onAdd={(name) => addMasterData("PAYMENT_METHOD", name)}
+              />
               <Field label="Recorrência">
                 <select
                   value={newLaunch.recurrence}
@@ -1070,40 +1071,46 @@ export default function DocumentsReceivedView() {
                       <option>Transferência</option>
                     </select>
                   </Field>
-                  <Field
-                    label={
-                      value("entryType") === "Transferência"
-                        ? "Identificação da transferência"
-                        : value("entryType") === "Conta a Receber"
-                          ? "Cliente"
-                          : "Fornecedor"
-                    }
-                    required
-                  >
-                    {value("entryType") === "Transferência" ? (
+                  {value("entryType") === "Transferência" ? (
+                    <Field label="Identificação da transferência" required>
                       <input
                         value={String(value("supplier"))}
                         onChange={(e) => set("supplier", e.target.value)}
                       />
-                    ) : (
-                      <select
-                        value={String(value("supplier"))}
-                        onChange={(e) => set("supplier", e.target.value)}
-                      >
-                        <option value="">Selecione</option>
-                        {(value("entryType") === "Conta a Receber"
+                    </Field>
+                  ) : (
+                    <QuickAddSelect
+                      label={
+                        value("entryType") === "Conta a Receber"
+                          ? "Cliente"
+                          : "Fornecedor"
+                      }
+                      required
+                      labelClassName={FIELD_LABEL_CLASS}
+                      selectClassName={FIELD_SELECT_CLASS}
+                      placeholder="Selecione"
+                      value={String(value("supplier"))}
+                      onChange={(val) => set("supplier", val)}
+                      options={
+                        value("entryType") === "Conta a Receber"
                           ? customers
                           : suppliers
-                        ).map((item) => (
-                          <option key={item.id}>{item.name}</option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
+                      }
+                      onAdd={(name) =>
+                        addMasterData(
+                          value("entryType") === "Conta a Receber"
+                            ? "CUSTOMER"
+                            : "SUPPLIER",
+                          name,
+                        )
+                      }
+                    />
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Valor" required>
                       <input
                         type="number"
+                        step="0.01"
                         value={Number(value("amount")) || ""}
                         onChange={(e) => set("amount", Number(e.target.value))}
                       />
@@ -1141,28 +1148,26 @@ export default function DocumentsReceivedView() {
                         ))}
                       </select>
                     </Field>
-                    <Field label="Categoria">
-                      <select
-                        value={String(value("expenseType"))}
-                        onChange={(e) => set("expenseType", e.target.value)}
-                      >
-                        <option value="">Selecione</option>
-                        {financialCategories.map((item) => (
-                          <option key={item.id}>{item.name}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Centro de custo">
-                      <select
-                        value={String(value("costCenter"))}
-                        onChange={(e) => set("costCenter", e.target.value)}
-                      >
-                        <option value="">A classificar</option>
-                        {costCenters.map((item) => (
-                          <option key={item.id}>{item.name}</option>
-                        ))}
-                      </select>
-                    </Field>
+                    <QuickAddSelect
+                      label="Categoria"
+                      labelClassName={FIELD_LABEL_CLASS}
+                      selectClassName={FIELD_SELECT_CLASS}
+                      placeholder="Selecione"
+                      value={String(value("expenseType"))}
+                      onChange={(val) => set("expenseType", val)}
+                      options={financialCategories}
+                      onAdd={(name) => addMasterData("CATEGORY", name)}
+                    />
+                    <QuickAddSelect
+                      label="Centro de custo"
+                      labelClassName={FIELD_LABEL_CLASS}
+                      selectClassName={FIELD_SELECT_CLASS}
+                      placeholder="A classificar"
+                      value={String(value("costCenter"))}
+                      onChange={(val) => set("costCenter", val)}
+                      options={costCenters}
+                      onAdd={(name) => addMasterData("COST_CENTER", name)}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field
@@ -1209,17 +1214,16 @@ export default function DocumentsReceivedView() {
                         </select>
                       </Field>
                     )}
-                    <Field label="Forma de pagamento">
-                      <select
-                        value={String(value("paymentMethod"))}
-                        onChange={(e) => set("paymentMethod", e.target.value)}
-                      >
-                        <option value="">A definir</option>
-                        {paymentMethods.map((item) => (
-                          <option key={item.id}>{item.name}</option>
-                        ))}
-                      </select>
-                    </Field>
+                    <QuickAddSelect
+                      label="Forma de pagamento"
+                      labelClassName={FIELD_LABEL_CLASS}
+                      selectClassName={FIELD_SELECT_CLASS}
+                      placeholder="A definir"
+                      value={String(value("paymentMethod"))}
+                      onChange={(val) => set("paymentMethod", val)}
+                      options={paymentMethods}
+                      onAdd={(name) => addMasterData("PAYMENT_METHOD", name)}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Recorrência">

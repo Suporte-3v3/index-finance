@@ -91,7 +91,7 @@ export default function ReconciliationView({
     (ar) =>
       ar.companyId === activeCompany.id &&
       ar.bankAccountId === activeAccount?.id &&
-      !["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(ar.status) &&
+      !["Recebido", "Cancelado"].includes(ar.status) &&
       ar.description.toLowerCase().includes(ledgerSearchTerm.toLowerCase()),
   );
 

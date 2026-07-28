@@ -264,7 +264,7 @@ interface BPOContextType {
     type: MasterDataType,
     name: string,
     parentId?: string,
-  ) => void;
+  ) => MasterDataOption | undefined;
   updateMasterData: (
     id: string,
     updates: Partial<Pick<MasterDataOption, "name" | "parentId" | "active">>,
@@ -1089,7 +1089,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     parentId?: string,
   ) => {
     if (!["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role) || !name.trim())
-      return;
+      return undefined;
     const item: MasterDataOption = {
       id: `md-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       companyId: activeCompanyId,
@@ -1108,6 +1108,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       null,
       item,
     );
+    return item;
   };
   const updateMasterData = (
     id: string,
@@ -1606,7 +1607,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       const existing = prev.find((r) => r.id === id);
       if (!existing) return prev;
 
-      if (["Recebido", "Recebida"].includes(existing.status)) {
+      if (existing.status === "Recebido") {
         console.error("Cannot modify received invoice.");
         return prev;
       }
@@ -2147,11 +2148,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
             "A conta a receber utiliza uma conta bancária diferente do extrato.",
         };
       }
-      if (
-        ["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(
-          record.status,
-        )
-      ) {
+      if (["Recebido", "Cancelado"].includes(record.status)) {
         return {
           success: false,
           error: `A conta a receber está com status "${record.status}" e não pode ser conciliada.`,
@@ -2266,7 +2263,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           (ar) =>
             ar.bankAccountId === bankAccountId &&
             Math.abs(ar.amount - ar.receivedAmount - item.amount) < 0.01 &&
-            !["Recebido", "Recebida"].includes(ar.status),
+            ar.status !== "Recebido",
         );
 
         if (match) {
@@ -3234,9 +3231,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         if (
           !linked ||
           linked.receivedAmount > 0 ||
-          ["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(
-            linked.status,
-          )
+          ["Recebido", "Cancelado"].includes(linked.status)
         )
           return false;
         setAccountsReceivable((current) =>

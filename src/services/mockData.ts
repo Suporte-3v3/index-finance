@@ -383,7 +383,7 @@ export const INITIAL_ACCOUNTS_RECEIVABLE: AccountReceivable[] = [
     notes: 'Nota emitida e boleto pago em dia.',
     attachmentUrl: '#',
     attachmentName: 'nfe_45000_intersistemas.pdf',
-    status: 'Recebida', // Received
+    status: 'Recebido', // Received
     receiptDate: '2026-07-10',
     responsibleId: 'u-bpo-analyst',
     createdAt: '2026-07-01T11:00:00Z',
@@ -411,7 +411,7 @@ export const INITIAL_ACCOUNTS_RECEIVABLE: AccountReceivable[] = [
     notes: 'Aguardando vencimento da fatura.',
     attachmentUrl: '#',
     attachmentName: 'nfe_18500_link.pdf',
-    status: 'Emitida',
+    status: 'A receber',
     responsibleId: 'u-bpo-analyst',
     createdAt: '2026-07-05T10:00:00Z',
     updatedAt: '2026-07-05T10:00:00Z',
@@ -438,7 +438,7 @@ export const INITIAL_ACCOUNTS_RECEIVABLE: AccountReceivable[] = [
     notes: 'Metade paga na contratação. Segunda metade atrasada desde o dia 02.',
     attachmentUrl: '#',
     attachmentName: 'contrato_mariana_pedro.pdf',
-    status: 'Parcialmente recebida',
+    status: 'Parcialmente recebido',
     responsibleId: 'u-bpo-analyst',
     createdAt: '2026-06-15T09:00:00Z',
     updatedAt: '2026-07-03T11:00:00Z',

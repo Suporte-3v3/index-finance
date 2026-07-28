@@ -370,6 +370,7 @@ export default function MasterDataView() {
                   Saldo inicial
                   <input
                     type="number"
+                    step="0.01"
                     value={bank.balance}
                     onChange={(e) =>
                       setBank({ ...bank, balance: Number(e.target.value) })

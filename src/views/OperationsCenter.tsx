@@ -242,27 +242,17 @@ export default function OperationsCenter({
 
     const pendingReceivables = receivableList
       .filter((ar) =>
-        [
-          "A receber",
-          "Emitida",
-          "Parcialmente recebido",
-          "Parcialmente recebida",
-        ].includes(ar.status),
+        ["A receber", "Parcialmente recebido"].includes(ar.status),
       )
       .reduce((sum, ar) => sum + ar.amount - ar.receivedAmount, 0);
     const overdueReceivables = receivableList
-      .filter((ar) => ar.status === "Vencida")
+      .filter((ar) => ar.status === "Vencido")
       .reduce((sum, ar) => sum + ar.amount - ar.receivedAmount, 0);
 
     // Fluxo de caixa: entradas recebidas x saídas pagas no período de referência
     const cashIn = receivableList
       .filter((ar) =>
-        [
-          "Recebido",
-          "Recebida",
-          "Parcialmente recebido",
-          "Parcialmente recebida",
-        ].includes(ar.status),
+        ["Recebido", "Parcialmente recebido"].includes(ar.status),
       )
       .reduce((sum, ar) => sum + ar.receivedAmount, 0);
     const cashOut = payableList
@@ -286,7 +276,7 @@ export default function OperationsCenter({
     // Contas a receber em aberto (ainda não totalmente recebidas nem canceladas)
     const openReceivablesCount = receivableList.filter(
       (ar) =>
-        !["Recebido", "Recebida", "Cancelado", "Cancelada"].includes(ar.status),
+        !["Recebido", "Cancelado"].includes(ar.status),
     ).length;
 
     // Última movimentação registrada (log de auditoria mais recente)
