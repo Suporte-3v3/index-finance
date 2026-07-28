@@ -90,17 +90,25 @@ export default function DashboardView({
     currentUser.role !== "CLIENT" || enabledClientModules.includes("approvals");
   const canOpenAuditLogs = currentUser.role === "BPO_ADMIN";
 
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const daysBetween = (fromStr: string, toStr: string) =>
+    Math.round(
+      (new Date(`${toStr}T00:00:00`).getTime() -
+        new Date(`${fromStr}T00:00:00`).getTime()) /
+        86400000,
+    );
+
   // 1. Current Balance
   const totalBalance = companyAccounts.reduce((sum, ba) => sum + ba.balance, 0);
 
-  // 2. Entries (Income) in reference period (e.g. July 2026 or all)
+  // 2. Entries (Income) realizadas — todo o histórico de recebimentos
   const totalEntries = companyReceivables
     .filter((ar) =>
       ["Recebido", "Parcialmente recebido"].includes(ar.status),
     )
     .reduce((sum, ar) => sum + ar.receivedAmount, 0);
 
-  // 3. Exits (Expenses) in reference period
+  // 3. Exits (Expenses) realizadas
   const totalExits = companyPayables
     .filter((ap) => ap.status === "Paga")
     .reduce((sum, ap) => sum + ap.finalAmount, 0);
@@ -136,42 +144,87 @@ export default function DashboardView({
   const forecastedBalance =
     totalBalance + outstandingReceivables - outstandingPayables;
 
-  // Chart Data Assembly (simulating daily cash flow over selected timeframe)
+  // Variação do saldo nos últimos 30 dias: reconstrói o saldo de 30 dias atrás
+  // a partir do saldo atual menos o que de fato entrou/saiu realizado no período.
+  const days30AgoStr = iso(
+    new Date(new Date().setDate(new Date().getDate() - 30)),
+  );
+  const realizedEntriesLast30 = companyReceivables
+    .filter(
+      (ar) =>
+        ["Recebido", "Parcialmente recebido"].includes(ar.status) &&
+        ar.receiptDate &&
+        ar.receiptDate >= days30AgoStr,
+    )
+    .reduce((sum, ar) => sum + ar.receivedAmount, 0);
+  const realizedExitsLast30 = companyPayables
+    .filter(
+      (ap) =>
+        ap.status === "Paga" && ap.paymentDate && ap.paymentDate >= days30AgoStr,
+    )
+    .reduce((sum, ap) => sum + ap.finalAmount, 0);
+  const balance30DaysAgo =
+    totalBalance - realizedEntriesLast30 + realizedExitsLast30;
+  const balanceTrendPct =
+    balance30DaysAgo !== 0
+      ? ((totalBalance - balance30DaysAgo) / Math.abs(balance30DaysAgo)) * 100
+      : null;
+
+  // Chart Data Assembly — fluxo de caixa diário real (recebimentos e pagamentos
+  // efetivamente registrados), acumulado a partir do saldo atual das contas.
   const getChartData = () => {
     const dataPointsCount = parseInt(timeframe);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startStr = iso(
+      new Date(new Date(today).setDate(today.getDate() - dataPointsCount)),
+    );
+    const todayStr = iso(today);
+
+    const byDay: Record<string, { entradas: number; saidas: number }> = {};
+    companyReceivables.forEach((ar) => {
+      if (!["Recebido", "Parcialmente recebido"].includes(ar.status)) return;
+      const date = ar.receiptDate;
+      if (!date || date < startStr || date > todayStr) return;
+      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
+      byDay[date].entradas += ar.receivedAmount;
+    });
+    companyPayables.forEach((ap) => {
+      if (ap.status !== "Paga") return;
+      const date = ap.paymentDate;
+      if (!date || date < startStr || date > todayStr) return;
+      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
+      byDay[date].saidas += ap.finalAmount;
+    });
+
+    const totalInWindow = Object.values(byDay).reduce(
+      (sum, d) => sum + d.entradas,
+      0,
+    );
+    const totalOutWindow = Object.values(byDay).reduce(
+      (sum, d) => sum + d.saidas,
+      0,
+    );
+    // Saldo no início da janela, para a série terminar exatamente no saldo atual real.
+    let runningBalance = totalBalance - totalInWindow + totalOutWindow;
+
     const data = [];
-    let currentSumBalance = totalBalance - 15000; // start slightly lower to simulate growth
-
-    const today = new Date("2026-07-13");
-
     for (let i = dataPointsCount; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const dateStr = d.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-      });
-
-      // Simulate entries/exits
-      const seed = Math.sin(i / 3) * 2000 + 3000;
-      let dayEntries = i % 4 === 0 ? Math.floor(seed * 2.5) : 0;
-      let dayExits = i % 3 === 0 ? Math.floor(seed * 1.8) : 0;
-
-      // Add randomness
-      if (i === 5) {
-        dayEntries += 12000;
-      } // major spike
-      if (i === 1) {
-        dayExits += 15420;
-      } // major payment
-
-      currentSumBalance = currentSumBalance + dayEntries - dayExits;
+      const key = iso(d);
+      const dayEntradas = byDay[key]?.entradas || 0;
+      const daySaidas = byDay[key]?.saidas || 0;
+      runningBalance = runningBalance + dayEntradas - daySaidas;
 
       data.push({
-        name: dateStr,
-        Entradas: dayEntries,
-        Saídas: dayExits,
-        Saldo: currentSumBalance,
+        name: d.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+        }),
+        Entradas: dayEntradas,
+        Saídas: daySaidas,
+        Saldo: runningBalance,
       });
     }
     return data;
@@ -179,48 +232,118 @@ export default function DashboardView({
 
   const chartData = getChartData();
 
-  // Dynamic Indicators: Formula documentations and check if data exists
-  // Margem Bruta = (Faturamento - Custo de Mercadorias/Serviços) / Faturamento
-  const hasInvoices = companyReceivables.length > 0;
-  const grossFaturamento = companyReceivables.reduce(
-    (sum, ar) => sum + ar.amount,
-    0,
-  );
-  const costInsumos = companyPayables
-    .filter(
-      (ap) =>
-        ap.category === "Insumos e Matérias-primas" ||
-        ap.category === "Infraestrutura TI",
-    )
-    .reduce((sum, ap) => sum + ap.amount, 0);
+  // Margem Bruta = (Faturamento - Custo de Mercadorias/Serviços) / Faturamento,
+  // apurada por competência (mês atual x mês anterior) para permitir comparação real.
+  const currentMonth = iso(new Date()).slice(0, 7);
+  const previousMonth = iso(
+    new Date(new Date().setMonth(new Date().getMonth() - 1)),
+  ).slice(0, 7);
 
+  const faturamentoDoMes = (month: string) =>
+    companyReceivables
+      .filter((ar) => ar.competenceMonth === month)
+      .reduce((sum, ar) => sum + ar.amount, 0);
+  const custoInsumosDoMes = (month: string) =>
+    companyPayables
+      .filter(
+        (ap) =>
+          ap.competenceMonth === month &&
+          (ap.category === "Insumos e Matérias-primas" ||
+            ap.category === "Infraestrutura TI"),
+      )
+      .reduce((sum, ap) => sum + ap.amount, 0);
+
+  const grossFaturamento = faturamentoDoMes(currentMonth);
+  const costInsumos = custoInsumosDoMes(currentMonth);
   const margemBruta =
     grossFaturamento > 0
       ? ((grossFaturamento - costInsumos) / grossFaturamento) * 100
       : null;
 
-  // Inadimplência = Contas a Receber Vencidas / Total Faturamento Emitido
+  const previousFaturamento = faturamentoDoMes(previousMonth);
+  const previousCostInsumos = custoInsumosDoMes(previousMonth);
+  const margemBrutaAnterior =
+    previousFaturamento > 0
+      ? ((previousFaturamento - previousCostInsumos) / previousFaturamento) *
+        100
+      : null;
+  const margemBrutaTrendPp =
+    margemBruta !== null && margemBrutaAnterior !== null
+      ? margemBruta - margemBrutaAnterior
+      : null;
+
+  // Inadimplência = Contas a Receber Vencidas / Total Faturamento Emitido (histórico)
+  const grossFaturamentoTotal = companyReceivables.reduce(
+    (sum, ar) => sum + ar.amount,
+    0,
+  );
   const overdueReceivables = companyReceivables
     .filter((ar) => ar.status === "Vencido")
     .reduce((sum, ar) => sum + ar.amount - ar.receivedAmount, 0);
 
   const inadimplenciaRate =
-    grossFaturamento > 0 ? (overdueReceivables / grossFaturamento) * 100 : null;
+    grossFaturamentoTotal > 0
+      ? (overdueReceivables / grossFaturamentoTotal) * 100
+      : null;
 
-  // Ticket Médio = Total Receber / Quantidade de Clientes
-  const customerCount = Array.from(
-    new Set(companyReceivables.map((ar) => ar.customer)),
-  ).length;
-  const ticketMedio =
-    customerCount > 0 ? grossFaturamento / customerCount : null;
+  // Ticket Médio = Faturamento / Clientes únicos, nos últimos 30 dias x 30 dias
+  // anteriores, para comparação real (o "Ref: 30 dias" do card).
+  const days60AgoStr = iso(
+    new Date(new Date().setDate(new Date().getDate() - 60)),
+  );
+  const todayStr = iso(new Date());
+  const ticketMedioNaJanela = (fromStr: string, toStr: string) => {
+    const janela = companyReceivables.filter(
+      (ar) => ar.issueDate >= fromStr && ar.issueDate <= toStr,
+    );
+    const total = janela.reduce((sum, ar) => sum + ar.amount, 0);
+    const clientesUnicos = new Set(janela.map((ar) => ar.customer)).size;
+    return clientesUnicos > 0 ? total / clientesUnicos : null;
+  };
+  const ticketMedio = ticketMedioNaJanela(days30AgoStr, todayStr);
+  const ticketMedioAnterior = ticketMedioNaJanela(days60AgoStr, days30AgoStr);
+  const ticketMedioTrendPct =
+    ticketMedio !== null && ticketMedioAnterior !== null && ticketMedioAnterior > 0
+      ? ((ticketMedio - ticketMedioAnterior) / ticketMedioAnterior) * 100
+      : null;
 
-  // Ciclo Financeiro (Simulated default for industry)
-  const cicloFinanceiroDays =
+  // Ciclo Financeiro = Estocagem + Prazo Médio de Recebimento - Prazo Médio de
+  // Pagamento. Os prazos de recebimento/pagamento vêm das datas reais de emissão
+  // x liquidação; o sistema não controla estoque, então essa parcela permanece
+  // uma referência de mercado por segmento.
+  const receivedForCycle = companyReceivables.filter(
+    (ar) => ar.status === "Recebido" && ar.receiptDate,
+  );
+  const avgReceivingDays =
+    receivedForCycle.length > 0
+      ? receivedForCycle.reduce(
+          (sum, ar) => sum + daysBetween(ar.issueDate, ar.receiptDate!),
+          0,
+        ) / receivedForCycle.length
+      : null;
+
+  const paidForCycle = companyPayables.filter(
+    (ap) => ap.status === "Paga" && ap.paymentDate,
+  );
+  const avgPayingDays =
+    paidForCycle.length > 0
+      ? paidForCycle.reduce(
+          (sum, ap) => sum + daysBetween(ap.issueDate, ap.paymentDate!),
+          0,
+        ) / paidForCycle.length
+      : null;
+
+  const estimatedInventoryDays =
     activeCompany.segment === "Tecnologia"
-      ? 45
+      ? 0
       : activeCompany.segment === "Alimentação"
-        ? 12
-        : 30;
+        ? 5
+        : 15;
+
+  const cicloFinanceiroDays =
+    avgReceivingDays !== null && avgPayingDays !== null
+      ? Math.round(estimatedInventoryDays + avgReceivingDays - avgPayingDays)
+      : null;
 
   return (
     <div id="client-dashboard-root" className="space-y-4">
@@ -270,10 +393,25 @@ export default function DashboardView({
               <DollarSign className="h-3.5 w-3.5" strokeWidth={2.25} />
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-            <ArrowUpRight className="h-3.5 w-3.5" />
-            <span>+4.2% em relação ao mês anterior</span>
-          </div>
+          {balanceTrendPct !== null ? (
+            <div
+              className={`flex items-center gap-1.5 text-xs font-medium ${balanceTrendPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+            >
+              {balanceTrendPct >= 0 ? (
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              ) : (
+                <ArrowDownRight className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {balanceTrendPct >= 0 ? "+" : ""}
+                {balanceTrendPct.toFixed(1)}% em relação a 30 dias atrás
+              </span>
+            </div>
+          ) : (
+            <div className="text-xs text-zinc-400 dark:text-zinc-500">
+              Sem histórico suficiente para comparação
+            </div>
+          )}
         </div>
 
         {/* Card 2: Saldo Projetado */}
@@ -579,8 +717,8 @@ export default function DashboardView({
                       Fórmula: (Faturamento - Custo de Mercadorias/Serviços) /
                       Faturamento.
                       <br />
-                      Origem: Contas a Receber total x Contas a Pagar de
-                      Categoria "Insumos" ou "Infraestrutura TI".
+                      Origem: Contas a Receber do mês atual x Contas a Pagar
+                      do mês de Categoria "Insumos" ou "Infraestrutura TI".
                     </div>
                   </div>
                 </span>
@@ -594,10 +732,23 @@ export default function DashboardView({
                     <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
                       {margemBruta.toFixed(1)}%
                     </span>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                      <ArrowUpRight className="h-3 w-3 mr-0.5" /> +1.4% vs
-                      anterior
-                    </span>
+                    {margemBrutaTrendPp !== null ? (
+                      <span
+                        className={`text-[10px] font-medium flex items-center ${margemBrutaTrendPp >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                      >
+                        {margemBrutaTrendPp >= 0 ? (
+                          <ArrowUpRight className="h-3 w-3 mr-0.5" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3 mr-0.5" />
+                        )}
+                        {margemBrutaTrendPp >= 0 ? "+" : ""}
+                        {margemBrutaTrendPp.toFixed(1)}pp vs mês anterior
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                        Sem dado do mês anterior
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
@@ -618,7 +769,7 @@ export default function DashboardView({
                       Fórmula: Contas a Receber Vencidas / Total Faturamento
                       Emitido.
                       <br />
-                      Origem: Recebíveis em status "Vencida".
+                      Origem: Recebíveis em status "Vencido".
                     </div>
                   </div>
                 </span>
@@ -635,7 +786,9 @@ export default function DashboardView({
                       {inadimplenciaRate.toFixed(1)}%
                     </span>
                     <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                      Dentro da meta saudável (&lt;5%)
+                      {inadimplenciaRate < 5
+                        ? "Dentro da meta saudável (<5%)"
+                        : "Acima da meta recomendada (<5%)"}
                     </span>
                   </>
                 ) : (
@@ -657,7 +810,7 @@ export default function DashboardView({
                       Fórmula: Total de Recebíveis / Quantidade de Clientes
                       Únicos.
                       <br />
-                      Origem: Clientes cadastrados nos faturamentos.
+                      Origem: Faturamentos emitidos nos últimos 30 dias.
                     </div>
                   </div>
                 </span>
@@ -674,9 +827,23 @@ export default function DashboardView({
                         maximumFractionDigits: 0,
                       })}
                     </span>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                      <ArrowUpRight className="h-3 w-3" /> +2.5% vs anterior
-                    </span>
+                    {ticketMedioTrendPct !== null ? (
+                      <span
+                        className={`text-[10px] font-medium flex items-center ${ticketMedioTrendPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                      >
+                        {ticketMedioTrendPct >= 0 ? (
+                          <ArrowUpRight className="h-3 w-3" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3" />
+                        )}
+                        {ticketMedioTrendPct >= 0 ? "+" : ""}
+                        {ticketMedioTrendPct.toFixed(1)}% vs período anterior
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                        Sem dado do período anterior
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
@@ -697,8 +864,10 @@ export default function DashboardView({
                       Fórmula: Prazo Médio de Estocagem + Prazo Médio de
                       Recebimento - Prazo Médio de Pagamento.
                       <br />
-                      Origem: Estimativa de segmento e datas de competência
-                      registradas.
+                      Origem: recebimento e pagamento calculados a partir das
+                      datas reais de emissão e liquidação; estocagem é uma
+                      referência de mercado por segmento (não rastreada pelo
+                      sistema).
                     </div>
                   </div>
                 </span>
@@ -707,12 +876,20 @@ export default function DashboardView({
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
-                  {cicloFinanceiroDays} dias
-                </span>
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
-                  Tempo médio de conversão
-                </span>
+                {cicloFinanceiroDays !== null ? (
+                  <>
+                    <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+                      {cicloFinanceiroDays} dias
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
+                      Tempo médio de conversão
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                    Dados insuficientes para cálculo
+                  </span>
+                )}
               </div>
             </div>
           </div>
