@@ -25,6 +25,7 @@ import {
 import {
   ResponsiveContainer,
   ComposedChart,
+  BarChart,
   Bar,
   Line,
   XAxis,
@@ -98,6 +99,17 @@ export default function CashFlowView() {
     .filter((ba) => selectedAccount === "ALL" || ba.id === selectedAccount)
     .reduce((sum, ba) => sum + ba.balance, 0);
 
+  // Filtros de conta/categoria/centro de custo, compartilhados entre a linha
+  // do tempo e os gráficos de composição por categoria.
+  const matchesExtraFilters = (item: {
+    bankAccountId: string;
+    category: string;
+    costCenter: string;
+  }) =>
+    (selectedAccount === "ALL" || item.bankAccountId === selectedAccount) &&
+    (selectedCategory === "ALL" || item.category === selectedCategory) &&
+    (selectedCostCenter === "ALL" || item.costCenter === selectedCostCenter);
+
   // Compile flows chronologically
   const getTimelineData = () => {
     const data: Record<
@@ -112,15 +124,7 @@ export default function CashFlowView() {
     > = {};
 
     // Add receivables
-    receivables.forEach((ar) => {
-      // filters
-      if (selectedAccount !== "ALL" && ar.bankAccountId !== selectedAccount)
-        return;
-      if (selectedCategory !== "ALL" && ar.category !== selectedCategory)
-        return;
-      if (selectedCostCenter !== "ALL" && ar.costCenter !== selectedCostCenter)
-        return;
-
+    receivables.filter(matchesExtraFilters).forEach((ar) => {
       const date = ar.receiptDate || ar.dueDate;
       if (!data[date]) {
         data[date] = {
@@ -132,23 +136,18 @@ export default function CashFlowView() {
         };
       }
 
-      if (ar.status === "Recebido") {
+      // Recebimentos parciais já têm uma parte realizada (o que entrou) e
+      // uma parte ainda prevista (o saldo em aberto) — as duas contam.
+      if (ar.status === "Recebido" || ar.status === "Parcialmente recebido") {
         data[date].incomingRealized += ar.receivedAmount;
-      } else {
+      }
+      if (ar.status !== "Recebido") {
         data[date].incomingProjected += ar.amount - ar.receivedAmount;
       }
     });
 
     // Add payables
-    payables.forEach((ap) => {
-      // filters
-      if (selectedAccount !== "ALL" && ap.bankAccountId !== selectedAccount)
-        return;
-      if (selectedCategory !== "ALL" && ap.category !== selectedCategory)
-        return;
-      if (selectedCostCenter !== "ALL" && ap.costCenter !== selectedCostCenter)
-        return;
-
+    payables.filter(matchesExtraFilters).forEach((ap) => {
       const date = ap.paymentDate || ap.dueDate;
       if (!data[date]) {
         data[date] = {
@@ -160,22 +159,29 @@ export default function CashFlowView() {
         };
       }
 
-      if (ap.status === "Paga") {
-        data[date].outgoingRealized += ap.finalAmount;
-      } else {
-        data[date].outgoingProjected += ap.finalAmount;
+      // Idem para pagamentos parciais: o que já saiu é realizado, o
+      // restante do valor final continua previsto — nunca o valor cheio nos dois.
+      const paid = ap.paidAmount || 0;
+      if (ap.status === "Paga" || ap.status === "Parcialmente paga") {
+        data[date].outgoingRealized += paid || ap.finalAmount;
+      }
+      if (ap.status !== "Paga") {
+        data[date].outgoingProjected += ap.finalAmount - paid;
       }
     });
 
     // Convert to sorted array
     const sortedDays = Object.keys(data).sort();
     let cumulativeBalance = initialCash;
+    let cumulativeRealized = initialCash;
 
     return sortedDays.map((day) => {
       const item = data[day];
       const totalIn = item.incomingRealized + item.incomingProjected;
       const totalOut = item.outgoingRealized + item.outgoingProjected;
       cumulativeBalance = cumulativeBalance + totalIn - totalOut;
+      cumulativeRealized =
+        cumulativeRealized + item.incomingRealized - item.outgoingRealized;
 
       return {
         date: new Date(day).toLocaleDateString("pt-BR", {
@@ -188,6 +194,7 @@ export default function CashFlowView() {
         "Saídas Realizadas": item.outgoingRealized,
         "Saídas Previstas": item.outgoingProjected,
         "Saldo Acumulado": cumulativeBalance,
+        "Saldo Realizado": cumulativeRealized,
         totalIn,
         totalOut,
       };
@@ -212,6 +219,42 @@ export default function CashFlowView() {
     0,
   );
   const projectedBalance = initialCash + incomingProjected - outgoingProjected;
+
+  // Composição por categoria (top 6 + "Outros"), para os gráficos de barras
+  // horizontais de entradas e saídas do período filtrado.
+  const buildCategoryBreakdown = <T,>(
+    items: T[],
+    amountOf: (item: T) => number,
+    categoryOf: (item: T) => string,
+  ) => {
+    const totals: Record<string, number> = {};
+    items.forEach((item) => {
+      const category = categoryOf(item);
+      totals[category] = (totals[category] || 0) + amountOf(item);
+    });
+    const sorted = Object.entries(totals)
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1]);
+    const TOP_N = 6;
+    const top = sorted
+      .slice(0, TOP_N)
+      .map(([category, value]) => ({ category, value }));
+    const restTotal = sorted
+      .slice(TOP_N)
+      .reduce((sum, [, value]) => sum + value, 0);
+    return restTotal > 0 ? [...top, { category: "Outros", value: restTotal }] : top;
+  };
+
+  const entradasPorCategoria = buildCategoryBreakdown(
+    receivables.filter(matchesExtraFilters),
+    (ar) => ar.amount,
+    (ar) => ar.category,
+  );
+  const saidasPorCategoria = buildCategoryBreakdown(
+    payables.filter(matchesExtraFilters),
+    (ap) => ap.finalAmount,
+    (ap) => ap.category,
+  );
 
   // Aggregate monthly flows for table presentation
   const getGroupedPeriods = () => {
@@ -497,7 +540,7 @@ export default function CashFlowView() {
         />
       </div>
 
-      <div className="hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/25 p-4 rounded-sm flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
@@ -737,6 +780,184 @@ export default function CashFlowView() {
           </div>
         </div>
       )}
+
+      {/* Gráficos complementares */}
+      <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
+        <div>
+          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+            Saldo Realizado x Saldo com Previsto
+          </h3>
+          <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+            Compara o saldo já confirmado (recebido/pago) com o saldo somando
+            também os lançamentos ainda previstos no período.
+          </p>
+        </div>
+        {cashFlowTimeline.length === 0 ? (
+          <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+            Sem movimentações financeiras correspondentes para o filtro atual.
+          </div>
+        ) : (
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={cashFlowTimeline}
+                margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#71717a" }} />
+                <YAxis
+                  tickFormatter={(val) =>
+                    `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
+                  }
+                  tick={{ fontSize: 10, fill: "#71717a" }}
+                />
+                <Tooltip
+                  formatter={(val: any) => [
+                    `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                  ]}
+                  contentStyle={{
+                    backgroundColor: "#18181b",
+                    color: "#fff",
+                    borderRadius: "8px",
+                    fontSize: "11px",
+                    border: "none",
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                <Line
+                  type="monotone"
+                  dataKey="Saldo Realizado"
+                  stroke="#09090b"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Saldo Acumulado"
+                  stroke="#0B2C52"
+                  strokeWidth={2}
+                  strokeDasharray="5 4"
+                  dot={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
+          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+            Entradas por Categoria
+          </h3>
+          {entradasPorCategoria.length === 0 ? (
+            <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+              Sem entradas para o filtro atual.
+            </div>
+          ) : (
+            <div
+              className="w-full"
+              style={{ height: Math.max(entradasPorCategoria.length * 34, 90) }}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={entradasPorCategoria}
+                  layout="vertical"
+                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#f4f4f5"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    tickFormatter={(val) =>
+                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
+                    }
+                    tick={{ fontSize: 10, fill: "#71717a" }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="category"
+                    width={130}
+                    tick={{ fontSize: 10, fill: "#71717a" }}
+                  />
+                  <Tooltip
+                    formatter={(val: any) => [
+                      `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                    ]}
+                    contentStyle={{
+                      backgroundColor: "#18181b",
+                      color: "#fff",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      border: "none",
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
+          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+            Saídas por Categoria
+          </h3>
+          {saidasPorCategoria.length === 0 ? (
+            <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+              Sem saídas para o filtro atual.
+            </div>
+          ) : (
+            <div
+              className="w-full"
+              style={{ height: Math.max(saidasPorCategoria.length * 34, 90) }}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={saidasPorCategoria}
+                  layout="vertical"
+                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#f4f4f5"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    tickFormatter={(val) =>
+                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
+                    }
+                    tick={{ fontSize: 10, fill: "#71717a" }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="category"
+                    width={130}
+                    tick={{ fontSize: 10, fill: "#71717a" }}
+                  />
+                  <Tooltip
+                    formatter={(val: any) => [
+                      `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                    ]}
+                    contentStyle={{
+                      backgroundColor: "#18181b",
+                      color: "#fff",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      border: "none",
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
