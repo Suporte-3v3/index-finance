@@ -432,7 +432,7 @@ function BPOWorkspaceShell() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDF8F5] flex flex-col md:flex-row font-sans text-zinc-900">
+    <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row font-sans text-zinc-900">
       {/* Mobile Top Navigation Bar */}
       <header className="md:hidden bg-[#061425] text-[#F2D3A0] border-b border-white/10 px-4 py-3 flex items-center justify-end z-40 shrink-0 sticky top-0 relative">
         <img

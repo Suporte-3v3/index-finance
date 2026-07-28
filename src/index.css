@@ -18,6 +18,16 @@ html {
     Arial, sans-serif;
 }
 
+/* O shell da aplicação é sempre claro (o menu lateral tem seu próprio fundo escuro fixo).
+   Sem isto, o navegador pinta a área fora do conteúdo (zoom out, overscroll) com o
+   canvas padrão do sistema, que aparece cinza quando o SO/navegador está em modo escuro. */
+html,
+body,
+#root {
+  background-color: #fafafa;
+  min-height: 100%;
+}
+
 /* Superfícies principais: separação suave sobre o fundo quente da aplicação. */
 .bg-white.rounded-xl.border:not([class*="border-blue"]):not([class*="border-emerald"]):not([class*="border-amber"]):not([class*="border-rose"]):not([class*="border-red"]),
 .bg-white.rounded-2xl.border:not([class*="border-blue"]):not([class*="border-emerald"]):not([class*="border-amber"]):not([class*="border-rose"]):not([class*="border-red"]) {
