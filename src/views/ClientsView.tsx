@@ -6,6 +6,7 @@
 import React, { useRef, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, ClientModule, Company } from "../types";
+import CurrencyInput from "../components/CurrencyInput";
 import {
   ALL_CLIENT_MODULES,
   CLIENT_MODULE_OPTIONS,
@@ -73,7 +74,7 @@ export default function ClientsView() {
   const [accountantEmail, setAccountantEmail] = useState("");
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
-  const [approvalLimit, setApprovalLimit] = useState<string>("10000");
+  const [approvalLimit, setApprovalLimit] = useState(10000);
   const [companyStatus, setCompanyStatus] =
     useState<Company["status"]>("Implantação");
   const [bpoResponsibleId, setBpoResponsibleId] = useState(currentUser.id);
@@ -82,7 +83,7 @@ export default function ClientsView() {
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankAccountType, setBankAccountType] =
     useState<BankAccount["type"]>("Corrente");
-  const [initialBalance, setInitialBalance] = useState("0");
+  const [initialBalance, setInitialBalance] = useState(0);
   const [initialSuppliers, setInitialSuppliers] = useState("");
   const [initialCustomers, setInitialCustomers] = useState("");
   const [initialCategories, setInitialCategories] =
@@ -132,14 +133,14 @@ export default function ClientsView() {
     setAccountantEmail("");
     setPrimaryContactName("");
     setPrimaryContactEmail("");
-    setApprovalLimit("10000");
+    setApprovalLimit(10000);
     setCompanyStatus("Implantação");
     setBpoResponsibleId(currentUser.id);
     setBankName("");
     setBankAgency("");
     setBankAccountNumber("");
     setBankAccountType("Corrente");
-    setInitialBalance("0");
+    setInitialBalance(0);
     setInitialSuppliers("");
     setInitialCustomers("");
     setInitialCategories(DEFAULT_CATEGORIES);
@@ -245,7 +246,7 @@ export default function ClientsView() {
     setAccountantEmail(company.accountantEmail);
     setPrimaryContactName(company.primaryContactName);
     setPrimaryContactEmail(company.primaryContactEmail);
-    setApprovalLimit(String(company.approvalLimit));
+    setApprovalLimit(company.approvalLimit);
     setCompanyStatus(company.status);
     setBpoResponsibleId(company.bpoResponsibleId);
     setSelectedClientModules(getCompanyClientModules(company));
@@ -458,12 +459,10 @@ export default function ClientsView() {
                   <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                     Limite Aprovação Direta (R$)
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm text-xs font-mono"
                     value={approvalLimit}
-                    onChange={(e) => setApprovalLimit(e.target.value)}
+                    onChange={setApprovalLimit}
                   />
                 </div>
               </div>
@@ -707,13 +706,11 @@ export default function ClientsView() {
                         <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                           Saldo inicial (R$)
                         </label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <CurrencyInput
                           required
                           className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm text-xs font-mono"
                           value={initialBalance}
-                          onChange={(e) => setInitialBalance(e.target.value)}
+                          onChange={setInitialBalance}
                         />
                       </div>
                     </div>

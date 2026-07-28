@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { AccountPayable, MasterDataType } from "../types";
 import QuickAddSelect from "../components/QuickAddSelect";
+import CurrencyInput from "../components/CurrencyInput";
 import {
   Plus,
   Search,
@@ -136,10 +137,10 @@ export default function AccountsPayableView({
   const [editCompetenceMonth, setEditCompetenceMonth] = useState("");
   const [editIssueDate, setEditIssueDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
-  const [editAmount, setEditAmount] = useState("0");
-  const [editInterest, setEditInterest] = useState("0");
-  const [editPenalty, setEditPenalty] = useState("0");
-  const [editDiscount, setEditDiscount] = useState("0");
+  const [editAmount, setEditAmount] = useState(0);
+  const [editInterest, setEditInterest] = useState(0);
+  const [editPenalty, setEditPenalty] = useState(0);
+  const [editDiscount, setEditDiscount] = useState(0);
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
   const [editBankAccountId, setEditBankAccountId] = useState("");
   const [editDocumentNumber, setEditDocumentNumber] = useState("");
@@ -147,10 +148,10 @@ export default function AccountsPayableView({
 
   // Payment form state (Pagamento tab)
   const [payBankAccountId, setPayBankAccountId] = useState("");
-  const [payAmount, setPayAmount] = useState("0");
-  const [payInterest, setPayInterest] = useState("0");
-  const [payPenalty, setPayPenalty] = useState("0");
-  const [payDiscount, setPayDiscount] = useState("0");
+  const [payAmount, setPayAmount] = useState(0);
+  const [payInterest, setPayInterest] = useState(0);
+  const [payPenalty, setPayPenalty] = useState(0);
+  const [payDiscount, setPayDiscount] = useState(0);
   const [payDate, setPayDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
@@ -169,10 +170,10 @@ export default function AccountsPayableView({
   const [competenceMonth, setCompetenceMonth] = useState("2026-07");
   const [issueDate, setIssueDate] = useState("2026-07-13");
   const [dueDate, setDueDate] = useState("2026-07-25");
-  const [amount, setAmount] = useState<string>("0");
-  const [interest, setInterest] = useState<string>("0");
-  const [penalty, setPenalty] = useState<string>("0");
-  const [discount, setDiscount] = useState<string>("0");
+  const [amount, setAmount] = useState(0);
+  const [interest, setInterest] = useState(0);
+  const [penalty, setPenalty] = useState(0);
+  const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Boleto Bancário");
   const [bankAccountId, setBankAccountId] = useState("");
   const [recurrence, setRecurrence] = useState<
@@ -310,10 +311,10 @@ export default function AccountsPayableView({
     setCompetenceMonth("2026-07");
     setIssueDate("2026-07-13");
     setDueDate("2026-07-25");
-    setAmount("0");
-    setInterest("0");
-    setPenalty("0");
-    setDiscount("0");
+    setAmount(0);
+    setInterest(0);
+    setPenalty(0);
+    setDiscount(0);
     setPaymentMethod("Boleto Bancário");
     setBankAccountId(accounts[0]?.id || "");
     setRecurrence("Nenhuma");
@@ -394,10 +395,10 @@ export default function AccountsPayableView({
       setEditCompetenceMonth(ap.competenceMonth);
       setEditIssueDate(ap.issueDate);
       setEditDueDate(ap.dueDate);
-      setEditAmount(String(ap.amount));
-      setEditInterest(String(ap.interest));
-      setEditPenalty(String(ap.penalty));
-      setEditDiscount(String(ap.discount));
+      setEditAmount(ap.amount);
+      setEditInterest(ap.interest);
+      setEditPenalty(ap.penalty);
+      setEditDiscount(ap.discount);
       setEditPaymentMethod(ap.paymentMethod);
       setEditBankAccountId(ap.bankAccountId);
       setEditDocumentNumber(ap.documentNumber);
@@ -406,10 +407,10 @@ export default function AccountsPayableView({
     if (tab === "payment") {
       const remaining = getRemaining(ap);
       setPayBankAccountId(ap.bankAccountId || accounts[0]?.id || "");
-      setPayAmount(remaining.toFixed(2));
-      setPayInterest("0");
-      setPayPenalty("0");
-      setPayDiscount("0");
+      setPayAmount(remaining);
+      setPayInterest(0);
+      setPayPenalty(0);
+      setPayDiscount(0);
       setPayDate(new Date().toISOString().slice(0, 10));
       setPayNotes("");
       setPayReceiptUrl(undefined);
@@ -787,13 +788,11 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                         Valor Principal (R$) *
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         required
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={setAmount}
                       />
                     </div>
 
@@ -801,12 +800,10 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                         Desconto (R$)
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                         value={discount}
-                        onChange={(e) => setDiscount(e.target.value)}
+                        onChange={setDiscount}
                       />
                     </div>
                   </div>
@@ -816,12 +813,10 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                         Juros (R$)
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                         value={interest}
-                        onChange={(e) => setInterest(e.target.value)}
+                        onChange={setInterest}
                       />
                     </div>
 
@@ -829,12 +824,10 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                         Multa (R$)
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                         value={penalty}
-                        onChange={(e) => setPenalty(e.target.value)}
+                        onChange={setPenalty}
                       />
                     </div>
                   </div>
@@ -1378,44 +1371,36 @@ export default function AccountsPayableView({
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Valor (R$) *</label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                         value={editAmount}
-                        onChange={(e) => setEditAmount(e.target.value)}
+                        onChange={setEditAmount}
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Desconto (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                         value={editDiscount}
-                        onChange={(e) => setEditDiscount(e.target.value)}
+                        onChange={setEditDiscount}
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Juros (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                         value={editInterest}
-                        onChange={(e) => setEditInterest(e.target.value)}
+                        onChange={setEditInterest}
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Multa (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                         value={editPenalty}
-                        onChange={(e) => setEditPenalty(e.target.value)}
+                        onChange={setEditPenalty}
                       />
                     </div>
                   </div>
@@ -1502,12 +1487,10 @@ export default function AccountsPayableView({
 
                       <div className="space-y-1">
                         <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Valor a pagar (R$) *</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <CurrencyInput
                           className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                           value={payAmount}
-                          onChange={(e) => setPayAmount(e.target.value)}
+                          onChange={setPayAmount}
                         />
                         {Number(payAmount) > 0 && Number(payAmount) < getRemaining(selected) && (
                           <p className="text-[10px] text-cyan-700 dark:text-cyan-400 font-semibold">
@@ -1519,32 +1502,26 @@ export default function AccountsPayableView({
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Juros (R$)</label>
-                          <input
-                            type="number"
-                            step="0.01"
+                          <CurrencyInput
                             className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                             value={payInterest}
-                            onChange={(e) => setPayInterest(e.target.value)}
+                            onChange={setPayInterest}
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Multa (R$)</label>
-                          <input
-                            type="number"
-                            step="0.01"
+                          <CurrencyInput
                             className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                             value={payPenalty}
-                            onChange={(e) => setPayPenalty(e.target.value)}
+                            onChange={setPayPenalty}
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Desconto (R$)</label>
-                          <input
-                            type="number"
-                            step="0.01"
+                          <CurrencyInput
                             className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
                             value={payDiscount}
-                            onChange={(e) => setPayDiscount(e.target.value)}
+                            onChange={setPayDiscount}
                           />
                         </div>
                       </div>
@@ -1562,7 +1539,7 @@ export default function AccountsPayableView({
                           {Number(payAmount) !== payFinalTotal && (
                             <button
                               type="button"
-                              onClick={() => setPayAmount(payFinalTotal.toFixed(2))}
+                              onClick={() => setPayAmount(payFinalTotal)}
                               className="text-[10px] font-semibold text-[#0B2C52] dark:text-[#9DB8D9] hover:underline cursor-pointer shrink-0"
                             >
                               Usar este valor

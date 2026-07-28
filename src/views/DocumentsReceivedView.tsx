@@ -15,6 +15,7 @@ import { Document } from "../types";
 import FileTypeIcon from "../components/FileTypeIcon";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import QuickAddSelect from "../components/QuickAddSelect";
+import CurrencyInput from "../components/CurrencyInput";
 
 const STATUS: Document["status"][] = [
   "Aguardando Análise",
@@ -102,7 +103,7 @@ const emptyLaunch = {
   entryType: "Conta a Pagar" as NonNullable<Document["entryType"]>,
   supplier: "",
   description: "",
-  amount: "",
+  amount: 0,
   dueDate: "",
   documentNumber: "",
   category: "Outros" as Document["category"],
@@ -459,14 +460,11 @@ export default function DocumentsReceivedView() {
                 />
               )}
               <Field label="Valor" required>
-                <input
+                <CurrencyInput
                   required
-                  type="number"
-                  min="0"
-                  step="0.01"
                   value={newLaunch.amount}
-                  onChange={(e) =>
-                    setNewLaunch({ ...newLaunch, amount: e.target.value })
+                  onChange={(amount) =>
+                    setNewLaunch({ ...newLaunch, amount })
                   }
                 />
               </Field>
@@ -1108,11 +1106,10 @@ export default function DocumentsReceivedView() {
                   )}
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Valor" required>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={Number(value("amount")) || ""}
-                        onChange={(e) => set("amount", Number(e.target.value))}
+                      <CurrencyInput
+                        required
+                        value={Number(value("amount")) || 0}
+                        onChange={(amount) => set("amount", amount)}
                       />
                     </Field>
                     <Field label="Vencimento" required>

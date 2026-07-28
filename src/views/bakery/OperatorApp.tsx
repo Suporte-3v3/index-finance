@@ -16,6 +16,7 @@ import {
   MasterDataOption,
 } from "../../types";
 import { computeShiftTotals, formatBRL } from "./calculations";
+import CurrencyInput from "../../components/CurrencyInput";
 import {
   ArrowLeft,
   Store,
@@ -298,7 +299,8 @@ function OpenShiftScreen({
   const [registerId, setRegisterId] = useState(registers[0]?.id || "");
   const [shiftLabel, setShiftLabel] = useState("Manhã");
   const [customLabel, setCustomLabel] = useState("");
-  const [initialBalance, setInitialBalance] = useState("");
+  const [initialBalance, setInitialBalance] = useState(0);
+  const [initialBalanceTouched, setInitialBalanceTouched] = useState(false);
   const [justification, setJustification] = useState("");
   const [note, setNote] = useState("");
 
@@ -309,8 +311,8 @@ function OpenShiftScreen({
   const effectiveLabel = shiftLabel === "Outro" ? customLabel : shiftLabel;
   const differsFromSuggestion =
     suggested !== undefined &&
-    initialBalance !== "" &&
-    Number(initialBalance) !== suggested;
+    initialBalanceTouched &&
+    initialBalance !== suggested;
 
   const submit = () => {
     setFormError("");
@@ -322,7 +324,7 @@ function OpenShiftScreen({
       setFormError("Informe o turno.");
       return;
     }
-    if (initialBalance === "" || Number(initialBalance) < 0) {
+    if (!initialBalanceTouched || initialBalance < 0) {
       setFormError("Informe o saldo inicial (troco).");
       return;
     }
@@ -336,7 +338,7 @@ function OpenShiftScreen({
       registerId: register.id,
       registerName: register.name,
       shiftLabel: effectiveLabel.trim(),
-      initialBalance: Number(initialBalance),
+      initialBalance,
       openNote: note || undefined,
       initialBalanceJustification: differsFromSuggestion
         ? justification.trim()
@@ -397,19 +399,21 @@ function OpenShiftScreen({
       </Field>
 
       <Field label="Saldo inicial (troco)">
-        <input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
-          placeholder="0,00"
+        <CurrencyInput
           className={inputClass}
           value={initialBalance}
-          onChange={(event) => setInitialBalance(event.target.value)}
+          onChange={(value) => {
+            setInitialBalance(value);
+            setInitialBalanceTouched(true);
+          }}
         />
         {suggested !== undefined && (
           <button
             type="button"
-            onClick={() => setInitialBalance(String(suggested))}
+            onClick={() => {
+              setInitialBalance(suggested);
+              setInitialBalanceTouched(true);
+            }}
             className="text-[11px] font-semibold text-[#0B2C52] dark:text-[#9DB8D9] hover:underline cursor-pointer"
           >
             Usar saldo final do turno anterior: {formatBRL(suggested)}
@@ -463,7 +467,7 @@ function NewExpenseScreen({
 }) {
   const [description, setDescription] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [source, setSource] = useState<"CAIXA" | "BOLSA">("CAIXA");
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
@@ -472,12 +476,12 @@ function NewExpenseScreen({
   const submit = () => {
     setFormError("");
     if (!description.trim()) return setFormError("Informe a descrição.");
-    if (!(Number(amount) > 0)) return setFormError("Informe um valor válido.");
+    if (!(amount > 0)) return setFormError("Informe um valor válido.");
     const result = bakery.addExpense({
       shiftId,
       description: description.trim(),
       supplier: supplier.trim() || undefined,
-      amount: Number(amount),
+      amount,
       source,
       category: category.trim() || undefined,
       note: note.trim() || undefined,
@@ -508,14 +512,10 @@ function NewExpenseScreen({
         />
       </Field>
       <Field label="Valor">
-        <input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
+        <CurrencyInput
           className={inputClass}
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="0,00"
+          onChange={setAmount}
         />
       </Field>
 
@@ -583,16 +583,16 @@ function NewWithdrawalScreen({
   onBack: () => void;
   onSuccess: () => void;
 }) {
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [note, setNote] = useState("");
   const [receiptUrl, setReceiptUrl] = useState<string | undefined>();
 
   const submit = () => {
     setFormError("");
-    if (!(Number(amount) > 0)) return setFormError("Informe um valor válido.");
+    if (!(amount > 0)) return setFormError("Informe um valor válido.");
     const result = bakery.addWithdrawal({
       shiftId,
-      amount: Number(amount),
+      amount,
       note: note.trim() || undefined,
       receiptUrl,
     });
@@ -606,14 +606,10 @@ function NewWithdrawalScreen({
       <InlineError message={formError} />
 
       <Field label="Valor">
-        <input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
+        <CurrencyInput
           className={inputClass}
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="0,00"
+          onChange={setAmount}
         />
       </Field>
 
@@ -655,7 +651,7 @@ function NewPixScreen({
   onBack: () => void;
   onSuccess: () => void;
 }) {
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [bankAccountId, setBankAccountId] = useState(pixBanks[0]?.id || "");
   const [customerName, setCustomerName] = useState("");
   const [description, setDescription] = useState("");
@@ -663,12 +659,12 @@ function NewPixScreen({
 
   const submit = () => {
     setFormError("");
-    if (!(Number(amount) > 0)) return setFormError("Informe um valor válido.");
+    if (!(amount > 0)) return setFormError("Informe um valor válido.");
     const bank = pixBanks.find((item) => item.id === bankAccountId);
     if (!bank) return setFormError("Selecione o banco que recebeu o PIX.");
     const result = bakery.addPixSale({
       shiftId,
-      amount: Number(amount),
+      amount,
       bankAccountId: bank.id,
       bankAccountName: bank.bankName,
       customerName: customerName.trim() || undefined,
@@ -689,14 +685,10 @@ function NewPixScreen({
       )}
 
       <Field label="Valor">
-        <input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
+        <CurrencyInput
           className={inputClass}
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="0,00"
+          onChange={setAmount}
         />
       </Field>
       <Field label="Recebido em">
@@ -740,7 +732,7 @@ function NewPixScreen({
 interface CardMachineRow {
   rowId: string;
   bankAccountId: string;
-  amount: string;
+  amount: number;
 }
 
 function CloseScreen({
@@ -760,7 +752,8 @@ function CloseScreen({
     cardMachineEntries: BakeryCardMachineEntry[];
   }) => void;
 }) {
-  const [finalBalance, setFinalBalance] = useState("");
+  const [finalBalance, setFinalBalance] = useState(0);
+  const [finalBalanceTouched, setFinalBalanceTouched] = useState(false);
   const [note, setNote] = useState("");
   const [machines, setMachines] = useState<CardMachineRow[]>([]);
 
@@ -770,7 +763,7 @@ function CloseScreen({
       {
         rowId: `row-${Date.now()}-${prev.length}`,
         bankAccountId: banks[0]?.id || "",
-        amount: "",
+        amount: 0,
       },
     ]);
 
@@ -784,27 +777,27 @@ function CloseScreen({
 
   const submit = () => {
     setFormError("");
-    if (finalBalance === "" || Number(finalBalance) < 0)
+    if (!finalBalanceTouched || finalBalance < 0)
       return setFormError("Informe o saldo final contado.");
     for (const row of machines) {
-      if (row.amount !== "" && Number(row.amount) < 0)
+      if (row.amount < 0)
         return setFormError("O valor da maquininha não pode ser negativo.");
-      if (row.amount !== "" && Number(row.amount) > 0 && !row.bankAccountId)
+      if (row.amount > 0 && !row.bankAccountId)
         return setFormError("Selecione o banco de cada maquininha.");
     }
     const cardMachineEntries: BakeryCardMachineEntry[] = machines
-      .filter((row) => row.amount !== "" && Number(row.amount) > 0)
+      .filter((row) => row.amount > 0)
       .map((row) => {
         const bank = banks.find((item) => item.id === row.bankAccountId);
         return {
           id: row.rowId,
           bankAccountId: row.bankAccountId,
           bankAccountName: bank?.bankName || "Banco",
-          amount: Number(row.amount),
+          amount: row.amount,
         };
       });
     onCalculated({
-      finalBalance: Number(finalBalance),
+      finalBalance,
       note: note.trim(),
       cardMachineEntries,
     });
@@ -816,14 +809,13 @@ function CloseScreen({
       <InlineError message={formError} />
 
       <Field label="Saldo final contado">
-        <input
-          type="number"
-          step="0.01"
-          inputMode="decimal"
+        <CurrencyInput
           className={inputClass}
           value={finalBalance}
-          onChange={(event) => setFinalBalance(event.target.value)}
-          placeholder="0,00"
+          onChange={(value) => {
+            setFinalBalance(value);
+            setFinalBalanceTouched(true);
+          }}
         />
       </Field>
 
@@ -863,16 +855,10 @@ function CloseScreen({
               </select>
             </div>
             <div className="w-24 shrink-0">
-              <input
-                type="number"
-                step="0.01"
-                inputMode="decimal"
+              <CurrencyInput
                 className={`${inputClass} py-2.5`}
                 value={row.amount}
-                onChange={(event) =>
-                  updateMachine(row.rowId, { amount: event.target.value })
-                }
-                placeholder="0,00"
+                onChange={(amount) => updateMachine(row.rowId, { amount })}
               />
             </div>
             <button

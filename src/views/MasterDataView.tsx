@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, MasterDataOption, MasterDataType } from "../types";
+import CurrencyInput from "../components/CurrencyInput";
 
 const MD_AVATAR_PALETTE = [
   "bg-indigo-500",
@@ -189,16 +190,11 @@ export default function MasterDataView() {
               </label>
               <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 sm:col-span-2">
                 Saldo atual
-                <input
+                <CurrencyInput
                   required
-                  type="number"
-                  step="0.01"
                   value={editingBank.balance}
-                  onChange={(event) =>
-                    setEditingBank({
-                      ...editingBank,
-                      balance: Number(event.target.value),
-                    })
+                  onChange={(balance) =>
+                    setEditingBank({ ...editingBank, balance })
                   }
                   className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
                 />
@@ -368,13 +364,9 @@ export default function MasterDataView() {
                 </label>
                 <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
                   Saldo inicial
-                  <input
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     value={bank.balance}
-                    onChange={(e) =>
-                      setBank({ ...bank, balance: Number(e.target.value) })
-                    }
+                    onChange={(balance) => setBank({ ...bank, balance })}
                     className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
                   />
                 </label>

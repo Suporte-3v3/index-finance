@@ -201,7 +201,7 @@ export default function DashboardView({
 
   // Inadimplência = Contas a Receber Vencidas / Total Faturamento Emitido
   const overdueReceivables = companyReceivables
-    .filter((ar) => ar.status === "Vencida")
+    .filter((ar) => ar.status === "Vencido")
     .reduce((sum, ar) => sum + ar.amount - ar.receivedAmount, 0);
 
   const inadimplenciaRate =

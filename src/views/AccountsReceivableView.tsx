@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { AccountReceivable } from "../types";
 import QuickAddSelect from "../components/QuickAddSelect";
+import CurrencyInput from "../components/CurrencyInput";
 import {
   Plus,
   Search,
@@ -113,7 +114,7 @@ export default function AccountsReceivableView({
 
   // Partial Receipt Pop-up state
   const [receivingId, setReceivingId] = useState<string | null>(null);
-  const [receivedAmountVal, setReceivedAmountVal] = useState("");
+  const [receivedAmountVal, setReceivedAmountVal] = useState(0);
 
   // Creation Form Modal State
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -127,7 +128,7 @@ export default function AccountsReceivableView({
   const [competenceMonth, setCompetenceMonth] = useState("2026-07");
   const [issueDate, setIssueDate] = useState("2026-07-13");
   const [dueDate, setDueDate] = useState("2026-07-30");
-  const [amount, setAmount] = useState<string>("0");
+  const [amount, setAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Boleto Bancário");
   const [bankAccountId, setBankAccountId] = useState("");
   const [recurrence, setRecurrence] = useState<
@@ -239,7 +240,7 @@ export default function AccountsReceivableView({
     setCompetenceMonth("2026-07");
     setIssueDate("2026-07-13");
     setDueDate("2026-07-30");
-    setAmount("0");
+    setAmount(0);
     setPaymentMethod("Boleto Bancário");
     setBankAccountId(accounts[0]?.id || "");
     setRecurrence("Nenhuma");
@@ -299,16 +300,15 @@ export default function AccountsReceivableView({
   const handlePartialReceiptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!receivingId) return;
-    const amountVal = Number(receivedAmountVal);
-    if (amountVal <= 0) {
+    if (receivedAmountVal <= 0) {
       alert("Digite um valor positivo válido.");
       return;
     }
 
     const today = new Date().toISOString().split("T")[0];
-    receiveAccountReceivable(receivingId, amountVal, today);
+    receiveAccountReceivable(receivingId, receivedAmountVal, today);
     setReceivingId(null);
-    setReceivedAmountVal("");
+    setReceivedAmountVal(0);
   };
 
   const handleCancel = (id: string) => {
@@ -564,13 +564,11 @@ export default function AccountsReceivableView({
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
                         Valor Principal (R$) *
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
+                      <CurrencyInput
                         required
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={setAmount}
                       />
                     </div>
 
@@ -758,15 +756,13 @@ export default function AccountsReceivableView({
                 <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
                   Valor Creditado (R$)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
+                <CurrencyInput
                   required
                   autoFocus
-                  placeholder="Ex: R$ 5.000,00"
+                  placeholder="0,00"
                   className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
                   value={receivedAmountVal}
-                  onChange={(e) => setReceivedAmountVal(e.target.value)}
+                  onChange={setReceivedAmountVal}
                 />
               </div>
 

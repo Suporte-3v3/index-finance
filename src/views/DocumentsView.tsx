@@ -5,6 +5,7 @@ import { analyzeDocumentVisually } from "../services/documentAnalysis";
 import FileTypeIcon from "../components/FileTypeIcon";
 import DocumentPreview from "../components/DocumentPreview";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
+import CurrencyInput from "../components/CurrencyInput";
 import { isDocumentDeliveredByBpo } from "../services/documentVisibility";
 import {
   Bot,
@@ -1094,16 +1095,10 @@ export default function DocumentsView() {
                       </label>
                       <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
                         Valor
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={pending.amount || ""}
-                          onChange={(event) =>
-                            setPending({
-                              ...pending,
-                              amount: Number(event.target.value) || 0,
-                            })
+                        <CurrencyInput
+                          value={pending.amount}
+                          onChange={(amount) =>
+                            setPending({ ...pending, amount })
                           }
                           className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
                         />
