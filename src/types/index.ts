@@ -421,17 +421,22 @@ export type ReportBlockKey =
   | "AP_SUMMARY"
   | "AP_OVERDUE"
   | "AP_UPCOMING"
+  | "AP_BY_PERIOD"
   | "AP_BY_CATEGORY"
   | "AP_BY_COST_CENTER"
   | "AP_BY_SUPPLIER"
+  | "AP_BY_BANK_ACCOUNT"
   | "AP_DETAIL_LIST"
   // Contas a Receber
   | "AR_SUMMARY"
   | "AR_OVERDUE"
+  | "AR_DELINQUENCY"
   | "AR_BY_CUSTOMER"
   | "AR_BY_CATEGORY"
   | "AR_BY_COST_CENTER"
+  | "AR_BY_BANK_ACCOUNT"
   | "AR_MONTHLY_EVOLUTION"
+  | "AR_FORECAST_VS_REALIZED"
   | "AR_DETAIL_LIST"
   // Fluxo de Caixa
   | "CF_BALANCE_SUMMARY"
@@ -439,6 +444,7 @@ export type ReportBlockKey =
   | "CF_FORECAST_VS_REALIZED"
   | "CF_BY_PERIOD"
   | "CF_BY_CATEGORY"
+  | "CF_BY_BANK_ACCOUNT"
   | "CF_DETAIL_LIST";
 
 export type ReportBlockVisualization = "bar" | "pie" | "table";

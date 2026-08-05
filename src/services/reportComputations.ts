@@ -112,6 +112,7 @@ const groupSum = <T,>(items: T[], keyOf: (item: T) => string, valueOf: (item: T)
 };
 
 const rankedRows = (
+  groupLabel: string,
   map: Map<string, number>,
   limit: number | undefined,
   showPercent: boolean | undefined,
@@ -119,7 +120,7 @@ const rankedRows = (
   const total = Array.from(map.values()).reduce((sum, value) => sum + value, 0);
   const sorted = Array.from(map.entries()).sort(([, left], [, right]) => right - left);
   const sliced = limit ? sorted.slice(0, limit) : sorted;
-  const columns = showPercent ? ["Categoria", "Valor", "%"] : ["Categoria", "Valor"];
+  const columns = showPercent ? [groupLabel, "Valor", "%"] : [groupLabel, "Valor"];
   const rows: ReportCell[][] = sliced.map(([label, value]) =>
     showPercent ? [label, money(value), percent(value, total)] : [label, money(value)],
   );
@@ -129,10 +130,11 @@ const rankedRows = (
 
 const groupedSection = (
   title: string,
+  groupLabel: string,
   map: Map<string, number>,
   config: ReportBlockConfig,
 ): ReportSectionData => {
-  const { columns, rows, chartRows } = rankedRows(map, config.limit, config.showPercent);
+  const { columns, rows, chartRows } = rankedRows(groupLabel, map, config.limit, config.showPercent);
   const visualization = config.visualization || "table";
   if (visualization === "table" || rows.length === 0) {
     return { kind: "table", title, columns, rows };
@@ -141,10 +143,13 @@ const groupedSection = (
     kind: "chart",
     title,
     chartType: visualization,
-    columns: ["Categoria", "Valor"],
+    columns: [groupLabel, "Valor"],
     rows: chartRows,
   };
 };
+
+const accountNameOf = (data: ReportDataSource, id: string) =>
+  data.bankAccounts.find((account) => account.id === id)?.bankName || id;
 
 const projectColumns = (
   availableColumns: string[],
@@ -218,12 +223,38 @@ function computeApBlock(
         rows: sliced.map((item) => [item.dueDate, item.supplier, item.description, money(item.finalAmount)]),
       };
     }
+    case "AP_BY_PERIOD": {
+      const map = groupSum(payables, (item) => apDate(item, filters.dateBasis).slice(0, 7), (item) => item.finalAmount);
+      const sortedEntries = Array.from(map.entries()).sort(([left], [right]) => left.localeCompare(right));
+      if ((config.visualization || "bar") === "table") {
+        return {
+          kind: "table",
+          title,
+          columns: ["Mês", "Pagamentos"],
+          rows: sortedEntries.map(([month, value]) => [month, money(value)]),
+        };
+      }
+      return {
+        kind: "chart",
+        title,
+        chartType: "bar",
+        columns: ["Mês", "Pagamentos"],
+        rows: sortedEntries.map(([month, value]) => [month, value]),
+      };
+    }
     case "AP_BY_CATEGORY":
-      return groupedSection(title, groupSum(payables, (item) => item.category, (item) => item.finalAmount), config);
+      return groupedSection(title, "Categoria", groupSum(payables, (item) => item.category, (item) => item.finalAmount), config);
     case "AP_BY_COST_CENTER":
-      return groupedSection(title, groupSum(payables, (item) => item.costCenter, (item) => item.finalAmount), config);
+      return groupedSection(title, "Centro de custo", groupSum(payables, (item) => item.costCenter, (item) => item.finalAmount), config);
     case "AP_BY_SUPPLIER":
-      return groupedSection(title, groupSum(payables, (item) => item.supplier, (item) => item.finalAmount), config);
+      return groupedSection(title, "Fornecedor", groupSum(payables, (item) => item.supplier, (item) => item.finalAmount), config);
+    case "AP_BY_BANK_ACCOUNT":
+      return groupedSection(
+        title,
+        "Conta bancária",
+        groupSum(payables, (item) => accountNameOf(data, item.bankAccountId), (item) => item.finalAmount),
+        config,
+      );
     case "AP_DETAIL_LIST": {
       const availableColumns = definition?.availableColumns || [];
       const columns = config.columns && config.columns.length > 0 ? config.columns : definition?.defaultColumns || availableColumns;
@@ -238,7 +269,7 @@ function computeApBlock(
             "Centro de custo": item.costCenter,
             Valor: money(item.finalAmount),
             Status: item.status,
-            "Conta bancária": item.bankAccountId,
+            "Conta bancária": accountNameOf(data, item.bankAccountId),
             "Número do documento": item.documentNumber,
             Competência: item.competenceMonth,
           }, columns),
@@ -294,12 +325,38 @@ function computeArBlock(
         ]),
       };
     }
+    case "AR_DELINQUENCY": {
+      const overdueMap = groupSum(
+        receivables.filter((item) => item.dueDate < today() && item.receivedAmount < item.amount),
+        (item) => item.customer,
+        (item) => item.amount - item.receivedAmount,
+      );
+      return groupedSection(title, "Cliente", overdueMap, config);
+    }
     case "AR_BY_CUSTOMER":
-      return groupedSection(title, groupSum(receivables, (item) => item.customer, (item) => item.amount), config);
+      return groupedSection(title, "Cliente", groupSum(receivables, (item) => item.customer, (item) => item.amount), config);
     case "AR_BY_CATEGORY":
-      return groupedSection(title, groupSum(receivables, (item) => item.category, (item) => item.amount), config);
+      return groupedSection(title, "Categoria", groupSum(receivables, (item) => item.category, (item) => item.amount), config);
     case "AR_BY_COST_CENTER":
-      return groupedSection(title, groupSum(receivables, (item) => item.costCenter, (item) => item.amount), config);
+      return groupedSection(title, "Centro de custo", groupSum(receivables, (item) => item.costCenter, (item) => item.amount), config);
+    case "AR_BY_BANK_ACCOUNT":
+      return groupedSection(
+        title,
+        "Conta bancária",
+        groupSum(receivables, (item) => accountNameOf(data, item.bankAccountId), (item) => item.amount),
+        config,
+      );
+    case "AR_FORECAST_VS_REALIZED": {
+      const dueReceivables = filterReceivables(data.accountsReceivable, { ...filters, dateBasis: "due" }, range);
+      const previsto = dueReceivables.reduce((sum, item) => sum + item.amount, 0);
+      const realizado = dueReceivables.reduce((sum, item) => sum + item.receivedAmount, 0);
+      return {
+        kind: "table",
+        title,
+        columns: ["Métrica", "Previsto", "Realizado"],
+        rows: [["Recebimentos", money(previsto), money(realizado)]],
+      };
+    }
     case "AR_MONTHLY_EVOLUTION": {
       const map = groupSum(
         receivables,
@@ -338,7 +395,7 @@ function computeArBlock(
             "Centro de custo": item.costCenter,
             Valor: money(item.amount),
             Status: item.status,
-            "Conta bancária": item.bankAccountId,
+            "Conta bancária": accountNameOf(data, item.bankAccountId),
             "Número do documento": item.documentNumber,
             Competência: item.competenceMonth,
           }, columns),
@@ -520,19 +577,30 @@ function computeCfBlock(
       payableEntries.forEach((entry) =>
         netMap.set(entry.item.category, (netMap.get(entry.item.category) || 0) - entry.value),
       );
-      return groupedSection(title, netMap, config);
+      return groupedSection(title, "Categoria", netMap, config);
+    }
+    case "CF_BY_BANK_ACCOUNT": {
+      const netMap = new Map<string, number>();
+      receivableEntries.forEach((entry) => {
+        const key = accountNameOf(data, entry.item.bankAccountId);
+        netMap.set(key, (netMap.get(key) || 0) + entry.value);
+      });
+      payableEntries.forEach((entry) => {
+        const key = accountNameOf(data, entry.item.bankAccountId);
+        netMap.set(key, (netMap.get(key) || 0) - entry.value);
+      });
+      return groupedSection(title, "Conta bancária", netMap, config);
     }
     case "CF_DETAIL_LIST": {
       const availableColumns = definition?.availableColumns || [];
       const columns = config.columns && config.columns.length > 0 ? config.columns : definition?.defaultColumns || availableColumns;
-      const accountName = (id: string) => data.bankAccounts.find((account) => account.id === id)?.bankName || id;
       const combined = [
         ...receivableEntries.map((entry) => ({
           Data: entry.date,
           Tipo: "Entrada",
           Descrição: entry.item.description,
           Categoria: entry.item.category,
-          "Conta bancária": accountName(entry.item.bankAccountId),
+          "Conta bancária": accountNameOf(data, entry.item.bankAccountId),
           Valor: money(entry.value),
           Situação: entry.item.status,
           sortKey: entry.date,
@@ -542,7 +610,7 @@ function computeCfBlock(
           Tipo: "Saída",
           Descrição: entry.item.description,
           Categoria: entry.item.category,
-          "Conta bancária": accountName(entry.item.bankAccountId),
+          "Conta bancária": accountNameOf(data, entry.item.bankAccountId),
           Valor: money(entry.value),
           Situação: entry.item.status,
           sortKey: entry.date,
@@ -608,7 +676,7 @@ export function computeDreSections(
   const sections: ReportSectionData[] = [{ kind: "kpis", title: "Resultado do período", items: kpiItems }];
 
   if (options.detailed) {
-    const { columns, rows } = rankedRows(expenseByCategory, undefined, options.showPercent);
+    const { columns, rows } = rankedRows("Categoria", expenseByCategory, undefined, options.showPercent);
     sections.push({ kind: "table", title: "Despesas por categoria", columns, rows });
   }
 
