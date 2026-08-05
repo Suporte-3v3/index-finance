@@ -330,7 +330,7 @@ export default function CashFlowView() {
       "Fluxo de Caixa",
       filterSummary,
       {
-        format: "CSV",
+        format: "EXCEL",
         startDate: exportStart || undefined,
         endDate: exportEnd || undefined,
         bankAccountId:

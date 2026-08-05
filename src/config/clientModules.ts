@@ -23,12 +23,12 @@ export const CLIENT_MODULE_OPTIONS: Array<{
   {
     id: "cash-flow",
     label: "Fluxo de Caixa",
-    description: "Consultar movimentações e exportar CSV.",
+    description: "Consultar movimentações e exportar Excel.",
   },
   {
     id: "reports",
     label: "DRE e Relatórios",
-    description: "Gerar e baixar relatórios PDF ou CSV.",
+    description: "Montar, gerar e baixar relatórios em PDF ou Excel.",
   },
   {
     id: "support",

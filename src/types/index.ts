@@ -386,9 +386,18 @@ export interface ReportRecord {
   fileContent?: string;
   fileUrl?: string;
   fileSize: string;
+  // Preenchidos quando o relatório foi montado pelo construtor por blocos
+  // (Central de Relatórios) a partir de um modelo salvo.
+  templateId?: string;
+  templateName?: string;
+  // Preenchidos quando o relatório foi enviado a um cliente ou contador via
+  // Central de Documentos.
+  recipientId?: string;
+  recipientName?: string;
+  recipientRole?: Extract<UserRole, "CLIENT" | "ACCOUNTANT">;
 }
 
-export type ReportExportFormat = "PDF" | "CSV";
+export type ReportExportFormat = "PDF" | "EXCEL";
 
 export interface ReportGenerationOptions {
   format: ReportExportFormat;
@@ -397,6 +406,101 @@ export interface ReportGenerationOptions {
   bankAccountId?: string;
   category?: string;
   costCenter?: string;
+}
+
+// --- Central de Relatórios: construtor por blocos ---
+
+export type ReportModelType =
+  | "Contas a Pagar"
+  | "Contas a Receber"
+  | "Fluxo de Caixa"
+  | "DRE Gerencial";
+
+export type ReportBlockKey =
+  // Contas a Pagar
+  | "AP_SUMMARY"
+  | "AP_OVERDUE"
+  | "AP_UPCOMING"
+  | "AP_BY_CATEGORY"
+  | "AP_BY_COST_CENTER"
+  | "AP_BY_SUPPLIER"
+  | "AP_DETAIL_LIST"
+  // Contas a Receber
+  | "AR_SUMMARY"
+  | "AR_OVERDUE"
+  | "AR_BY_CUSTOMER"
+  | "AR_BY_CATEGORY"
+  | "AR_BY_COST_CENTER"
+  | "AR_MONTHLY_EVOLUTION"
+  | "AR_DETAIL_LIST"
+  // Fluxo de Caixa
+  | "CF_BALANCE_SUMMARY"
+  | "CF_REALIZED_IN_OUT"
+  | "CF_FORECAST_VS_REALIZED"
+  | "CF_BY_PERIOD"
+  | "CF_BY_CATEGORY"
+  | "CF_DETAIL_LIST";
+
+export type ReportBlockVisualization = "bar" | "pie" | "table";
+
+export interface ReportBlockConfig {
+  instanceId: string;
+  blockKey: ReportBlockKey;
+  title?: string;
+  visualization?: ReportBlockVisualization;
+  limit?: number;
+  showPercent?: boolean;
+  compareWithPreviousPeriod?: boolean;
+  // Usado apenas pelos blocos de lista detalhada (*_DETAIL_LIST).
+  columns?: string[];
+}
+
+export type ReportDateBasis = "due" | "payment" | "competence";
+export type CashFlowReportView = "realized" | "projected" | "both";
+export type CashFlowReportGrouping = "daily" | "weekly" | "monthly";
+
+export interface ReportFilters {
+  startDate: string;
+  endDate: string;
+  dateBasis: ReportDateBasis;
+  compareWithPreviousPeriod?: boolean;
+  supplier?: string;
+  customer?: string;
+  category?: string;
+  costCenter?: string;
+  bankAccountId?: string;
+  status?: string;
+  paymentMethod?: string;
+  cashFlowView?: CashFlowReportView;
+  cashFlowGrouping?: CashFlowReportGrouping;
+}
+
+// DRE gerencial simplificada (Receita Bruta -> Despesas por Categoria ->
+// Resultado Líquido). Sem plano de contas configurável nesta versão.
+export interface DreReportOptions {
+  compareWithPreviousPeriod?: boolean;
+  showPercent?: boolean;
+  detailed?: boolean;
+  costCenter?: string;
+  comment?: string;
+}
+
+export interface ReportTemplate {
+  id: string;
+  companyId: string;
+  name: string;
+  modelType: ReportModelType;
+  blocks: ReportBlockConfig[];
+  // Filtros padrão do modelo salvo (sem período, que é escolhido a cada
+  // geração).
+  filters: Omit<ReportFilters, "startDate" | "endDate">;
+  dreOptions?: DreReportOptions;
+  favorite: boolean;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+  createdByName: string;
 }
 
 export type SupportTicketStatus =

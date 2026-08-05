@@ -1,15 +1,26 @@
+import * as XLSX from "xlsx";
 import { ReportExportFormat, ReportRecord } from "../types";
 
 export type ReportCell = string | number;
 
-export interface ReportTableData {
+export type ReportSectionData =
+  | { kind: "kpis"; title?: string; items: { label: string; value: string }[] }
+  | { kind: "table"; title: string; columns: string[]; rows: ReportCell[][] }
+  | {
+      kind: "chart";
+      title: string;
+      chartType: "bar" | "pie";
+      columns: string[];
+      rows: ReportCell[][];
+    };
+
+export interface ReportDocumentData {
   title: string;
   companyName: string;
   filters: string;
   generatedAt: string;
   generatedBy: string;
-  columns: string[];
-  rows: ReportCell[][];
+  sections: ReportSectionData[];
 }
 
 export interface ReportArtifact {
@@ -46,7 +57,7 @@ const formatFileSize = (bytes: number) => {
 const safeFileName = (value: string) =>
   value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "relatorio";
@@ -59,31 +70,10 @@ const displayCell = (value: ReportCell) =>
       })
     : value;
 
-const escapeCsv = (value: ReportCell) => {
-  const text = displayCell(value);
-  return `"${text.replace(/"/g, '""')}"`;
-};
-
-const createCsv = (table: ReportTableData) => {
-  const metadata: ReportCell[][] = [
-    ["Relatório", table.title],
-    ["Empresa", table.companyName],
-    ["Filtros", table.filters],
-    ["Gerado em", new Date(table.generatedAt).toLocaleString("pt-BR")],
-    ["Gerado por", table.generatedBy],
-    [],
-  ];
-  const rows = [...metadata, table.columns, ...table.rows];
-  return (
-    "\uFEFF" +
-    rows.map((row) => row.map(escapeCsv).join(";")).join("\r\n")
-  );
-};
-
 const asciiText = (value: string) =>
   value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\p{Diacritic}/gu, "")
     .replace(/[^\x20-\x7E]/g, "?");
 
 const escapePdfText = (value: string) =>
@@ -105,20 +95,30 @@ const wrapLine = (value: string, maxLength = 112) => {
   return lines.length ? lines : [""];
 };
 
-const createPdf = (table: ReportTableData) => {
+const sectionToLines = (section: ReportSectionData): string[] => {
+  if (section.kind === "kpis") {
+    const lines: string[] = [];
+    if (section.title) lines.push(section.title.toUpperCase());
+    section.items.forEach((item) => lines.push(`${item.label}: ${item.value}`));
+    return lines;
+  }
+  const lines = [section.title.toUpperCase(), section.columns.join(" | "), "-".repeat(80)];
+  if (section.rows.length === 0) lines.push("Nenhum registro encontrado para os filtros informados.");
+  section.rows.forEach((row) => {
+    wrapLine(row.map(displayCell).join(" | ")).forEach((line) => lines.push(line));
+  });
+  return lines;
+};
+
+const createPdf = (doc: ReportDocumentData) => {
   const lines = [
-    table.title,
-    `Empresa: ${table.companyName}`,
-    `Filtros: ${table.filters}`,
-    `Gerado em: ${new Date(table.generatedAt).toLocaleString("pt-BR")} por ${table.generatedBy}`,
+    doc.title,
+    `Empresa: ${doc.companyName}`,
+    `Filtros: ${doc.filters}`,
+    `Gerado em: ${new Date(doc.generatedAt).toLocaleString("pt-BR")} por ${doc.generatedBy}`,
     "",
-    table.columns.join(" | "),
-    "-".repeat(112),
-    ...table.rows.flatMap((row) =>
-      wrapLine(row.map(displayCell).join(" | ")),
-    ),
+    ...doc.sections.flatMap((section) => [...sectionToLines(section), ""]),
   ];
-  if (table.rows.length === 0) lines.push("Nenhum registro encontrado para os filtros informados.");
 
   const pages: string[][] = [];
   for (let index = 0; index < lines.length; index += 46) {
@@ -171,24 +171,78 @@ const createPdf = (table: ReportTableData) => {
   return pdf;
 };
 
+const uniqueSheetName = (base: string, used: Set<string>) => {
+  const clean = base.replace(/[\\/*?:[\]]/g, " ").trim().slice(0, 31) || "Dados";
+  let name = clean;
+  let suffix = 2;
+  while (used.has(name.toLocaleLowerCase("pt-BR"))) {
+    name = `${clean.slice(0, 28)} ${suffix}`;
+    suffix += 1;
+  }
+  used.add(name.toLocaleLowerCase("pt-BR"));
+  return name;
+};
+
+const createExcel = (doc: ReportDocumentData) => {
+  const workbook = XLSX.utils.book_new();
+  const usedSheetNames = new Set<string>();
+
+  const summaryRows: ReportCell[][] = [
+    [doc.title],
+    ["Empresa", doc.companyName],
+    ["Filtros", doc.filters],
+    ["Gerado em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
+    ["Gerado por", doc.generatedBy],
+  ];
+  doc.sections
+    .filter((section): section is Extract<ReportSectionData, { kind: "kpis" }> => section.kind === "kpis")
+    .forEach((section) => {
+      summaryRows.push([]);
+      if (section.title) summaryRows.push([section.title]);
+      section.items.forEach((item) => summaryRows.push([item.label, item.value]));
+    });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(summaryRows),
+    uniqueSheetName("Resumo", usedSheetNames),
+  );
+
+  doc.sections
+    .filter((section) => section.kind !== "kpis")
+    .forEach((section) => {
+      if (section.kind !== "table" && section.kind !== "chart") return;
+      const rows: ReportCell[][] = [[section.title], section.columns, ...section.rows];
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet(rows),
+        uniqueSheetName(section.title, usedSheetNames),
+      );
+    });
+
+  const base64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
+  return base64;
+};
+
 export function createReportArtifact(
-  table: ReportTableData,
+  doc: ReportDocumentData,
   format: ReportExportFormat,
 ): ReportArtifact {
-  const date = table.generatedAt.slice(0, 10);
-  const baseName = `${safeFileName(table.title)}-${date}`;
-  if (format === "CSV") {
-    const bytes = new TextEncoder().encode(createCsv(table));
+  const date = doc.generatedAt.slice(0, 10);
+  const baseName = `${safeFileName(doc.title)}-${date}`;
+
+  if (format === "EXCEL") {
+    const base64 = createExcel(doc);
+    const bytes = base64ToBytes(base64);
     return {
       format,
-      fileName: `${baseName}.csv`,
-      mimeType: "text/csv;charset=utf-8",
-      fileContent: bytesToBase64(bytes),
+      fileName: `${baseName}.xlsx`,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      fileContent: base64,
       fileSize: formatFileSize(bytes.byteLength),
     };
   }
 
-  const pdf = createPdf(table);
+  const pdf = createPdf(doc);
   const bytes = new TextEncoder().encode(pdf);
   return {
     format,

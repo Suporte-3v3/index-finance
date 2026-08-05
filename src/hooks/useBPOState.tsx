@@ -24,6 +24,12 @@ import {
   Notification,
   ReportRecord,
   ReportGenerationOptions,
+  ReportTemplate,
+  ReportModelType,
+  ReportBlockConfig,
+  ReportFilters,
+  ReportExportFormat,
+  DreReportOptions,
   BankStatementItem,
   UserRole,
   SupportTicket,
@@ -50,8 +56,13 @@ import {
 import {
   createReportArtifact,
   ReportCell,
-  ReportTableData,
+  ReportSectionData,
 } from "../services/reportFiles";
+import {
+  computeReportSections,
+  computeDreSections,
+  buildFiltersSummary,
+} from "../services/reportComputations";
 import { getDocumentsVisibleToUser } from "../services/documentVisibility";
 
 const PRIMARY_USER_ID = "u-client-admin";
@@ -241,6 +252,7 @@ interface BPOContextType {
   auditLogs: AuditLog[];
   notifications: Notification[];
   reports: ReportRecord[];
+  reportTemplates: ReportTemplate[];
   statementItems: Record<string, BankStatementItem[]>;
   supportTickets: SupportTicket[];
   isUserOnline: (userId: string) => boolean;
@@ -398,6 +410,33 @@ interface BPOContextType {
     filters: string,
     options?: ReportGenerationOptions,
   ) => ReportRecord | null;
+  generateBuiltReport: (input: {
+    modelType: ReportModelType;
+    name: string;
+    blocks: ReportBlockConfig[];
+    filters: ReportFilters;
+    dreOptions?: DreReportOptions;
+    format: ReportExportFormat;
+    templateId?: string;
+    templateName?: string;
+    recipientId?: string;
+  }) => ReportRecord | null;
+  saveReportTemplate: (input: {
+    id?: string;
+    name: string;
+    modelType: ReportModelType;
+    blocks: ReportBlockConfig[];
+    filters: Omit<ReportFilters, "startDate" | "endDate">;
+    dreOptions?: DreReportOptions;
+  }) => ReportTemplate | null;
+  duplicateReportTemplate: (id: string) => void;
+  archiveReportTemplate: (id: string, archived: boolean) => void;
+  toggleReportTemplateFavorite: (id: string) => void;
+  deleteReportTemplate: (id: string) => void;
+  sendReportToDocumentCenter: (
+    report: ReportRecord,
+    recipientId?: string,
+  ) => boolean;
 
   addCompany: (
     data: Omit<Company, "id" | "createdAt" | "status">,
@@ -662,6 +701,9 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   const [reports, setReports] = useState<ReportRecord[]>(() =>
     loadState("reports", []),
   );
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>(
+    () => loadState("reportTemplates", []),
+  );
   const [statementItems, setStatementItems] = useState<
     Record<string, BankStatementItem[]>
   >(() => loadState("statementItems", BANK_STATEMENTS_TO_IMPORT));
@@ -784,6 +826,10 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     );
     localStorage.setItem("bpo_saas_reports", JSON.stringify(reports));
     localStorage.setItem(
+      "bpo_saas_reportTemplates",
+      JSON.stringify(reportTemplates),
+    );
+    localStorage.setItem(
       "bpo_saas_statementItems",
       JSON.stringify(statementItems),
     );
@@ -816,6 +862,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     auditLogs,
     notifications,
     reports,
+    reportTemplates,
     statementItems,
     supportTickets,
     currentUserId,
@@ -2590,16 +2637,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     }
 
     const generatedAt = new Date().toISOString();
-    const table: ReportTableData = {
-      title: name,
-      companyName: activeCompany.tradeName,
-      filters,
-      generatedAt,
-      generatedBy: currentUser.name,
-      columns,
-      rows,
-    };
-    const artifact = createReportArtifact(table, options.format);
+    const sections: ReportSectionData[] = [{ kind: "table", title: name, columns, rows }];
+    const artifact = createReportArtifact(
+      {
+        title: name,
+        companyName: activeCompany.tradeName,
+        filters,
+        generatedAt,
+        generatedBy: currentUser.name,
+        sections,
+      },
+      options.format,
+    );
     const id = `rep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newReport: ReportRecord = {
       id,
@@ -2630,6 +2679,225 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       "SUCCESS",
     );
     return newReport;
+  };
+
+  // --- CENTRAL DE RELATÓRIOS: construtor por blocos ---
+  const sendReportToDocumentCenter = (
+    report: ReportRecord,
+    recipientId?: string,
+  ): boolean => {
+    if (
+      !hasPermission("documents.upload") ||
+      !report.fileContent ||
+      !report.mimeType ||
+      !report.fileName
+    )
+      return false;
+    uploadDocument({
+      name: report.fileName,
+      description: `Relatório gerado: ${report.name}`,
+      category: "Relatório",
+      competenceMonth: report.generatedAt.slice(0, 7),
+      fileSize: report.fileSize,
+      mimeType: report.mimeType,
+      previewUrl: `data:${report.mimeType};base64,${report.fileContent}`,
+      recipientId,
+    });
+    return true;
+  };
+
+  const generateBuiltReport: BPOContextType["generateBuiltReport"] = (
+    input,
+  ) => {
+    if (!hasPermission("reports.generate") || !activeCompany) return null;
+    const {
+      modelType,
+      name,
+      blocks,
+      filters,
+      dreOptions,
+      format,
+      templateId,
+      templateName,
+      recipientId,
+    } = input;
+
+    const dataSource = {
+      accountsPayable: accountsPayable.filter(
+        (item) => item.companyId === activeCompanyId,
+      ),
+      accountsReceivable: accountsReceivable.filter(
+        (item) => item.companyId === activeCompanyId,
+      ),
+      bankAccounts: bankAccounts.filter(
+        (item) => item.companyId === activeCompanyId,
+      ),
+    };
+
+    const sections =
+      modelType === "DRE Gerencial"
+        ? computeDreSections(filters, dreOptions || {}, dataSource)
+        : computeReportSections(modelType, blocks, filters, dataSource);
+
+    const filtersSummary = buildFiltersSummary(modelType, filters, dreOptions);
+    const generatedAt = new Date().toISOString();
+    const artifact = createReportArtifact(
+      {
+        title: name,
+        companyName: activeCompany.tradeName,
+        filters: filtersSummary,
+        generatedAt,
+        generatedBy: currentUser.name,
+        sections,
+      },
+      format,
+    );
+
+    const recipient = recipientId
+      ? users.find(
+          (user) =>
+            user.id === recipientId &&
+            user.status === "ACTIVE" &&
+            ["CLIENT", "ACCOUNTANT"].includes(user.role) &&
+            user.companies?.includes(activeCompanyId),
+        )
+      : undefined;
+
+    const id = `rep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newReport: ReportRecord = {
+      id,
+      companyId: activeCompanyId,
+      name,
+      type: modelType,
+      filters: filtersSummary,
+      generatedAt,
+      generatedById: currentUser.id,
+      generatedByName: currentUser.name,
+      templateId,
+      templateName,
+      recipientId: recipient?.id,
+      recipientName: recipient?.name,
+      recipientRole: recipient?.role as ReportRecord["recipientRole"],
+      ...artifact,
+    };
+
+    setReports((prev) => [newReport, ...prev]);
+    const { fileContent: _fileContent, ...auditMetadata } = newReport;
+    void _fileContent;
+    createAuditLog(
+      "GERAR_RELATORIO",
+      "Report",
+      id,
+      activeCompanyId,
+      null,
+      auditMetadata,
+    );
+    addNotification(
+      "Relatório Pronto",
+      `O relatório "${name}" foi gerado em ${format === "EXCEL" ? "Excel" : "PDF"}.`,
+      "SUCCESS",
+    );
+
+    if (recipient) sendReportToDocumentCenter(newReport, recipient.id);
+
+    return newReport;
+  };
+
+  const saveReportTemplate: BPOContextType["saveReportTemplate"] = (
+    input,
+  ) => {
+    if (!hasPermission("reports.generate") || !activeCompany) return null;
+    const now = new Date().toISOString();
+    if (input.id) {
+      let updated: ReportTemplate | null = null;
+      setReportTemplates((prev) =>
+        prev.map((template) => {
+          if (template.id !== input.id) return template;
+          updated = {
+            ...template,
+            name: input.name,
+            modelType: input.modelType,
+            blocks: input.blocks,
+            filters: input.filters,
+            dreOptions: input.dreOptions,
+            updatedAt: now,
+          };
+          return updated;
+        }),
+      );
+      return updated;
+    }
+    const newTemplate: ReportTemplate = {
+      id: `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      companyId: activeCompanyId,
+      name: input.name,
+      modelType: input.modelType,
+      blocks: input.blocks,
+      filters: input.filters,
+      dreOptions: input.dreOptions,
+      favorite: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+      createdById: currentUser.id,
+      createdByName: currentUser.name,
+    };
+    setReportTemplates((prev) => [newTemplate, ...prev]);
+    createAuditLog(
+      "SALVAR_MODELO_RELATORIO",
+      "ReportTemplate",
+      newTemplate.id,
+      activeCompanyId,
+      null,
+      newTemplate,
+    );
+    return newTemplate;
+  };
+
+  const duplicateReportTemplate = (id: string) => {
+    const original = reportTemplates.find((template) => template.id === id);
+    if (!original) return;
+    const now = new Date().toISOString();
+    const copy: ReportTemplate = {
+      ...original,
+      id: `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: `${original.name} (cópia)`,
+      favorite: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+      createdById: currentUser.id,
+      createdByName: currentUser.name,
+    };
+    setReportTemplates((prev) => [copy, ...prev]);
+  };
+
+  const archiveReportTemplate = (id: string, archived: boolean) => {
+    setReportTemplates((prev) =>
+      prev.map((template) =>
+        template.id === id
+          ? { ...template, archived, updatedAt: new Date().toISOString() }
+          : template,
+      ),
+    );
+  };
+
+  const toggleReportTemplateFavorite = (id: string) => {
+    setReportTemplates((prev) =>
+      prev.map((template) =>
+        template.id === id
+          ? {
+              ...template,
+              favorite: !template.favorite,
+              updatedAt: new Date().toISOString(),
+            }
+          : template,
+      ),
+    );
+  };
+
+  const deleteReportTemplate = (id: string) => {
+    setReportTemplates((prev) => prev.filter((template) => template.id !== id));
   };
 
   // --- ADMINISTRATION: COMPANIES & CLIENTS ---
@@ -4054,6 +4322,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         auditLogs,
         notifications,
         reports,
+        reportTemplates,
         statementItems,
         supportTickets,
         isUserOnline,
@@ -4097,6 +4366,13 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         autoReconcileBank,
         ignoreStatementItem,
         generateReport,
+        generateBuiltReport,
+        saveReportTemplate,
+        duplicateReportTemplate,
+        archiveReportTemplate,
+        toggleReportTemplateFavorite,
+        deleteReportTemplate,
+        sendReportToDocumentCenter,
         addCompany,
         updateCompany,
         deleteCompany,
