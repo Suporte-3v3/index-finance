@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -7,18 +7,20 @@ import React, { useState } from 'react';
 import { useBPOState } from '../hooks/useBPOState';
 import { ACCESS_PASSWORD } from '../services/mockData';
 import idexLogo from '../../assets/idex-finance-logo-transparent.png';
+import { Button, IconButton } from '../components/ui';
 import {
   Mail,
   Lock,
   Eye,
   EyeOff,
   LogIn,
-  Loader2,
   AlertCircle,
   ShieldCheck,
   UserRound,
   Calculator,
   Store,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 // Contas de demonstração exibidas como atalhos na tela de login — uma por
@@ -35,7 +37,11 @@ const QUICK_LOGIN_PROFILES: Array<{
   { email: 'contador@idexfinance.com.br', label: 'Contador', icon: Calculator },
 ];
 
-export default function LoginView() {
+interface LoginViewProps {
+  theme: { isDarkMode: boolean; toggleTheme: () => void };
+}
+
+export default function LoginView({ theme }: LoginViewProps) {
   const { login, users } = useBPOState();
 
   const [email, setEmail] = useState('');
@@ -73,143 +79,146 @@ export default function LoginView() {
   };
 
   return (
-    <div className="min-h-screen flex font-sans bg-zinc-50">
-      {/* Left Brand Panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-[#061425] relative overflow-hidden items-center justify-center p-12">
-        <div className="absolute inset-0 opacity-15 bg-[radial-gradient(circle_at_50%_38%,#0B2C52,transparent_55%)]" />
+    <div className="relative min-h-screen overflow-hidden bg-brand-navy-950 font-sans text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,#174E83_0%,#0B2C52_28%,#061425_68%)]" />
+      <div className="pointer-events-none absolute -left-36 top-1/3 h-80 w-80 rounded-full border border-white/5" />
+      <div className="pointer-events-none absolute -right-40 bottom-8 h-96 w-96 rounded-full border border-brand-gold-300/10" />
 
-        <div className="relative w-full max-w-lg flex flex-col items-center text-center">
+      <IconButton
+        icon={theme.isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        label={theme.isDarkMode ? 'Usar tema claro' : 'Usar tema escuro'}
+        variant="ghost"
+        onClick={theme.toggleTheme}
+        className="absolute right-4 top-4 z-20 text-white/70 hover:bg-white/10 hover:text-white sm:right-6 sm:top-6"
+      />
+
+      <main className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex w-full max-w-md flex-col items-center gap-4 sm:gap-5">
           <img
             src={idexLogo}
             alt="Idex Finance — Gestão que move resultados"
-            className="w-64 max-w-full object-contain"
+            className="w-36 object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.28)] sm:w-44"
           />
-          <div className="w-12 h-0.5 bg-[#C8102E] mt-5 mb-6 rounded-full" />
-          <h2 className="text-3xl font-black text-white leading-tight max-w-md">
-            O BPO Financeiro completo para sua operação multiempresas.
-          </h2>
-          <p className="text-sm text-[#F2D3A0]/80 leading-relaxed max-w-md mt-4">
-            Contas a pagar e receber, conciliação bancária, aprovações e conformidade em um único workspace, com controle de acesso por perfil.
-          </p>
-        </div>
 
-        <div className="absolute bottom-8 left-0 right-0 text-center text-[10px] text-[#F2D3A0]/50 font-semibold space-y-1">
-          <p>© {new Date().getFullYear()} Idex Finance.</p>
-          <p>Desenvolvido por <span className="text-[#F2D3A0]/80 font-bold">NFlow Analytics</span></p>
-        </div>
-      </div>
-
-      {/* Right Form Panel */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-sm space-y-6">
-
-          {/* Mobile brand header */}
-          <div className="lg:hidden flex justify-center">
-            <img src={idexLogo} alt="Idex Finance" className="h-20 w-40 object-contain" />
-          </div>
-
-          <div className="space-y-1.5 text-center lg:text-left">
-            <h2 className="text-xl font-black text-zinc-900">Entrar na sua conta</h2>
-            <p className="text-xs text-zinc-500">Acesse o workspace com seu e-mail e senha.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-zinc-700 uppercase tracking-wide">E-mail</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="voce@empresa.com.br"
-                  className="w-full bg-white border border-zinc-200 text-zinc-900 text-sm pl-9 pr-3 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2C52]/20 focus:border-[#0B2C52] transition-colors"
-                />
-              </div>
+          <section className="w-full rounded-3xl border border-white/70 bg-white p-5 text-ink shadow-[0_24px_70px_rgba(0,0,0,0.35)] sm:p-7">
+            <div className="mb-5 space-y-1.5 text-center">
+              <h1 className="text-2xl font-black tracking-tight text-brand-navy-950">
+                Entrar na sua conta
+              </h1>
+              <p className="text-xs text-ink-soft">
+                Acesse o workspace com seu e-mail e senha.
+              </p>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-zinc-700 uppercase tracking-wide">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-white border border-zinc-200 text-zinc-900 text-sm pl-9 pr-9 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B2C52]/20 focus:border-[#0B2C52] transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="login-email" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+                  E-mail
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
+                  <input
+                    id="login-email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="voce@empresa.com.br"
+                    className="h-11 w-full rounded-xl border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none transition placeholder:text-ink-soft/60 focus:border-brand-navy-700 focus:bg-white focus:ring-4 focus:ring-brand-navy-700/10"
+                  />
+                </div>
               </div>
-            </div>
 
-            {error && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg px-3 py-2.5">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 bg-[#0B2C52] hover:bg-[#0B2C52]/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold py-2.5 rounded-lg transition-colors cursor-pointer shadow-sm"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Entrando...
-                </>
-              ) : (
-                <>
-                  <LogIn className="h-4 w-4" /> Entrar
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="h-px bg-zinc-200 grow" />
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Selecionar perfil de acesso</span>
-              <div className="h-px bg-zinc-200 grow" />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {QUICK_LOGIN_PROFILES.map(profile => {
-                const user = users.find(u => u.email === profile.email);
-                if (!user) return null;
-                const Icon = profile.icon;
-                return (
+              <div className="space-y-1.5">
+                <label htmlFor="login-password" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-11 w-full rounded-xl border border-line bg-canvas pl-9 pr-10 text-sm text-ink outline-none transition placeholder:text-ink-soft/60 focus:border-brand-navy-700 focus:bg-white focus:ring-4 focus:ring-brand-navy-700/10"
+                  />
                   <button
-                    key={user.id}
                     type="button"
-                    disabled={isSubmitting || user.status !== 'ACTIVE'}
-                    onClick={() => handleProfileLogin(user.email)}
-                    className="flex flex-col items-center gap-1.5 border border-zinc-200 hover:border-[#0B2C52]/40 hover:bg-[#0B2C52]/5 disabled:opacity-60 rounded-lg px-2 py-3 text-center transition-colors cursor-pointer"
-                    title={`Entrar como ${user.name}`}
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-ink-soft transition-colors hover:text-ink"
                   >
-                    <Icon className="h-4.5 w-4.5 text-[#0B2C52]" />
-                    <span className="text-[10px] font-bold text-zinc-800 leading-tight">{profile.label}</span>
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
-                );
-              })}
+                </div>
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 rounded-xl border border-brand-red-600/30 bg-brand-red-50 px-3 py-2.5 text-xs font-semibold text-brand-red-600">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                variant="secondary"
+                size="lg"
+                fullWidth
+                loading={isSubmitting}
+                icon={<LogIn className="h-4 w-4" />}
+                className="rounded-xl"
+              >
+                {isSubmitting ? 'Entrando...' : 'Entrar'}
+              </Button>
+            </form>
+
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-px grow bg-line" />
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-ink-soft">
+                  Perfis de demonstração
+                </span>
+                <div className="h-px grow bg-line" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {QUICK_LOGIN_PROFILES.map(profile => {
+                  const user = users.find(u => u.email === profile.email);
+                  if (!user) return null;
+                  const Icon = profile.icon;
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      disabled={isSubmitting || user.status !== 'ACTIVE'}
+                      onClick={() => handleProfileLogin(user.email)}
+                      className="flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-line bg-canvas px-2 py-2.5 text-center transition hover:border-brand-navy-700/40 hover:bg-brand-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title={`Entrar como ${user.name}`}
+                    >
+                      <Icon className="h-4 w-4 text-brand-navy-900" />
+                      <span className="text-[9px] font-bold leading-tight text-ink">{profile.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+          </section>
+
+          <div className="max-w-sm text-center">
+            <div className="mx-auto mb-2 h-0.5 w-10 rounded-full bg-brand-red-600" />
+            <p className="text-sm font-bold leading-snug text-white sm:text-base">
+              O BPO Financeiro completo para sua operação multiempresas.
+            </p>
           </div>
 
-          <p className="lg:hidden text-center text-[9px] text-zinc-400">
-            Desenvolvido por <span className="font-bold text-[#0B2C52]">NFlow Analytics</span>
-          </p>
-
+          <footer className="text-center text-[9px] font-semibold leading-relaxed text-brand-gold-300/55">
+            <p>© {new Date().getFullYear()} Idex Finance · Desenvolvido por <span className="text-brand-gold-300/80">NFlow Analytics</span></p>
+          </footer>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

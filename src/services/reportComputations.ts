@@ -13,7 +13,7 @@ import {
   ReportFilters,
   ReportModelType,
 } from "../types";
-import { ReportCell, ReportSectionData } from "./reportFiles";
+import type { ReportCell, ReportSectionData } from "./reportFiles";
 import { getBlockDefinition } from "../config/reportBlocks";
 
 export interface ReportDataSource {
@@ -26,7 +26,12 @@ const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const percent = (value: number, total: number) =>
-  total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "—";
+  total > 0
+    ? `${((value / total) * 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}%`
+    : "-";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -181,10 +186,11 @@ function computeApBlock(
         .filter((item) => item.dueDate < today() && !isPaidPayable(item.status))
         .reduce((sum, item) => sum + (item.finalAmount - payablePaid(item)), 0);
       const items = [
-        { label: "Total previsto", value: money(previsto) },
+        { label: "Total geral", value: money(previsto) },
         { label: "Total pago", value: money(pago) },
-        { label: "Total em aberto", value: money(Math.max(0, previsto - pago)) },
+        { label: "Total pendente", value: money(Math.max(0, previsto - pago)) },
         { label: "Total vencido", value: money(vencido) },
+        { label: "Quantidade de lançamentos", value: payables.length.toLocaleString("pt-BR") },
       ];
       if (config.compareWithPreviousPeriod) {
         const prevPayables = filterPayables(data.accountsPayable, filters, previousPeriodRange(range.startDate, range.endDate));
@@ -295,10 +301,15 @@ function computeArBlock(
     case "AR_SUMMARY": {
       const previsto = receivables.reduce((sum, item) => sum + item.amount, 0);
       const recebido = receivables.reduce((sum, item) => sum + item.receivedAmount, 0);
+      const vencido = receivables
+        .filter((item) => item.dueDate < today() && item.receivedAmount < item.amount)
+        .reduce((sum, item) => sum + (item.amount - item.receivedAmount), 0);
       const items = [
         { label: "Total previsto", value: money(previsto) },
         { label: "Total recebido", value: money(recebido) },
-        { label: "Total em aberto", value: money(Math.max(0, previsto - recebido)) },
+        { label: "Total pendente", value: money(Math.max(0, previsto - recebido)) },
+        { label: "Total vencido", value: money(vencido) },
+        { label: "Inadimplência", value: percent(vencido, previsto) },
       ];
       if (config.compareWithPreviousPeriod) {
         const prevReceivables = filterReceivables(data.accountsReceivable, filters, previousPeriodRange(range.startDate, range.endDate));
@@ -487,7 +498,10 @@ function computeCfBlock(
         title,
         items: [
           { label: "Saldo inicial do período", value: money(initialBalance) },
-          { label: "Saldo final (atual)", value: money(finalBalance) },
+          { label: "Total de entradas", value: money(realizedIn) },
+          { label: "Total de saídas", value: money(realizedOut) },
+          { label: "Resultado do período", value: money(realizedIn - realizedOut) },
+          { label: "Saldo final", value: money(finalBalance) },
         ],
       };
     }

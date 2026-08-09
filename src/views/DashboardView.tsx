@@ -3,40 +3,65 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { getCompanyClientModules } from "../config/clientModules";
+import {
+  Card,
+  SectionLabel,
+  MetricCard,
+  Badge,
+  Tooltip as InfoTooltip,
+  Button,
+  EmptyState,
+} from "../components/ui";
 import {
   DollarSign,
   ArrowUpRight,
   ArrowDownRight,
-  CalendarClock,
   AlertCircle,
   Clock,
   TrendingUp,
-  Users,
   Sparkles,
-  RefreshCw,
-  Info,
-  ChevronRight,
-  ArrowRight,
+  Plus,
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
 } from "recharts";
+import { ChartDefs, ChartTooltip, CHART_GRADIENT, CHART_SHADOW, CHART_LINE_SHADOW } from "../components/charts";
+import FinancialCalendar, {
+  FinancialCalendarEvent,
+} from "../components/FinancialCalendar";
+
+const formatCompactCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 
 export default function DashboardView({
   onNavigate,
 }: {
-  onNavigate: (view: "payable" | "approvals" | "audit-logs") => void;
+  onNavigate: (
+    view:
+      | "payable"
+      | "receivable"
+      | "approvals"
+      | "audit-logs"
+      | "documents-received",
+  ) => void;
 }) {
   const {
     activeCompany,
@@ -44,25 +69,20 @@ export default function DashboardView({
     accountsPayable,
     accountsReceivable,
     approvals,
-    auditLogs,
     isApprovalVisibleToCurrentUser,
     currentUser,
     hasPermission,
   } = useBPOState();
 
-  const [timeframe, setTimeframe] = useState<"7" | "15" | "30" | "90">("30");
-
   if (!activeCompany) {
     return (
-      <div className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-8 text-center space-y-4">
-        <AlertCircle className="h-10 w-10 text-zinc-400 dark:text-zinc-500 mx-auto" />
-        <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          Nenhuma Empresa Ativa
-        </h3>
-        <p className="text-zinc-500 dark:text-zinc-400">
-          Por favor, selecione uma empresa para visualizar o painel.
-        </p>
-      </div>
+      <Card>
+        <EmptyState
+          icon={<AlertCircle />}
+          title="Nenhuma Empresa Ativa"
+          description="Por favor, selecione uma empresa para visualizar o painel."
+        />
+      </Card>
     );
   }
 
@@ -81,14 +101,53 @@ export default function DashboardView({
       apv.companyId === activeCompany.id &&
       isApprovalVisibleToCurrentUser(apv),
   );
-  const companyLogs = auditLogs.filter(
-    (log) => log.companyId === activeCompany.id,
-  );
   const enabledClientModules = getCompanyClientModules(activeCompany);
   const canOpenPayables = hasPermission("accounts-payable.view");
+  const canOpenReceivables = hasPermission("accounts-receivable.view");
   const canOpenApprovals =
     currentUser.role !== "CLIENT" || enabledClientModules.includes("approvals");
-  const canOpenAuditLogs = currentUser.role === "BPO_ADMIN";
+
+  const calendarEvents: FinancialCalendarEvent[] = [
+    ...companyPayables
+      .filter((payable) => payable.status !== "Cancelada")
+      .map((payable) => ({
+        id: payable.id,
+        date: payable.dueDate,
+        type: "payable" as const,
+        title: payable.description,
+        subtitle: payable.supplier,
+        amount: payable.finalAmount,
+        status: payable.status,
+        actionable: canOpenPayables,
+      })),
+    ...companyReceivables
+      .filter((receivable) => receivable.status !== "Cancelado")
+      .map((receivable) => ({
+        id: receivable.id,
+        date: receivable.dueDate,
+        type: "receivable" as const,
+        title: receivable.description,
+        subtitle: receivable.customer,
+        amount:
+          receivable.status === "Recebido"
+            ? receivable.receivedAmount
+            : Math.max(receivable.amount - receivable.receivedAmount, 0),
+        status: receivable.status,
+        actionable: canOpenReceivables,
+      })),
+    ...companyApprovals
+      .filter((approval) => approval.status === "Pendente")
+      .map((approval) => ({
+        id: approval.id,
+        date: approval.dueDateApproval || approval.dueDate,
+        type: "approval" as const,
+        title: approval.description,
+        subtitle: `Solicitado por ${approval.requesterName}`,
+        amount: approval.amount,
+        status: approval.status,
+        actionable: canOpenApprovals,
+      })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
 
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const daysBetween = (fromStr: string, toStr: string) =>
@@ -101,19 +160,7 @@ export default function DashboardView({
   // 1. Current Balance
   const totalBalance = companyAccounts.reduce((sum, ba) => sum + ba.balance, 0);
 
-  // 2. Entries (Income) realizadas — todo o histórico de recebimentos
-  const totalEntries = companyReceivables
-    .filter((ar) =>
-      ["Recebido", "Parcialmente recebido"].includes(ar.status),
-    )
-    .reduce((sum, ar) => sum + ar.receivedAmount, 0);
-
-  // 3. Exits (Expenses) realizadas
-  const totalExits = companyPayables
-    .filter((ap) => ap.status === "Paga")
-    .reduce((sum, ap) => sum + ap.finalAmount, 0);
-
-  // 4. Overdue Accounts
+  // Contas vencidas
   const totalOverduePayables = companyPayables
     .filter((ap) => ap.status === "Vencida")
     .reduce((sum, ap) => sum + ap.finalAmount, 0);
@@ -170,67 +217,42 @@ export default function DashboardView({
       ? ((totalBalance - balance30DaysAgo) / Math.abs(balance30DaysAgo)) * 100
       : null;
 
-  // Chart Data Assembly — fluxo de caixa diário real (recebimentos e pagamentos
-  // efetivamente registrados), acumulado a partir do saldo atual das contas.
-  const getChartData = () => {
-    const dataPointsCount = parseInt(timeframe);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startStr = iso(
-      new Date(new Date(today).setDate(today.getDate() - dataPointsCount)),
-    );
-    const todayStr = iso(today);
+  // Visão executiva dos últimos seis meses, baseada somente em liquidações
+  // registradas. É mais estável e comparável que a antiga série diária.
+  const monthlyMovementData = Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date();
+    monthDate.setDate(1);
+    monthDate.setMonth(monthDate.getMonth() - (5 - index));
+    const key = iso(monthDate).slice(0, 7);
 
-    const byDay: Record<string, { entradas: number; saidas: number }> = {};
-    companyReceivables.forEach((ar) => {
-      if (!["Recebido", "Parcialmente recebido"].includes(ar.status)) return;
-      const date = ar.receiptDate;
-      if (!date || date < startStr || date > todayStr) return;
-      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
-      byDay[date].entradas += ar.receivedAmount;
-    });
-    companyPayables.forEach((ap) => {
-      if (ap.status !== "Paga") return;
-      const date = ap.paymentDate;
-      if (!date || date < startStr || date > todayStr) return;
-      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
-      byDay[date].saidas += ap.finalAmount;
-    });
+    const receipts = companyReceivables
+      .filter(
+        (receivable) =>
+          receivable.receiptDate?.startsWith(key) &&
+          ["Recebido", "Parcialmente recebido"].includes(receivable.status),
+      )
+      .reduce((sum, receivable) => sum + receivable.receivedAmount, 0);
+    const payments = companyPayables
+      .filter(
+        (payable) =>
+          payable.paymentDate?.startsWith(key) && payable.status === "Paga",
+      )
+      .reduce((sum, payable) => sum + payable.finalAmount, 0);
 
-    const totalInWindow = Object.values(byDay).reduce(
-      (sum, d) => sum + d.entradas,
-      0,
-    );
-    const totalOutWindow = Object.values(byDay).reduce(
-      (sum, d) => sum + d.saidas,
-      0,
-    );
-    // Saldo no início da janela, para a série terminar exatamente no saldo atual real.
-    let runningBalance = totalBalance - totalInWindow + totalOutWindow;
+    return {
+      name: monthDate
+        .toLocaleDateString("pt-BR", { month: "short" })
+        .replace(".", ""),
+      Recebimentos: receipts,
+      Pagamentos: payments,
+    };
+  });
 
-    const data = [];
-    for (let i = dataPointsCount; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const key = iso(d);
-      const dayEntradas = byDay[key]?.entradas || 0;
-      const daySaidas = byDay[key]?.saidas || 0;
-      runningBalance = runningBalance + dayEntradas - daySaidas;
-
-      data.push({
-        name: d.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-        }),
-        Entradas: dayEntradas,
-        Saídas: daySaidas,
-        Saldo: runningBalance,
-      });
-    }
-    return data;
-  };
-
-  const chartData = getChartData();
+  const financialCompositionData = [
+    { name: "A receber", value: outstandingReceivables, color: "#15996F" },
+    { name: "A pagar", value: outstandingPayables, color: "#C8102E" },
+  ];
+  const totalOpenCommitments = outstandingReceivables + outstandingPayables;
 
   // Margem Bruta = (Faturamento - Custo de Mercadorias/Serviços) / Faturamento,
   // apurada por competência (mês atual x mês anterior) para permitir comparação real.
@@ -345,396 +367,270 @@ export default function DashboardView({
       ? Math.round(estimatedInventoryDays + avgReceivingDays - avgPayingDays)
       : null;
 
+  const canCreateLaunch = ["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role);
+
   return (
-    <div id="client-dashboard-root" className="space-y-4">
-      {/* Dynamic Intro */}
-      <div className="bg-[#0B2C52] border-l-4 border-[#C8102E] border-y border-r border-white/10 rounded-sm p-6 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-[#061425] border border-white/10 text-[#F2D3A0] uppercase tracking-widest font-mono px-2 py-0.5 rounded font-semibold">
-              Tenant ID: {activeCompany.tenantId}
-            </span>
-            <span className="text-[10px] bg-emerald-950/40 text-emerald-300 uppercase tracking-widest font-mono px-2 py-0.5 rounded border border-emerald-500/20 font-semibold">
-              Operacional {activeCompany.status}
-            </span>
-          </div>
-          <h2 className="text-xl font-semibold tracking-tight text-white">
-            Painel Executivo: {activeCompany.tradeName}
-          </h2>
-          <p className="text-white/80 text-xs max-w-xl">
-            Acompanhe o fluxo de caixa, valide faturas e assine comprovantes de
-            pagamentos. Todos os dados estão isolados e protegidos por
-            criptografia de dados em repouso.
-          </p>
+    <div id="client-dashboard-root" className="space-y-6">
+      {/* Page header */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <SectionLabel>Painel Financeiro</SectionLabel>
+          <Badge tone="neutral">Tenant {activeCompany.tenantId}</Badge>
+          <Badge tone="green" dot>
+            Operacional {activeCompany.status}
+          </Badge>
         </div>
-        {/* No BPO Responsável block */}
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+          <div className="space-y-1 max-w-2xl">
+            <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">
+              Visão geral
+            </h1>
+            <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed">
+              Acompanhe o fluxo de caixa, valide faturas e assine comprovantes de
+              pagamento de {activeCompany.tradeName}. Todos os dados estão
+              isolados e protegidos por criptografia em repouso.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {canCreateLaunch && (
+              <Button
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => onNavigate("documents-received")}
+              >
+                Novo lançamento
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Bento-Grid KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {/* Card 1: Saldo Disponível */}
-        <div
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
           id="kpi-card-balance"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-                Saldo Disponível
-              </span>
-              <span className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 block mt-1">
-                R${" "}
-                {totalBalance.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-            <div className="h-7 w-7 rounded-sm flex items-center justify-center bg-[#0B2C52]/5 text-[#0B2C52] dark:bg-[#123B6B]/25 dark:text-[#9DB8D9] shrink-0">
-              <DollarSign className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          {balanceTrendPct !== null ? (
-            <div
-              className={`flex items-center gap-1.5 text-xs font-medium ${balanceTrendPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-            >
-              {balanceTrendPct >= 0 ? (
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              ) : (
-                <ArrowDownRight className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {balanceTrendPct >= 0 ? "+" : ""}
-                {balanceTrendPct.toFixed(1)}% em relação a 30 dias atrás
-              </span>
-            </div>
-          ) : (
-            <div className="text-xs text-zinc-400 dark:text-zinc-500">
-              Sem histórico suficiente para comparação
-            </div>
-          )}
-        </div>
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
+          icon={<DollarSign strokeWidth={2.25} />}
+          label="Saldo Disponível"
+          value={`R$ ${totalBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+          tone="navy"
+          trend={
+            balanceTrendPct !== null
+              ? {
+                  label: `${balanceTrendPct >= 0 ? "+" : ""}${balanceTrendPct.toFixed(1)}% em relação a 30 dias atrás`,
+                  direction: balanceTrendPct >= 0 ? "up" : "down",
+                  positive: balanceTrendPct >= 0,
+                }
+              : undefined
+          }
+          helpText={balanceTrendPct === null ? "Sem histórico suficiente para comparação" : undefined}
+        />
 
-        {/* Card 2: Saldo Projetado */}
-        <div
+        <MetricCard
           id="kpi-card-projected"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-1">
-                <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-                  Saldo Projetado (30 dias)
-                </span>
-                <div className="group relative cursor-pointer">
-                  <Info className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
-                  <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-zinc-950 text-white text-[10px] rounded shadow-lg z-20">
-                    Fórmula: Saldo Atual + Receber Pendente (R${" "}
-                    {outstandingReceivables.toLocaleString("pt-BR")}) - Pagar
-                    Pendente (R$ {outstandingPayables.toLocaleString("pt-BR")})
-                  </div>
-                </div>
-              </div>
-              <span className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 block mt-1">
-                R${" "}
-                {forecastedBalance.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-            <div className="h-7 w-7 rounded-sm flex items-center justify-center bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300 shrink-0">
-              <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          <div className="text-xs text-zinc-400 dark:text-zinc-500">
-            Considera entradas faturadas e saídas agendadas.
-          </div>
-        </div>
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
+          icon={<TrendingUp strokeWidth={2.25} />}
+          label="Saldo Projetado (30 dias)"
+          value={`R$ ${forecastedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+          tone="gold"
+          helpText="Considera entradas faturadas e saídas agendadas."
+          tooltip={`Fórmula: Saldo Atual + Receber Pendente (R$ ${outstandingReceivables.toLocaleString("pt-BR")}) - Pagar Pendente (R$ ${outstandingPayables.toLocaleString("pt-BR")})`}
+        />
 
-        {/* Card 3: Entradas e Saídas do Período */}
-        <div
-          id="kpi-card-flows"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-              Movimentações Realizadas
-            </span>
-            <div className="h-7 w-7 rounded-sm flex items-center justify-center bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 shrink-0">
-              <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-1">
-            <div>
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block font-medium">
-                ENTRADAS
-              </span>
-              <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center">
-                <ArrowUpRight className="h-3.5 w-3.5 mr-0.5" />
-                R${" "}
-                {totalEntries.toLocaleString("pt-BR", {
-                  maximumFractionDigits: 0,
-                })}
-              </span>
-            </div>
-            <div>
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block font-medium">
-                SAÍDAS
-              </span>
-              <span className="text-sm font-semibold text-rose-600 dark:text-rose-400 flex items-center">
-                <ArrowDownRight className="h-3.5 w-3.5 mr-0.5" />
-                R${" "}
-                {totalExits.toLocaleString("pt-BR", {
-                  maximumFractionDigits: 0,
-                })}
-              </span>
-            </div>
-          </div>
-          <div className="text-[10px] text-zinc-400 dark:text-zinc-500">
-            Dados consolidados do mês de referência.
-          </div>
-        </div>
-
-        {/* Card 4: Contas Vencidas */}
-        <div
+        <MetricCard
           id="kpi-card-overdue"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-                Contas Vencidas (Pagar)
-              </span>
-              <span
-                className={`text-2xl font-semibold block mt-1 ${totalOverduePayables > 0 ? "text-rose-600 dark:text-rose-400" : "text-zinc-900 dark:text-zinc-50"}`}
-              >
-                R${" "}
-                {totalOverduePayables.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-            <div
-              className={`h-7 w-7 rounded-sm flex items-center justify-center shrink-0 ${totalOverduePayables > 0 ? "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" : "bg-zinc-50 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
-            >
-              <AlertCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          {canOpenPayables && (
-            <button
-              onClick={() => onNavigate("payable")}
-              className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-semibold flex items-center gap-1 transition-colors text-left"
-            >
-              Ver Contas Vencidas <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
+          icon={<AlertCircle strokeWidth={2.25} />}
+          label="Contas Vencidas (Pagar)"
+          value={`R$ ${totalOverduePayables.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+          tone={totalOverduePayables > 0 ? "red" : "neutral"}
+          onClick={canOpenPayables ? () => onNavigate("payable") : undefined}
+          helpText={canOpenPayables ? "Ver contas vencidas →" : undefined}
+        />
 
-        {/* Card 5: Aprovações pendentes */}
-        <div
+        <MetricCard
           id="kpi-card-approvals"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-                Aprovações Pendentes
-              </span>
-              <span
-                className={`text-2xl font-semibold block mt-1 ${pendingApprovalsCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-zinc-900 dark:text-zinc-50"}`}
-              >
-                {pendingApprovalsCount}{" "}
-                {pendingApprovalsCount === 1 ? "pendência" : "pendências"}
-              </span>
-            </div>
-            <div
-              className={`h-7 w-7 rounded-sm flex items-center justify-center shrink-0 ${pendingApprovalsCount > 0 ? "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" : "bg-zinc-50 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
-            >
-              <Clock className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          {canOpenApprovals && (
-            <button
-              onClick={() => onNavigate("approvals")}
-              className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-semibold flex items-center gap-1 transition-colors text-left"
-            >
-              Acessar Central de Aprovações <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
+          icon={<Clock strokeWidth={2.25} />}
+          label="Aprovações Pendentes"
+          value={`${pendingApprovalsCount} ${pendingApprovalsCount === 1 ? "pendência" : "pendências"}`}
+          tone={pendingApprovalsCount > 0 ? "gold" : "neutral"}
+          onClick={canOpenApprovals ? () => onNavigate("approvals") : undefined}
+          helpText={canOpenApprovals ? "Acessar Central de Aprovações →" : undefined}
+        />
 
-        {/* Card 6: BPO Status */}
-        <div
-          id="kpi-card-bpo-status"
-          className="bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between h-32"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-zinc-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider block">
-                Segurança e Auditoria
-              </span>
-              <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 block mt-2">
-                Logs Ativos e Criptografia
-              </span>
-            </div>
-            <div className="h-7 w-7 rounded-sm flex items-center justify-center bg-zinc-50 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 shrink-0">
-              <Users className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          <div className="text-xs text-zinc-400 dark:text-zinc-500 leading-tight">
-            Último acesso auditado:{" "}
-            {companyLogs[0]
-              ? new Date(companyLogs[0].timestamp).toLocaleTimeString()
-              : "Agora"}
-          </div>
-          {canOpenAuditLogs && (
-            <button
-              onClick={() => onNavigate("audit-logs")}
-              className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-semibold flex items-center gap-1 transition-colors text-left"
-            >
-              Consultar Logs de Auditoria <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Main Charts Area & Action Lists */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Cash Flow Graphic */}
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wide">
-                Evolução do Fluxo de Caixa
-              </h3>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                Entradas, saídas e projeção de saldo diário acumulado.
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/70 p-1 rounded-sm border border-zinc-200 dark:border-zinc-700 text-xs">
-              <button
-                onClick={() => setTimeframe("7")}
-                className={`px-2.5 py-1 rounded-sm font-medium cursor-pointer transition-colors ${timeframe === "7" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              >
-                7D
-              </button>
-              <button
-                onClick={() => setTimeframe("15")}
-                className={`px-2.5 py-1 rounded-sm font-medium cursor-pointer transition-colors ${timeframe === "15" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              >
-                15D
-              </button>
-              <button
-                onClick={() => setTimeframe("30")}
-                className={`px-2.5 py-1 rounded-sm font-medium cursor-pointer transition-colors ${timeframe === "30" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              >
-                30D
-              </button>
-              <button
-                onClick={() => setTimeframe("90")}
-                className={`px-2.5 py-1 rounded-sm font-medium cursor-pointer transition-colors ${timeframe === "90" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              >
-                90D
-              </button>
-            </div>
+      {/* Dashboard executivo: gráficos à esquerda e agenda compacta à direita. */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(220px,0.72fr)_minmax(0,1.45fr)]">
+            <Card className="idex-chart-card space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink dark:text-ink-dark">
+                  Composição financeira
+                </h3>
+                <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                  Compromissos atualmente em aberto.
+                </p>
+              </div>
+
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <ChartDefs />
+                    <Pie
+                      data={financialCompositionData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={53}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={8}
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth={3}
+                      filter={CHART_SHADOW}
+                    >
+                      {financialCompositionData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                    <text
+                      x="50%"
+                      y="46%"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-ink text-[9px] font-bold dark:fill-ink-dark"
+                    >
+                      EM ABERTO
+                    </text>
+                    <text
+                      x="50%"
+                      y="57%"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-brand-navy-900 text-[12px] font-black dark:fill-brand-gold-300"
+                    >
+                      {formatCompactCurrency(totalOpenCommitments)}
+                    </text>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 dark:border-line-dark">
+                {financialCompositionData.map((item) => (
+                  <div key={item.name} className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-[9px] font-semibold text-ink-soft dark:text-ink-soft-dark">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.name}
+                    </span>
+                    <span className="block truncate text-xs font-bold text-ink dark:text-ink-dark">
+                      {formatCompactCurrency(item.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="idex-chart-card space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-ink dark:text-ink-dark">
+                    Movimentação realizada
+                  </h3>
+                  <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                    Recebimentos e pagamentos liquidados nos últimos 6 meses.
+                  </p>
+                </div>
+                <Badge tone="neutral">6 meses</Badge>
+              </div>
+
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={monthlyMovementData}
+                    margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
+                  >
+                    <ChartDefs />
+                    <CartesianGrid strokeDasharray="4 4" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 10, fill: "#6F7687" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tickFormatter={(value) => formatCompactCurrency(value)}
+                      tick={{ fontSize: 9, fill: "#6F7687" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={58}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "#174E83", strokeOpacity: 0.15 }}
+                      content={<ChartTooltip />}
+                    />
+                    <Legend
+                      iconType="circle"
+                      iconSize={7}
+                      wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Recebimentos"
+                      stroke="#174E83"
+                      strokeWidth={2.5}
+                      fill={CHART_GRADIENT.areaNavy}
+                      filter={CHART_LINE_SHADOW}
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#174E83", stroke: "#fff", strokeWidth: 2 }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Pagamentos"
+                      stroke="#E7B967"
+                      strokeWidth={2.5}
+                      fill={CHART_GRADIENT.areaGold}
+                      filter={CHART_LINE_SHADOW}
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#E7B967", stroke: "#fff", strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
           </div>
 
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={chartData}
-                margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: "#71717a" }}
-                />
-                <YAxis
-                  tickFormatter={(val) =>
-                    `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                  }
-                  tick={{ fontSize: 10, fill: "#71717a" }}
-                />
-                <Tooltip
-                  formatter={(val: any) => [
-                    `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-                  ]}
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    color: "#fff",
-                    borderRadius: "8px",
-                    fontSize: "11px",
-                    border: "none",
-                  }}
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
-                />
-                <Bar
-                  dataKey="Entradas"
-                  fill="#10b981"
-                  radius={[4, 4, 0, 0]}
-                  barSize={16}
-                />
-                <Bar
-                  dataKey="Saídas"
-                  fill="#f43f5e"
-                  radius={[4, 4, 0, 0]}
-                  barSize={16}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Saldo"
-                  stroke="#09090b"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Interactive Indicator Box */}
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between">
+          {/* Interactive Indicator Box */}
+          <Card className="idex-chart-card flex flex-col justify-between">
           <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wide">
+            <div className="flex items-center justify-between border-b border-line dark:border-line-dark pb-3">
+              <h3 className="text-sm font-bold text-ink dark:text-ink-dark uppercase tracking-wide">
                 Indicadores de Desempenho
               </h3>
-              <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded font-mono font-semibold">
-                LGPD OK
-              </span>
+              <Badge tone="neutral">LGPD OK</Badge>
             </div>
 
             {/* Indicator 1: Margem Bruta */}
-            <div className="space-y-1 group">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                <span className="text-xs text-ink dark:text-ink-dark font-semibold flex items-center gap-1.5">
                   Margem Bruta
-                  <div className="relative group/tooltip">
-                    <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
-                    <div className="hidden group-hover/tooltip:block absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2 bg-zinc-950 text-white text-[9px] rounded shadow-lg z-20 leading-snug">
-                      Fórmula: (Faturamento - Custo de Mercadorias/Serviços) /
-                      Faturamento.
-                      <br />
-                      Origem: Contas a Receber do mês atual x Contas a Pagar
-                      do mês de Categoria "Insumos" ou "Infraestrutura TI".
-                    </div>
-                  </div>
+                  <InfoTooltip content='Fórmula: (Faturamento - Custo de Mercadorias/Serviços) / Faturamento. Origem: Contas a Receber do mês atual x Contas a Pagar do mês de Categoria "Insumos" ou "Infraestrutura TI".' />
                 </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                <span className="text-[11px] text-ink-soft dark:text-ink-soft-dark font-medium">
                   Ref: Mês Atual
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
                 {margemBruta !== null ? (
                   <>
-                    <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+                    <span className="text-lg font-bold text-ink dark:text-ink-dark">
                       {margemBruta.toFixed(1)}%
                     </span>
                     {margemBrutaTrendPp !== null ? (
                       <span
-                        className={`text-[10px] font-medium flex items-center ${margemBrutaTrendPp >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                        className={`text-[10px] font-semibold flex items-center ${margemBrutaTrendPp >= 0 ? "text-brand-green-600 dark:text-emerald-400" : "text-brand-red-600 dark:text-red-400"}`}
                       >
                         {margemBrutaTrendPp >= 0 ? (
                           <ArrowUpRight className="h-3 w-3 mr-0.5" />
@@ -745,13 +641,13 @@ export default function DashboardView({
                         {margemBrutaTrendPp.toFixed(1)}pp vs mês anterior
                       </span>
                     ) : (
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                         Sem dado do mês anterior
                       </span>
                     )}
                   </>
                 ) : (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                  <span className="text-xs text-ink-soft dark:text-ink-soft-dark italic">
                     Dados insuficientes para cálculo
                   </span>
                 )}
@@ -759,21 +655,13 @@ export default function DashboardView({
             </div>
 
             {/* Indicator 2: Taxa de Inadimplência */}
-            <div className="space-y-1 pt-2 border-t border-zinc-50 dark:border-zinc-800">
+            <div className="space-y-1 pt-2 border-t border-line dark:border-line-dark">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                <span className="text-xs text-ink dark:text-ink-dark font-semibold flex items-center gap-1.5">
                   Inadimplência
-                  <div className="relative group/tooltip">
-                    <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
-                    <div className="hidden group-hover/tooltip:block absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2 bg-zinc-950 text-white text-[9px] rounded shadow-lg z-20 leading-snug">
-                      Fórmula: Contas a Receber Vencidas / Total Faturamento
-                      Emitido.
-                      <br />
-                      Origem: Recebíveis em status "Vencido".
-                    </div>
-                  </div>
+                  <InfoTooltip content='Fórmula: Contas a Receber Vencidas / Total Faturamento Emitido. Origem: Recebíveis em status "Vencido".' />
                 </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                <span className="text-[11px] text-ink-soft dark:text-ink-soft-dark font-medium">
                   Ref: Histórico
                 </span>
               </div>
@@ -781,18 +669,18 @@ export default function DashboardView({
                 {inadimplenciaRate !== null ? (
                   <>
                     <span
-                      className={`text-lg font-semibold ${inadimplenciaRate > 5 ? "text-rose-600 dark:text-rose-400" : "text-zinc-800 dark:text-zinc-100"}`}
+                      className={`text-lg font-bold ${inadimplenciaRate > 5 ? "text-brand-red-600 dark:text-red-400" : "text-ink dark:text-ink-dark"}`}
                     >
                       {inadimplenciaRate.toFixed(1)}%
                     </span>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                       {inadimplenciaRate < 5
                         ? "Dentro da meta saudável (<5%)"
                         : "Acima da meta recomendada (<5%)"}
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                  <span className="text-xs text-ink-soft dark:text-ink-soft-dark italic">
                     Dados insuficientes
                   </span>
                 )}
@@ -800,36 +688,25 @@ export default function DashboardView({
             </div>
 
             {/* Indicator 3: Ticket Médio */}
-            <div className="space-y-1 pt-2 border-t border-zinc-50 dark:border-zinc-800">
+            <div className="space-y-1 pt-2 border-t border-line dark:border-line-dark">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                <span className="text-xs text-ink dark:text-ink-dark font-semibold flex items-center gap-1.5">
                   Ticket Médio
-                  <div className="relative group/tooltip">
-                    <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
-                    <div className="hidden group-hover/tooltip:block absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2 bg-zinc-950 text-white text-[9px] rounded shadow-lg z-20 leading-snug">
-                      Fórmula: Total de Recebíveis / Quantidade de Clientes
-                      Únicos.
-                      <br />
-                      Origem: Faturamentos emitidos nos últimos 30 dias.
-                    </div>
-                  </div>
+                  <InfoTooltip content="Fórmula: Total de Recebíveis / Quantidade de Clientes Únicos. Origem: Faturamentos emitidos nos últimos 30 dias." />
                 </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                <span className="text-[11px] text-ink-soft dark:text-ink-soft-dark font-medium">
                   Ref: 30 dias
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
                 {ticketMedio !== null ? (
                   <>
-                    <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
-                      R${" "}
-                      {ticketMedio.toLocaleString("pt-BR", {
-                        maximumFractionDigits: 0,
-                      })}
+                    <span className="text-lg font-bold text-ink dark:text-ink-dark">
+                      R$ {ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
                     </span>
                     {ticketMedioTrendPct !== null ? (
                       <span
-                        className={`text-[10px] font-medium flex items-center ${ticketMedioTrendPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                        className={`text-[10px] font-semibold flex items-center ${ticketMedioTrendPct >= 0 ? "text-brand-green-600 dark:text-emerald-400" : "text-brand-red-600 dark:text-red-400"}`}
                       >
                         {ticketMedioTrendPct >= 0 ? (
                           <ArrowUpRight className="h-3 w-3" />
@@ -840,13 +717,13 @@ export default function DashboardView({
                         {ticketMedioTrendPct.toFixed(1)}% vs período anterior
                       </span>
                     ) : (
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                         Sem dado do período anterior
                       </span>
                     )}
                   </>
                 ) : (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                  <span className="text-xs text-ink-soft dark:text-ink-soft-dark italic">
                     Sem dados suficientes
                   </span>
                 )}
@@ -854,39 +731,28 @@ export default function DashboardView({
             </div>
 
             {/* Indicator 4: Ciclo Financeiro */}
-            <div className="space-y-1 pt-2 border-t border-zinc-50 dark:border-zinc-800">
+            <div className="space-y-1 pt-2 border-t border-line dark:border-line-dark">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                <span className="text-xs text-ink dark:text-ink-dark font-semibold flex items-center gap-1.5">
                   Ciclo Financeiro
-                  <div className="relative group/tooltip">
-                    <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
-                    <div className="hidden group-hover/tooltip:block absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2 bg-zinc-950 text-white text-[9px] rounded shadow-lg z-20 leading-snug">
-                      Fórmula: Prazo Médio de Estocagem + Prazo Médio de
-                      Recebimento - Prazo Médio de Pagamento.
-                      <br />
-                      Origem: recebimento e pagamento calculados a partir das
-                      datas reais de emissão e liquidação; estocagem é uma
-                      referência de mercado por segmento (não rastreada pelo
-                      sistema).
-                    </div>
-                  </div>
+                  <InfoTooltip content="Fórmula: Prazo Médio de Estocagem + Prazo Médio de Recebimento - Prazo Médio de Pagamento. Origem: recebimento e pagamento calculados a partir das datas reais de emissão e liquidação; estocagem é uma referência de mercado por segmento (não rastreada pelo sistema)." />
                 </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                <span className="text-[11px] text-ink-soft dark:text-ink-soft-dark font-medium">
                   Geral
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
                 {cicloFinanceiroDays !== null ? (
                   <>
-                    <span className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+                    <span className="text-lg font-bold text-ink dark:text-ink-dark">
                       {cicloFinanceiroDays} dias
                     </span>
-                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
+                    <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-medium">
                       Tempo médio de conversão
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                  <span className="text-xs text-ink-soft dark:text-ink-soft-dark italic">
                     Dados insuficientes para cálculo
                   </span>
                 )}
@@ -894,99 +760,31 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 p-3 rounded-sm mt-4 text-[10px] text-zinc-400 dark:text-zinc-500 leading-snug flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-zinc-500 dark:text-zinc-400 shrink-0 mt-0.5" />
+          <div className="pt-3 mt-4 border-t border-line dark:border-line-dark bg-canvas dark:bg-white/5 p-3 rounded-lg text-[10px] text-ink-soft dark:text-ink-soft-dark leading-snug flex items-start gap-2">
+            <Sparkles className="h-4 w-4 text-brand-gold-600 shrink-0 mt-0.5" />
             <span>
               Fórmulas e premissas validadas com a contabilidade externa
               regulada.
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Two Columns: Recent logs and Upcoming accounts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Next Vencimentos list */}
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wide">
-                Próximos Vencimentos
-              </h3>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                Contas que vencem nos próximos dias.
-              </p>
-            </div>
-            {canOpenPayables && (
-              <button
-                onClick={() => onNavigate("payable")}
-                className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:underline flex items-center gap-0.5"
-              >
-                Ver Tudo <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {companyPayables
-              .filter((ap) => ap.status !== "Paga" && ap.status !== "Cancelada")
-              .slice(0, 4)
-              .map((ap) => {
-                const isOverdue = new Date(ap.dueDate) < new Date();
-                return (
-                  <div
-                    key={ap.id}
-                    className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-sm border border-zinc-200/50 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/60 transition-colors"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full ${isOverdue ? "bg-rose-500" : "bg-amber-500"}`}
-                        />
-                        <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-100 truncate max-w-[150px]">
-                          {ap.description}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block font-medium">
-                        Favorecido: {ap.supplier} | Vencimento:{" "}
-                        {new Date(ap.dueDate).toLocaleDateString("pt-BR")}
-                      </span>
-                    </div>
-                    <div className="text-right space-y-0.5">
-                      <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                        R${" "}
-                        {ap.finalAmount.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-semibold block text-center ${
-                          ap.status === "Aguardando aprovação"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                            : isOverdue
-                              ? "bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300"
-                              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                        }`}
-                      >
-                        {ap.status}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            {companyPayables.filter(
-              (ap) => ap.status !== "Paga" && ap.status !== "Cancelada",
-            ).length === 0 && (
-              <p className="text-center text-xs text-zinc-400 dark:text-zinc-500 py-6">
-                Nenhum vencimento pendente.
-              </p>
-            )}
-          </div>
+          </Card>
         </div>
 
-        {/* Segunda coluna reservada para métricas de módulos futuros. */}
-        <div aria-hidden="true" />
+        <FinancialCalendar
+          key={activeCompany.id}
+          events={calendarEvents}
+          onEventClick={(event) => {
+            if (event.type === "payable" && canOpenPayables) {
+              onNavigate("payable");
+            } else if (event.type === "receivable" && canOpenReceivables) {
+              onNavigate("receivable");
+            } else if (event.type === "approval" && canOpenApprovals) {
+              onNavigate("approvals");
+            }
+          }}
+        />
       </div>
+
     </div>
   );
 }

@@ -1,15 +1,53 @@
 @import "tailwindcss";
 
 /* Escopo o dark mode por classe (.dark) em vez do padrão media-query, para permitir
-   um toggle claro/escuro isolado dentro do conteúdo do app, sem afetar o menu lateral. */
+   um toggle claro/escuro controlado pelo usuário e persistido. A classe é aplicada
+   em <html> (ver App.tsx), então cobre o app inteiro — menu lateral, cabeçalho e
+   conteúdo — em vez de apenas a área de conteúdo. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Fonte única do sistema: substitui o stack padrão do Tailwind para que "font-sans"
-   e o corpo do documento resolvam sempre para a mesma família, em qualquer tela. */
+/* Tokens de marca do Idex Finance. Nomeados com prefixo "brand-" para não colidir
+   com a paleta padrão do Tailwind (que já define red-600, green-600 etc. para
+   outros usos). Isto substitui o hex literal repetido centenas de vezes pelas
+   telas por classes utilitárias nomeadas (bg-brand-navy-900, text-brand-red-600...). */
 @theme {
   --font-sans:
     "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
+
+  /* Navy institucional */
+  --color-brand-navy-950: #061425; /* navy profundo — painéis institucionais, sidebar */
+  --color-brand-navy-900: #0b2c52; /* navy principal — ações navy, títulos estratégicos */
+  --color-brand-navy-700: #174e83; /* azul de apoio */
+
+  /* Vermelho institucional */
+  --color-brand-red-600: #c8102e; /* vermelho institucional — botão principal, alertas */
+  --color-brand-red-500: #e20d35; /* vermelho vibrante — hover/estado ativo de ação */
+  --color-brand-red-50: #fff0f3; /* fundo suave para badges/alertas vermelhos */
+
+  /* Dourado institucional */
+  --color-brand-gold-600: #e7b967; /* dourado de destaque */
+  --color-brand-gold-300: #f2d3a0; /* dourado institucional — detalhes, badges premium */
+
+  /* Verde financeiro */
+  --color-brand-green-600: #15996f; /* entradas, recebimentos, resultados positivos */
+  --color-brand-green-50: #eaf8f3; /* fundo suave para badges/alertas verdes */
+
+  --color-brand-blue-50: #eaf1f8; /* fundo suave para destaques azuis */
+
+  /* Neutros e superfícies — tema claro */
+  --color-canvas: #f7f7fa; /* fundo geral da aplicação */
+  --color-surface: #ffffff; /* cards, painéis, modais */
+  --color-ink: #172033; /* texto principal */
+  --color-ink-soft: #6f7687; /* texto secundário */
+  --color-line: #e7e9ef; /* bordas */
+
+  /* Neutros e superfícies — tema escuro */
+  --color-canvas-dark: #061425;
+  --color-surface-dark: #0b1626;
+  --color-ink-dark: #eef2f8;
+  --color-ink-soft-dark: #9db8d9;
+  --color-line-dark: #1c2c42;
 }
 
 html {
@@ -18,19 +56,144 @@ html {
     Arial, sans-serif;
 }
 
-/* O shell da aplicação é sempre claro (o menu lateral tem seu próprio fundo escuro fixo).
-   Sem isto, o navegador pinta a área fora do conteúdo (zoom out, overscroll) com o
-   canvas padrão do sistema, que aparece cinza quando o SO/navegador está em modo escuro. */
+/* O plano de fundo do documento acompanha o tema global (classe .dark em <html>,
+   ver App.tsx). Sem isto, o navegador pinta a área fora do conteúdo (zoom out,
+   overscroll) com o canvas padrão do sistema operacional. */
 html,
 body,
 #root {
-  background-color: #fafafa;
+  background-color: #f7f7fa;
   min-height: 100%;
 }
 
-/* Superfícies principais: separação suave sobre o fundo quente da aplicação. */
+html.dark,
+html.dark body,
+html.dark #root {
+  background-color: #061425;
+}
+
+/* Cartões de gráficos inspirados em dashboards executivos: superfície limpa,
+   cantos amplos, profundidade e uma luz institucional muito discreta. */
+.idex-chart-card {
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(11, 44, 82, 0.08) !important;
+  border-radius: 1rem !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(231, 185, 103, 0.09), transparent 34%),
+    #ffffff !important;
+  box-shadow:
+    0 22px 48px rgba(6, 20, 37, 0.11),
+    0 5px 16px rgba(23, 78, 131, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .idex-chart-card {
+  border-color: rgba(157, 184, 217, 0.12) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(231, 185, 103, 0.08), transparent 34%),
+    #0b1626 !important;
+  box-shadow:
+    0 24px 52px rgba(0, 0, 0, 0.3),
+    0 6px 18px rgba(6, 20, 37, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.idex-chart-card .recharts-cartesian-grid line {
+  stroke: rgba(111, 118, 135, 0.14) !important;
+}
+
+html.dark .idex-chart-card .recharts-cartesian-grid line {
+  stroke: rgba(157, 184, 217, 0.12) !important;
+}
+
+.idex-chart-card .recharts-legend-item-text {
+  color: #6f7687 !important;
+}
+
+html.dark .idex-chart-card .recharts-legend-item-text {
+  color: #9db8d9 !important;
+}
+
+/* Superfícies principais (legado): separação suave sobre o fundo da aplicação
+   para telas que ainda não migraram para o componente <Card /> do design system.
+   Mantido para não regredir a aparência das telas fora do escopo desta fase;
+   será removido quando todas as telas usarem <Card />. */
 .bg-white.rounded-xl.border:not([class*="border-blue"]):not([class*="border-emerald"]):not([class*="border-amber"]):not([class*="border-rose"]):not([class*="border-red"]),
 .bg-white.rounded-2xl.border:not([class*="border-blue"]):not([class*="border-emerald"]):not([class*="border-amber"]):not([class*="border-rose"]):not([class*="border-red"]) {
   border-color: rgba(39, 39, 42, 0.08);
   box-shadow: 0 1px 2px rgba(24, 24, 27, 0.025);
+}
+
+/* Animações curtas e discretas (spec: hover, abertura de menu/modal/dropdown/toast). */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drawerInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawerInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* prefers-reduced-motion: desativa transições/animações não essenciais. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

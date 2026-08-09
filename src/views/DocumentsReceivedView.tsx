@@ -16,6 +16,8 @@ import FileTypeIcon from "../components/FileTypeIcon";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
+import { Badge, BadgeTone, Button, Card, MetricCard, Modal } from "../components/ui";
+import { MetricTone } from "../components/ui/MetricCard";
 
 const STATUS: Document["status"][] = [
   "Aguardando Análise",
@@ -23,50 +25,32 @@ const STATUS: Document["status"][] = [
   "Lançado",
   "Cancelado",
 ];
-const statusStyle: Record<Document["status"], string> = {
-  "Aguardando Análise":
-    "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
-  "Aguardando Aprovação":
-    "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
-  Compartilhado: "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300",
-  Lançado:
-    "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
-  Cancelado: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+const STATUS_TONE: Record<Document["status"], BadgeTone> = {
+  "Aguardando Análise": "gold",
+  "Aguardando Aprovação": "navy",
+  Compartilhado: "navy",
+  Lançado: "green",
+  Cancelado: "neutral",
+};
+// Pílulas compactas para as colunas Status/Origem da grade densa (table-fixed) —
+// o Badge padrão (rounded-full + dot) não cabe nas colunas estreitas de 8-12%.
+const PILL_TONE_CLASS: Record<BadgeTone, string> = {
+  neutral: "bg-zinc-100 text-zinc-600 dark:bg-white/5 dark:text-ink-soft-dark",
+  navy: "bg-brand-blue-50 text-brand-navy-900 dark:bg-brand-navy-700/20 dark:text-brand-navy-700/90",
+  red: "bg-brand-red-50 text-brand-red-600 dark:bg-brand-red-600/15 dark:text-red-300",
+  green: "bg-brand-green-50 text-brand-green-600 dark:bg-brand-green-600/15 dark:text-emerald-300",
+  gold: "bg-brand-gold-300/25 text-amber-700 dark:bg-brand-gold-600/15 dark:text-brand-gold-300",
 };
 const STATUS_VISUALS: Record<
   Document["status"],
-  { icon: typeof Clock; tint: string }
+  { icon: typeof Clock; tone: MetricTone }
 > = {
-  "Aguardando Análise": {
-    icon: Clock,
-    tint: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
-  },
-  "Aguardando Aprovação": {
-    icon: Send,
-    tint: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300",
-  },
-  Compartilhado: {
-    icon: Send,
-    tint: "bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
-  },
-  Lançado: {
-    icon: Check,
-    tint: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
-  },
-  Cancelado: {
-    icon: X,
-    tint: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
-  },
+  "Aguardando Análise": { icon: Clock, tone: "gold" },
+  "Aguardando Aprovação": { icon: Send, tone: "navy" },
+  Compartilhado: { icon: Send, tone: "navy" },
+  Lançado: { icon: Check, tone: "green" },
+  Cancelado: { icon: X, tone: "neutral" },
 };
-const DOC_AVATAR_PALETTE = [
-  "bg-indigo-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-sky-500",
-  "bg-purple-500",
-  "bg-teal-500",
-];
 const getInitials = (name: string) =>
   name
     .trim()
@@ -75,19 +59,12 @@ const getInitials = (name: string) =>
     .map((word) => word[0])
     .join("")
     .toUpperCase();
-const getAvatarTint = (seed: string) => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return DOC_AVATAR_PALETTE[Math.abs(hash) % DOC_AVATAR_PALETTE.length];
-};
 // Estilo dos inputs/selects dentro de <Field>, reaproveitado nos QuickAddSelect
 // para que o botão "+" de cadastro rápido fique visualmente igual aos demais campos.
 const FIELD_LABEL_CLASS =
-  "block text-[9px] font-semibold text-zinc-600 dark:text-zinc-400";
+  "block text-[9px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide";
 const FIELD_SELECT_CLASS =
-  "mt-1 w-full rounded-sm border border-blue-200 dark:border-[#3E6DA6]/40 bg-blue-50/60 dark:bg-[#123B6B]/10 px-2.5 py-2 text-xs text-zinc-800 dark:text-zinc-100 shadow-sm transition-colors hover:border-blue-400 dark:hover:border-[#3E6DA6]/70 hover:bg-blue-50 dark:hover:bg-[#123B6B]/20 focus:border-[#0B2C52] dark:focus:border-[#9DB8D9] focus:bg-white dark:focus:bg-[#091320] focus:outline-none focus:ring-2 focus:ring-[#0B2C52]/15 dark:focus:ring-[#9DB8D9]/20 dark:[color-scheme:dark]";
+  "mt-1 w-full rounded-lg border border-line dark:border-line-dark bg-canvas dark:bg-white/5 px-2.5 py-2 text-xs text-ink dark:text-ink-dark shadow-sm transition-colors hover:border-brand-navy-700/40 dark:hover:border-brand-navy-700/50 focus:border-brand-navy-700 focus:bg-surface dark:focus:bg-surface-dark focus:outline-none focus:ring-2 focus:ring-brand-navy-700/20 dark:[color-scheme:dark]";
 const categoryOptions: Document["category"][] = [
   "Nota fiscal",
   "Boleto",
@@ -204,9 +181,9 @@ export default function DocumentsReceivedView() {
   useEffect(() => setApprovalRecipientId(""), [activeCompany?.id]);
   if (!["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)) {
     return (
-      <div className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-8 text-center text-xs text-zinc-500 dark:text-zinc-400">
+      <Card className="text-center text-xs text-ink-soft dark:text-ink-soft-dark">
         A fila de lançamentos é exclusiva da equipe BPO.
-      </div>
+      </Card>
     );
   }
   if (!activeCompany) return null;
@@ -350,396 +327,368 @@ export default function DocumentsReceivedView() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight font-sans">
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">
             Lançamentos
-          </h2>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-sans">
+          </h1>
+          <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed mt-1">
             Confira documentos recebidos ou registre um lançamento avulso
             diretamente no financeiro.
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <button
-            onClick={() => setNewLaunchOpen(true)}
-            className="self-end bg-[#0B2C52] text-white rounded-sm px-4 py-2.5 text-xs font-semibold flex items-center gap-2 cursor-pointer"
-          >
-            <Plus className="h-4 w-4" /> Novo lançamento
-          </button>
+          <Button icon={<Plus className="h-4 w-4" />} variant="secondary" onClick={() => setNewLaunchOpen(true)}>
+            Novo lançamento
+          </Button>
         </div>
       </div>
 
-      {newLaunchOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setNewLaunchOpen(false)}
+      <Modal
+        open={newLaunchOpen}
+        onClose={() => setNewLaunchOpen(false)}
+        title="Novo lançamento avulso"
+        description="Será incluído diretamente no financeiro com status Lançado, sem aprovação do cliente."
+        size="lg"
+        footer={
+          <>
+            <Button variant="text" onClick={() => setNewLaunchOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="standalone-launch-form"
+              className="bg-brand-green-600! hover:bg-emerald-600!"
+              icon={<Check className="h-4 w-4" />}
+            >
+              Criar como lançado
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="standalone-launch-form"
+          onSubmit={submitStandalone}
+          className="grid sm:grid-cols-2 gap-3"
         >
-          <form
-            onSubmit={submitStandalone}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm shadow-2xl w-full max-w-2xl overflow-hidden"
+          <div className="sm:col-span-2">
+            <Field label="Tipo de lançamento" required>
+              <select
+                value={newLaunch.entryType}
+                onChange={(e) =>
+                  setNewLaunch({
+                    ...newLaunch,
+                    entryType: e.target.value as NonNullable<
+                      Document["entryType"]
+                    >,
+                  })
+                }
+              >
+                <option>Conta a Pagar</option>
+                <option>Conta a Receber</option>
+                <option>Transferência</option>
+              </select>
+            </Field>
+          </div>
+          {newLaunch.entryType === "Transferência" ? (
+            <Field label="Identificação da transferência" required>
+              <input
+                required
+                value={newLaunch.supplier}
+                onChange={(e) =>
+                  setNewLaunch({ ...newLaunch, supplier: e.target.value })
+                }
+              />
+            </Field>
+          ) : (
+            <QuickAddSelect
+              label={
+                newLaunch.entryType === "Conta a Receber"
+                  ? "Cliente"
+                  : "Fornecedor"
+              }
+              required
+              labelClassName={FIELD_LABEL_CLASS}
+              selectClassName={FIELD_SELECT_CLASS}
+              placeholder="Selecione"
+              value={newLaunch.supplier}
+              onChange={(value) =>
+                setNewLaunch({ ...newLaunch, supplier: value })
+              }
+              options={
+                newLaunch.entryType === "Conta a Receber"
+                  ? customers
+                  : suppliers
+              }
+              onAdd={(name) =>
+                addMasterData(
+                  newLaunch.entryType === "Conta a Receber"
+                    ? "CUSTOMER"
+                    : "SUPPLIER",
+                  name,
+                )
+              }
+            />
+          )}
+          <Field label="Valor" required>
+            <CurrencyInput
+              required
+              value={newLaunch.amount}
+              onChange={(amount) =>
+                setNewLaunch({ ...newLaunch, amount })
+              }
+            />
+          </Field>
+          <Field label="Vencimento" required>
+            <input
+              required
+              type="date"
+              value={newLaunch.dueDate}
+              onChange={(e) =>
+                setNewLaunch({ ...newLaunch, dueDate: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Número do documento">
+            <input
+              value={newLaunch.documentNumber}
+              onChange={(e) =>
+                setNewLaunch({
+                  ...newLaunch,
+                  documentNumber: e.target.value,
+                })
+              }
+            />
+          </Field>
+          <Field label="Tipo">
+            <select
+              value={newLaunch.category}
+              onChange={(e) =>
+                setNewLaunch({
+                  ...newLaunch,
+                  category: e.target.value as Document["category"],
+                })
+              }
+            >
+              {(documentTypes.length ? documentTypes : categoryOptions).map(
+                (item) => (
+                  <option key={item}>{item}</option>
+                ),
+              )}
+            </select>
+          </Field>
+          <QuickAddSelect
+            label="Categoria"
+            labelClassName={FIELD_LABEL_CLASS}
+            selectClassName={FIELD_SELECT_CLASS}
+            placeholder="Selecione"
+            value={newLaunch.expenseType}
+            onChange={(value) =>
+              setNewLaunch({ ...newLaunch, expenseType: value })
+            }
+            options={financialCategories}
+            onAdd={(name) => addMasterData("CATEGORY", name)}
+          />
+          <QuickAddSelect
+            label="Centro de custo"
+            labelClassName={FIELD_LABEL_CLASS}
+            selectClassName={FIELD_SELECT_CLASS}
+            placeholder="A classificar"
+            value={newLaunch.costCenter}
+            onChange={(value) =>
+              setNewLaunch({ ...newLaunch, costCenter: value })
+            }
+            options={costCenters}
+            onAdd={(name) => addMasterData("COST_CENTER", name)}
+          />
+          <Field
+            label={
+              newLaunch.entryType === "Transferência"
+                ? "Conta de origem"
+                : "Conta bancária"
+            }
           >
-            <div className="p-5 border-b border-zinc-200 dark:border-zinc-800 flex justify-between">
-              <div>
-                <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
-                  Novo lançamento avulso
-                </h3>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
-                  Será incluído diretamente no financeiro com status Lançado,
-                  sem aprovação do cliente.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setNewLaunchOpen(false)}
-                className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-5 grid sm:grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto">
-              <div className="sm:col-span-2">
-                <Field label="Tipo de lançamento" required>
-                  <select
-                    value={newLaunch.entryType}
-                    onChange={(e) =>
-                      setNewLaunch({
-                        ...newLaunch,
-                        entryType: e.target.value as NonNullable<
-                          Document["entryType"]
-                        >,
-                      })
-                    }
-                  >
-                    <option>Conta a Pagar</option>
-                    <option>Conta a Receber</option>
-                    <option>Transferência</option>
-                  </select>
-                </Field>
-              </div>
-              {newLaunch.entryType === "Transferência" ? (
-                <Field label="Identificação da transferência" required>
-                  <input
-                    required
-                    value={newLaunch.supplier}
-                    onChange={(e) =>
-                      setNewLaunch({ ...newLaunch, supplier: e.target.value })
-                    }
-                  />
-                </Field>
-              ) : (
-                <QuickAddSelect
-                  label={
-                    newLaunch.entryType === "Conta a Receber"
-                      ? "Cliente"
-                      : "Fornecedor"
-                  }
-                  required
-                  labelClassName={FIELD_LABEL_CLASS}
-                  selectClassName={FIELD_SELECT_CLASS}
-                  placeholder="Selecione"
-                  value={newLaunch.supplier}
-                  onChange={(value) =>
-                    setNewLaunch({ ...newLaunch, supplier: value })
-                  }
-                  options={
-                    newLaunch.entryType === "Conta a Receber"
-                      ? customers
-                      : suppliers
-                  }
-                  onAdd={(name) =>
-                    addMasterData(
-                      newLaunch.entryType === "Conta a Receber"
-                        ? "CUSTOMER"
-                        : "SUPPLIER",
-                      name,
-                    )
-                  }
-                />
-              )}
-              <Field label="Valor" required>
-                <CurrencyInput
-                  required
-                  value={newLaunch.amount}
-                  onChange={(amount) =>
-                    setNewLaunch({ ...newLaunch, amount })
-                  }
-                />
-              </Field>
-              <Field label="Vencimento" required>
-                <input
-                  required
-                  type="date"
-                  value={newLaunch.dueDate}
-                  onChange={(e) =>
-                    setNewLaunch({ ...newLaunch, dueDate: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Número do documento">
-                <input
-                  value={newLaunch.documentNumber}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      documentNumber: e.target.value,
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Tipo">
-                <select
-                  value={newLaunch.category}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      category: e.target.value as Document["category"],
-                    })
-                  }
-                >
-                  {(documentTypes.length ? documentTypes : categoryOptions).map(
-                    (item) => (
-                      <option key={item}>{item}</option>
-                    ),
-                  )}
-                </select>
-              </Field>
-              <QuickAddSelect
-                label="Categoria"
-                labelClassName={FIELD_LABEL_CLASS}
-                selectClassName={FIELD_SELECT_CLASS}
-                placeholder="Selecione"
-                value={newLaunch.expenseType}
-                onChange={(value) =>
-                  setNewLaunch({ ...newLaunch, expenseType: value })
-                }
-                options={financialCategories}
-                onAdd={(name) => addMasterData("CATEGORY", name)}
-              />
-              <QuickAddSelect
-                label="Centro de custo"
-                labelClassName={FIELD_LABEL_CLASS}
-                selectClassName={FIELD_SELECT_CLASS}
-                placeholder="A classificar"
-                value={newLaunch.costCenter}
-                onChange={(value) =>
-                  setNewLaunch({ ...newLaunch, costCenter: value })
-                }
-                options={costCenters}
-                onAdd={(name) => addMasterData("COST_CENTER", name)}
-              />
-              <Field
-                label={
-                  newLaunch.entryType === "Transferência"
-                    ? "Conta de origem"
-                    : "Conta bancária"
+            <select
+              required={newLaunch.entryType === "Transferência"}
+              value={newLaunch.bankAccountId}
+              onChange={(e) =>
+                setNewLaunch({
+                  ...newLaunch,
+                  bankAccountId: e.target.value,
+                })
+              }
+            >
+              <option value="">A definir</option>
+              {bankAccounts
+                .filter((item) => item.companyId === activeCompany.id)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.bankName} · {item.accountNumber}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          {newLaunch.entryType === "Transferência" && (
+            <Field label="Conta de destino" required>
+              <select
+                required
+                value={newLaunch.destinationBankAccountId}
+                onChange={(e) =>
+                  setNewLaunch({
+                    ...newLaunch,
+                    destinationBankAccountId: e.target.value,
+                  })
                 }
               >
-                <select
-                  required={newLaunch.entryType === "Transferência"}
-                  value={newLaunch.bankAccountId}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      bankAccountId: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">A definir</option>
-                  {bankAccounts
-                    .filter((item) => item.companyId === activeCompany.id)
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.bankName} · {item.accountNumber}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              {newLaunch.entryType === "Transferência" && (
-                <Field label="Conta de destino" required>
-                  <select
-                    required
-                    value={newLaunch.destinationBankAccountId}
-                    onChange={(e) =>
-                      setNewLaunch({
-                        ...newLaunch,
-                        destinationBankAccountId: e.target.value,
-                      })
-                    }
-                  >
-                    <option value="">Selecione</option>
-                    {bankAccounts
-                      .filter(
-                        (item) =>
-                          item.companyId === activeCompany.id &&
-                          item.id !== newLaunch.bankAccountId,
-                      )
-                      .map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.bankName} · {item.accountNumber}
-                        </option>
-                      ))}
-                  </select>
-                </Field>
-              )}
-              <QuickAddSelect
-                label="Forma de pagamento"
-                labelClassName={FIELD_LABEL_CLASS}
-                selectClassName={FIELD_SELECT_CLASS}
-                placeholder="A definir"
-                value={newLaunch.paymentMethod}
-                onChange={(value) =>
-                  setNewLaunch({ ...newLaunch, paymentMethod: value })
-                }
-                options={paymentMethods}
-                onAdd={(name) => addMasterData("PAYMENT_METHOD", name)}
-              />
-              <Field label="Recorrência">
-                <select
-                  value={newLaunch.recurrence}
-                  onChange={(e) =>
-                    setNewLaunch({
-                      ...newLaunch,
-                      recurrence: e.target.value as NonNullable<
-                        Document["recurrence"]
-                      >,
-                    })
-                  }
-                >
-                  <option>Nenhuma</option>
-                  <option>Parcelada</option>
-                  <option>Semanal</option>
-                  <option>Mensal</option>
-                  <option>Trimestral</option>
-                  <option>Anual</option>
-                </select>
-              </Field>
-              {newLaunch.recurrence === "Parcelada" &&
-                newLaunch.entryType !== "Transferência" && (
-                  <Field label="Quantidade de parcelas" required>
-                    <input
-                      type="number"
-                      min={2}
-                      step={1}
-                      value={newLaunch.installmentCount}
-                      onChange={(e) =>
-                        setNewLaunch({
-                          ...newLaunch,
-                          installmentCount: e.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                )}
-              <Field label="Competência" required>
+                <option value="">Selecione</option>
+                {bankAccounts
+                  .filter(
+                    (item) =>
+                      item.companyId === activeCompany.id &&
+                      item.id !== newLaunch.bankAccountId,
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.bankName} · {item.accountNumber}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          )}
+          <QuickAddSelect
+            label="Forma de pagamento"
+            labelClassName={FIELD_LABEL_CLASS}
+            selectClassName={FIELD_SELECT_CLASS}
+            placeholder="A definir"
+            value={newLaunch.paymentMethod}
+            onChange={(value) =>
+              setNewLaunch({ ...newLaunch, paymentMethod: value })
+            }
+            options={paymentMethods}
+            onAdd={(name) => addMasterData("PAYMENT_METHOD", name)}
+          />
+          <Field label="Recorrência">
+            <select
+              value={newLaunch.recurrence}
+              onChange={(e) =>
+                setNewLaunch({
+                  ...newLaunch,
+                  recurrence: e.target.value as NonNullable<
+                    Document["recurrence"]
+                  >,
+                })
+              }
+            >
+              <option>Nenhuma</option>
+              <option>Parcelada</option>
+              <option>Semanal</option>
+              <option>Mensal</option>
+              <option>Trimestral</option>
+              <option>Anual</option>
+            </select>
+          </Field>
+          {newLaunch.recurrence === "Parcelada" &&
+            newLaunch.entryType !== "Transferência" && (
+              <Field label="Quantidade de parcelas" required>
                 <input
-                  required
-                  type="month"
-                  value={newLaunch.competenceMonth}
+                  type="number"
+                  min={2}
+                  step={1}
+                  value={newLaunch.installmentCount}
                   onChange={(e) =>
                     setNewLaunch({
                       ...newLaunch,
-                      competenceMonth: e.target.value,
+                      installmentCount: e.target.value,
                     })
                   }
                 />
               </Field>
-              <div className="sm:col-span-2">
-                <Field label="Descrição" required>
-                  <textarea
-                    required
-                    rows={3}
-                    value={newLaunch.description}
-                    onChange={(e) =>
-                      setNewLaunch({
-                        ...newLaunch,
-                        description: e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <div className="sm:col-span-2">
-                <Field label="Observações">
-                  <textarea
-                    rows={2}
-                    value={newLaunch.notes}
-                    onChange={(e) =>
-                      setNewLaunch({ ...newLaunch, notes: e.target.value })
-                    }
-                  />
-                </Field>
-              </div>
-            </div>
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setNewLaunchOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button className="px-4 py-2 bg-emerald-600 text-white rounded-sm text-xs font-semibold flex gap-1.5 items-center cursor-pointer">
-                <Check className="h-4 w-4" /> Criar como lançado
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+            )}
+          <Field label="Competência" required>
+            <input
+              required
+              type="month"
+              value={newLaunch.competenceMonth}
+              onChange={(e) =>
+                setNewLaunch({
+                  ...newLaunch,
+                  competenceMonth: e.target.value,
+                })
+              }
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Descrição" required>
+              <textarea
+                required
+                rows={3}
+                value={newLaunch.description}
+                onChange={(e) =>
+                  setNewLaunch({
+                    ...newLaunch,
+                    description: e.target.value,
+                  })
+                }
+              />
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            <Field label="Observações">
+              <textarea
+                rows={2}
+                value={newLaunch.notes}
+                onChange={(e) =>
+                  setNewLaunch({ ...newLaunch, notes: e.target.value })
+                }
+              />
+            </Field>
+          </div>
+        </form>
+      </Modal>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {STATUS.map((status) => {
           const visual = STATUS_VISUALS[status];
-          const VisualIcon = visual.icon;
           return (
-            <button
+            <MetricCard
               key={status}
+              icon={<visual.icon strokeWidth={2.25} />}
+              label={status}
+              value={String(counts(status))}
+              helpText="Documentos"
+              tone={visual.tone}
               onClick={() => setStatusFilter(status)}
-              className={`bg-white dark:bg-[#091320] rounded-sm border p-3 text-left cursor-pointer transition flex flex-col gap-2 ${statusFilter === status ? "border-[#0B2C52] dark:border-[#9DB8D9] ring-2 ring-[#0B2C52]/10 dark:ring-[#9DB8D9]/20" : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
-            >
-              <div
-                className={`h-7 w-7 rounded-sm flex items-center justify-center ${visual.tint}`}
-              >
-                <VisualIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-              </div>
-              <div>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-semibold">
-                  {status}
-                </p>
-                <p className="text-2xl font-semibold mt-0.5 text-zinc-900 dark:text-zinc-50">
-                  {counts(status)}
-                </p>
-                <p className="text-[9px] text-zinc-400 dark:text-zinc-500">
-                  Documentos
-                </p>
-              </div>
-            </button>
+              className={
+                statusFilter === status
+                  ? "border-brand-navy-700 ring-2 ring-brand-navy-700/15"
+                  : undefined
+              }
+            />
           );
         })}
       </div>
 
       <div className="grid xl:grid-cols-[minmax(0,2.35fr)_minmax(340px,0.85fr)] 2xl:grid-cols-[minmax(0,2.6fr)_minmax(360px,0.8fr)] gap-4 items-start">
-        <section className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm overflow-hidden shadow-sm">
-          <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap gap-2">
+        <Card padding={false} className="overflow-hidden">
+          <div className="p-3 border-b border-line dark:border-line-dark flex flex-wrap gap-2">
             <button
               onClick={() => setStatusFilter("ALL")}
-              className={`px-3 py-2 rounded-sm text-[10px] font-semibold cursor-pointer ${statusFilter === "ALL" ? "bg-[#0B2C52] text-white" : "bg-zinc-50 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-300"}`}
+              className={`px-3 py-2 rounded-lg text-[10px] font-semibold cursor-pointer transition-colors ${statusFilter === "ALL" ? "bg-brand-navy-900 text-white" : "bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark"}`}
             >
               Todos{" "}
               <span className="ml-1 opacity-70">{companyDocuments.length}</span>
             </button>
             <div className="relative flex-1 min-w-52">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar documento ou fornecedor..."
-                className="w-full bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded-sm pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#C8102E]"
+                className="w-full bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark placeholder:text-ink-soft dark:placeholder:text-ink-soft-dark border border-line dark:border-line-dark rounded-lg pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30"
               />
             </div>
-            <button className="border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-sm px-3 text-xs flex items-center gap-1.5 cursor-pointer">
+            <button className="border border-line dark:border-line-dark text-ink dark:text-ink-dark hover:bg-canvas dark:hover:bg-white/5 rounded-lg px-3 text-xs flex items-center gap-1.5 cursor-pointer">
               <Filter className="h-3.5 w-3.5" /> Filtros
             </button>
             {selectedEligible.length > 0 && (
@@ -750,7 +699,7 @@ export default function DocumentsReceivedView() {
                   onChange={(event) =>
                     setApprovalRecipientId(event.target.value)
                   }
-                  className="border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 dark:[color-scheme:dark]"
+                  className="border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]"
                 >
                   <option value="">Cliente aprovador</option>
                   {approvalRecipients.map((user) => (
@@ -759,26 +708,28 @@ export default function DocumentsReceivedView() {
                     </option>
                   ))}
                 </select>
-                <button
-                  onClick={() => approveBatch(selectedEligible)}
+                <Button
+                  size="sm"
+                  variant="secondary"
                   disabled={!approvalRecipientId}
                   title={
                     approvalRecipientId
                       ? "Enviar selecionados para aprovação"
                       : "Selecione o cliente aprovador"
                   }
-                  className="bg-blue-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-zinc-400 text-white rounded-sm px-3 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  icon={<Send className="h-3.5 w-3.5" />}
+                  onClick={() => approveBatch(selectedEligible)}
                 >
-                  <Send className="h-3.5 w-3.5" /> Enviar para aprovação (
-                  {selectedEligible.length})
-                </button>
-                <button
+                  Enviar para aprovação ({selectedEligible.length})
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-brand-green-600! hover:bg-emerald-600!"
+                  icon={<Check className="h-3.5 w-3.5" />}
                   onClick={() => launchBatch(selectedEligible)}
-                  className="bg-emerald-600 text-white rounded-sm px-3 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Check className="h-3.5 w-3.5" /> Lançar selecionados (
-                  {selectedEligible.length})
-                </button>
+                  Lançar selecionados ({selectedEligible.length})
+                </Button>
               </div>
             )}
           </div>
@@ -796,13 +747,13 @@ export default function DocumentsReceivedView() {
                 <col className="w-[11%]" />
                 <col className="w-[11%]" />
               </colgroup>
-              <thead className="bg-zinc-50 dark:bg-[#091320]/60 text-[9px] uppercase text-zinc-500 dark:text-zinc-400">
+              <thead className="bg-canvas/70 dark:bg-white/[0.03] text-[9px] uppercase text-ink-soft dark:text-ink-soft-dark">
                 <tr>
                   <th className="p-3 w-8">
                     <button
                       onClick={toggleAllEligible}
                       title="Selecionar todos os lançamentos aptos"
-                      className={`block h-4 w-4 rounded border cursor-pointer ${eligibleDocuments.length > 0 && eligibleDocuments.every((item) => selectedIds.has(item.id)) ? "bg-blue-600 border-blue-600" : "bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-600"}`}
+                      className={`block h-4 w-4 rounded border cursor-pointer ${eligibleDocuments.length > 0 && eligibleDocuments.every((item) => selectedIds.has(item.id)) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
                     >
                       {eligibleDocuments.length > 0 &&
                         eligibleDocuments.every((item) =>
@@ -821,7 +772,7 @@ export default function DocumentsReceivedView() {
                   <th className="p-3">Recebido em</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <tbody className="divide-y divide-line dark:divide-line-dark">
                 {filtered.map((document) => (
                   <tr
                     key={document.id}
@@ -829,7 +780,7 @@ export default function DocumentsReceivedView() {
                       setSelectedId(document.id);
                       setDraft({});
                     }}
-                    className={`cursor-pointer ${selected?.id === document.id ? "bg-blue-50/60 dark:bg-blue-500/10 outline outline-1 -outline-offset-1 outline-blue-200 dark:outline-blue-500/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}
+                    className={`cursor-pointer transition-colors ${selected?.id === document.id ? "bg-brand-blue-50 dark:bg-brand-navy-700/15 outline outline-1 -outline-offset-1 outline-brand-navy-700/30" : "hover:bg-canvas dark:hover:bg-white/[0.03]"}`}
                   >
                     <td className="p-3">
                       <button
@@ -843,7 +794,7 @@ export default function DocumentsReceivedView() {
                             ? "Selecionar para lançamento em lote"
                             : "Este registro não está apto para lançamento"
                         }
-                        className={`block h-4 w-4 rounded border disabled:cursor-not-allowed ${selectedIds.has(document.id) ? "bg-blue-600 border-blue-600" : document.status === "Aguardando Análise" ? "bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-600 cursor-pointer" : "bg-zinc-100 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700"}`}
+                        className={`block h-4 w-4 rounded border disabled:cursor-not-allowed ${selectedIds.has(document.id) ? "bg-brand-navy-900 border-brand-navy-900" : document.status === "Aguardando Análise" ? "bg-surface dark:bg-surface-dark border-line dark:border-line-dark cursor-pointer" : "bg-canvas dark:bg-white/5 border-line dark:border-line-dark"}`}
                       >
                         {selectedIds.has(document.id) && (
                           <Check className="h-3.5 w-3.5 text-white" />
@@ -858,10 +809,10 @@ export default function DocumentsReceivedView() {
                           size="sm"
                         />
                         <div className="min-w-0">
-                          <p className="font-semibold text-zinc-900 dark:text-zinc-50 truncate max-w-56 2xl:max-w-72">
+                          <p className="font-semibold text-ink dark:text-ink-dark truncate max-w-56 2xl:max-w-72">
                             {document.name}
                           </p>
-                          <p className="text-[9px] text-zinc-400 dark:text-zinc-500">
+                          <p className="text-[9px] text-ink-soft dark:text-ink-soft-dark">
                             {document.category}
                           </p>
                           {document.mimeType !== "application/x-manual-entry" && (
@@ -869,14 +820,14 @@ export default function DocumentsReceivedView() {
                               url={document.signedUrl}
                               name={document.name}
                               iconOnly
-                              className="mt-1 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                              className="mt-1 text-brand-green-600 dark:text-emerald-300 hover:bg-brand-green-50 dark:hover:bg-brand-green-600/10"
                             />
                           )}
                         </div>
                       </div>
                     </td>
                     <td
-                      className="p-3 text-zinc-600 dark:text-zinc-300 truncate"
+                      className="p-3 text-ink dark:text-ink-dark truncate"
                       title={document.entryType || "Conta a Pagar"}
                     >
                       {document.entryType === "Conta a Pagar"
@@ -891,27 +842,25 @@ export default function DocumentsReceivedView() {
                     >
                       {document.supplier ? (
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span
-                            className={`h-5 w-5 rounded-full ${getAvatarTint(document.supplier)} text-white text-[8px] font-semibold flex items-center justify-center shrink-0`}
-                          >
+                          <span className="h-5 w-5 rounded-full bg-brand-navy-900 text-white text-[8px] font-semibold flex items-center justify-center shrink-0">
                             {getInitials(document.supplier)}
                           </span>
-                          <span className="truncate font-medium text-zinc-800 dark:text-zinc-200">
+                          <span className="truncate font-medium text-ink dark:text-ink-dark">
                             {document.supplier}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-zinc-400 dark:text-zinc-500">
+                        <span className="text-ink-soft dark:text-ink-soft-dark">
                           A confirmar
                         </span>
                       )}
                     </td>
-                    <td className="p-3 text-right font-mono whitespace-nowrap text-zinc-800 dark:text-zinc-100">
+                    <td className="p-3 text-right font-mono whitespace-nowrap text-ink dark:text-ink-dark">
                       {document.amount
                         ? `R$ ${document.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                         : "—"}
                     </td>
-                    <td className="p-3 whitespace-nowrap text-zinc-600 dark:text-zinc-300">
+                    <td className="p-3 whitespace-nowrap text-ink dark:text-ink-dark">
                       {document.dueDate
                         ? new Date(
                             `${document.dueDate}T12:00:00`,
@@ -919,16 +868,17 @@ export default function DocumentsReceivedView() {
                         : "—"}
                     </td>
                     <td className="p-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 text-[9px] font-semibold px-2 py-1 rounded whitespace-nowrap ${statusStyle[document.status]}`}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
+                      <span className={`inline-block whitespace-nowrap text-[9px] font-semibold px-1.5 py-1 rounded ${PILL_TONE_CLASS[STATUS_TONE[document.status]]}`}>
                         {document.status}
                       </span>
                     </td>
                     <td className="p-3">
                       <span
-                        className={`text-[9px] font-semibold px-2 py-1 rounded whitespace-nowrap ${(document.origin || (document.mimeType === "application/x-manual-entry" ? "Manual" : "Documento")) === "Manual" ? "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" : "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"}`}
+                        className={`inline-block whitespace-nowrap text-[9px] font-semibold px-1.5 py-1 rounded ${PILL_TONE_CLASS[
+                          (document.origin || (document.mimeType === "application/x-manual-entry" ? "Manual" : "Documento")) === "Manual"
+                            ? "gold"
+                            : "navy"
+                        ]}`}
                       >
                         {document.origin ||
                           (document.mimeType === "application/x-manual-entry"
@@ -937,7 +887,7 @@ export default function DocumentsReceivedView() {
                       </span>
                     </td>
                     <td
-                      className="p-3 text-zinc-600 dark:text-zinc-300 truncate"
+                      className="p-3 text-ink dark:text-ink-dark truncate"
                       title={
                         document.launchedByName ||
                         (document.status === "Lançado"
@@ -950,7 +900,7 @@ export default function DocumentsReceivedView() {
                           ? document.uploadedByName
                           : "Pendente")}
                     </td>
-                    <td className="p-3 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                    <td className="p-3 text-ink-soft dark:text-ink-soft-dark whitespace-nowrap">
                       {new Date(document.uploadedAt).toLocaleString("pt-BR", {
                         day: "2-digit",
                         month: "2-digit",
@@ -964,7 +914,7 @@ export default function DocumentsReceivedView() {
                   <tr>
                     <td
                       colSpan={10}
-                      className="p-12 text-center text-zinc-400 dark:text-zinc-500"
+                      className="p-12 text-center text-ink-soft dark:text-ink-soft-dark"
                     >
                       Nenhum documento encontrado.
                     </td>
@@ -973,15 +923,15 @@ export default function DocumentsReceivedView() {
               </tbody>
             </table>
           </div>
-          <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 text-[10px] text-zinc-500 dark:text-zinc-400">
+          <div className="p-3 border-t border-line dark:border-line-dark text-[10px] text-ink-soft dark:text-ink-soft-dark">
             Mostrando {filtered.length} de {companyDocuments.length} registros
           </div>
-        </section>
+        </Card>
 
-        <aside className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm shadow-sm overflow-hidden xl:sticky xl:top-4">
+        <Card padding={false} className="overflow-hidden xl:sticky xl:top-4">
           {selected ? (
             <>
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between gap-3">
+              <div className="p-4 border-b border-line dark:border-line-dark flex justify-between gap-3">
                 <div className="flex gap-3 min-w-0">
                   <FileTypeIcon
                     name={selected.name}
@@ -989,10 +939,10 @@ export default function DocumentsReceivedView() {
                     size="lg"
                   />
                   <div className="min-w-0">
-                    <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 truncate">
+                    <h3 className="text-xs font-semibold text-ink dark:text-ink-dark truncate">
                       {selected.name}
                     </h3>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-1">
                       {selected.category} · Recebido{" "}
                       {new Date(selected.uploadedAt).toLocaleDateString(
                         "pt-BR",
@@ -1006,38 +956,35 @@ export default function DocumentsReceivedView() {
                       url={selected.signedUrl}
                       name={selected.name}
                       iconOnly
-                      className="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                      className="text-brand-green-600 dark:text-emerald-300 hover:bg-brand-green-50 dark:hover:bg-brand-green-600/10"
                     />
                   )}
-                  <span
-                    className={`h-fit inline-flex items-center gap-1.5 text-[9px] font-semibold px-2 py-1 rounded whitespace-nowrap ${statusStyle[selected.status]}`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
+                  <Badge tone={STATUS_TONE[selected.status]} dot className="h-fit whitespace-nowrap">
                     {selected.status}
-                  </span>
+                  </Badge>
                 </div>
               </div>
-              <div className="px-4 border-b border-zinc-200 dark:border-zinc-800 flex gap-5">
-                <button className="py-3 text-[10px] font-semibold text-[#C8102E] border-b-2 border-[#C8102E]">
+              <div className="px-4 border-b border-line dark:border-line-dark flex gap-5">
+                <button className="py-3 text-[10px] font-semibold text-brand-red-600 border-b-2 border-brand-red-600">
                   Dados do lançamento
                 </button>
-                <button className="py-3 text-[10px] text-zinc-400 dark:text-zinc-500">
+                <button className="py-3 text-[10px] text-ink-soft dark:text-ink-soft-dark">
                   Documento
                 </button>
-                <button className="py-3 text-[10px] text-zinc-400 dark:text-zinc-500">
+                <button className="py-3 text-[10px] text-ink-soft dark:text-ink-soft-dark">
                   Histórico
                 </button>
               </div>
               <div className="p-4 space-y-3 max-h-[58vh] overflow-y-auto">
                 {canEditSelected ? (
-                  <div className="rounded-sm border border-blue-200 dark:border-[#3E6DA6]/40 bg-blue-50 dark:bg-[#123B6B]/20 px-3 py-2 text-[10px] text-blue-700 dark:text-[#9DB8D9]">
+                  <div className="rounded-lg border border-brand-navy-700/20 dark:border-brand-navy-700/25 bg-brand-blue-50 dark:bg-brand-navy-700/15 px-3 py-2 text-[10px] text-brand-navy-900 dark:text-brand-navy-700/90">
                     <strong>Campos editáveis</strong> —{" "}
                     {isManualLaunch
                       ? "as alterações serão sincronizadas com o registro financeiro vinculado."
                       : "confira e ajuste as informações destacadas abaixo."}
                   </div>
                 ) : (
-                  <div className="rounded-sm border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+                  <div className="rounded-lg border border-line dark:border-line-dark bg-canvas dark:bg-white/5 px-3 py-2 text-[10px] text-ink-soft dark:text-ink-soft-dark">
                     <strong>Somente leitura</strong> —{" "}
                     {manualFinancialLocked
                       ? "a conta vinculada já foi liquidada, recebeu valores ou foi cancelada."
@@ -1274,26 +1221,26 @@ export default function DocumentsReceivedView() {
                 {canEditSelected && Object.keys(draft).length > 0 && (
                   <button
                     onClick={save}
-                    className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 cursor-pointer"
+                    className="text-[10px] font-semibold text-brand-navy-900 dark:text-brand-navy-700/90 cursor-pointer hover:underline"
                   >
                     Salvar alterações
                   </button>
                 )}
               </div>
-              <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-                <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+              <div className="p-4 border-t border-line dark:border-line-dark">
+                <p className="text-xs font-semibold text-ink dark:text-ink-dark mb-3">
                   Ações do BPO
                 </p>
                 {selected.status === "Aguardando Análise" ? (
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
+                    <label className="block text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark">
                       Cliente aprovador
                       <select
                         value={approvalRecipientId}
                         onChange={(event) =>
                           setApprovalRecipientId(event.target.value)
                         }
-                        className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 dark:[color-scheme:dark]"
+                        className="mt-1 w-full border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]"
                       >
                         <option value="">Selecione o cliente</option>
                         {approvalRecipients.map((user) => (
@@ -1303,7 +1250,7 @@ export default function DocumentsReceivedView() {
                         ))}
                       </select>
                     </label>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                       {approvalRecipientId
                         ? `A aprovação será enviada para ${approvalRecipients.find((user) => user.id === approvalRecipientId)?.name}.`
                         : "Selecione o cliente aprovador acima."}
@@ -1311,20 +1258,20 @@ export default function DocumentsReceivedView() {
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         onClick={() => act("launch")}
-                        className="bg-emerald-600 text-white rounded-sm py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer"
+                        className="bg-brand-green-600 hover:bg-emerald-600 text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" /> Lançar
                       </button>
                       <button
                         onClick={() => act("approval")}
                         disabled={!approvalRecipientId}
-                        className="bg-blue-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-zinc-400 text-white rounded-sm py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer"
+                        className="bg-brand-navy-900 hover:bg-brand-navy-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-ink-soft-dark text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <Send className="h-3.5 w-3.5" /> Aprovação
                       </button>
                       <button
                         onClick={() => act("cancel")}
-                        className="bg-red-600 text-white rounded-sm py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer"
+                        className="bg-brand-red-600 hover:bg-brand-red-500 text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <X className="h-3.5 w-3.5" /> Cancelar
                       </button>
@@ -1332,7 +1279,7 @@ export default function DocumentsReceivedView() {
                   </div>
                 ) : isManualLaunch && selected.status === "Lançado" ? (
                   <div className="space-y-2">
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                       Edite os campos acima ou cancele o lançamento e o registro
                       financeiro vinculado.
                     </p>
@@ -1343,27 +1290,27 @@ export default function DocumentsReceivedView() {
                           manualFinancialLocked ||
                           Object.keys(draft).length === 0
                         }
-                        className="bg-blue-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-zinc-400 text-white rounded-sm py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer"
+                        className="bg-brand-navy-900 hover:bg-brand-navy-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-ink-soft-dark text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" /> Salvar alterações
                       </button>
                       <button
                         onClick={cancelManualLaunch}
                         disabled={manualFinancialLocked}
-                        className="bg-red-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-zinc-400 text-white rounded-sm py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer"
+                        className="bg-brand-red-600 hover:bg-brand-red-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-ink-soft-dark text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <X className="h-3.5 w-3.5" /> Cancelar lançamento
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                  <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                     Este documento não possui ações pendentes para o BPO.
                   </p>
                 )}
               </div>
-              <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
-                <button className="w-full flex justify-between text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer">
+              <div className="border-t border-line dark:border-line-dark p-4">
+                <button className="w-full flex justify-between text-[10px] font-semibold text-ink dark:text-ink-dark cursor-pointer">
                   <span className="flex gap-2">
                     <Sparkles className="h-3.5 w-3.5" /> Informações extraídas
                     pelo assistente
@@ -1373,11 +1320,11 @@ export default function DocumentsReceivedView() {
               </div>
             </>
           ) : (
-            <div className="p-16 text-center text-xs text-zinc-400 dark:text-zinc-500">
+            <div className="p-16 text-center text-xs text-ink-soft dark:text-ink-soft-dark">
               Selecione um documento.
             </div>
           )}
-        </aside>
+        </Card>
       </div>
     </div>
   );
@@ -1393,12 +1340,12 @@ function Field({
   children: React.ReactElement;
 }) {
   return (
-    <label className="block text-[9px] font-semibold text-zinc-600 dark:text-zinc-400">
+    <label className="block text-[9px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
       {label}
-      {required && <span className="text-red-500 dark:text-red-400"> *</span>}
+      {required && <span className="text-brand-red-600"> *</span>}
       {React.cloneElement(children, {
         className:
-          "mt-1 w-full rounded-sm border border-blue-200 dark:border-[#3E6DA6]/40 bg-blue-50/60 dark:bg-[#123B6B]/10 px-2.5 py-2 text-xs text-zinc-800 dark:text-zinc-100 shadow-sm transition-colors hover:border-blue-400 dark:hover:border-[#3E6DA6]/70 hover:bg-blue-50 dark:hover:bg-[#123B6B]/20 focus:border-[#0B2C52] dark:focus:border-[#9DB8D9] focus:bg-white dark:focus:bg-[#091320] focus:outline-none focus:ring-2 focus:ring-[#0B2C52]/15 dark:focus:ring-[#9DB8D9]/20 disabled:cursor-not-allowed disabled:border-zinc-200 dark:disabled:border-zinc-700 disabled:bg-zinc-100 dark:disabled:bg-zinc-800 disabled:text-zinc-400 dark:disabled:text-zinc-500 disabled:shadow-none dark:[color-scheme:dark]",
+          "mt-1 w-full rounded-lg border border-line dark:border-line-dark bg-canvas dark:bg-white/5 px-2.5 py-2 text-xs text-ink dark:text-ink-dark shadow-sm transition-colors hover:border-brand-navy-700/40 dark:hover:border-brand-navy-700/50 focus:border-brand-navy-700 focus:bg-surface dark:focus:bg-surface-dark focus:outline-none focus:ring-2 focus:ring-brand-navy-700/20 disabled:cursor-not-allowed disabled:border-line dark:disabled:border-line-dark disabled:bg-zinc-100 dark:disabled:bg-white/5 disabled:text-ink-soft dark:disabled:text-ink-soft-dark disabled:shadow-none dark:[color-scheme:dark]",
       } as React.HTMLAttributes<HTMLElement>)}
     </label>
   );

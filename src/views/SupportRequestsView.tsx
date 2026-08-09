@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useBPOState } from '../hooks/useBPOState';
 import { SupportTicketPriority } from '../types';
 import { uploadSupportAttachment } from '../services/fileUpload';
+import { Badge, Button, Card, EmptyState, Modal } from '../components/ui';
 import { Clock3, FileText, MessageSquare, Paperclip, Plus, Send, X } from 'lucide-react';
 
 const STATUS_LABELS = {
@@ -26,7 +27,11 @@ export default function SupportRequestsView() {
   const bpoOnline = users.some(user => ['BPO_ADMIN', 'BPO_TEAM'].includes(user.role) && isUserOnline(user.id));
 
   if (!['CLIENT', 'ACCOUNTANT'].includes(currentUser.role)) {
-    return <div className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-8 text-center text-xs text-zinc-500 dark:text-zinc-400">Esta área é destinada a clientes e contadores.</div>;
+    return (
+      <Card className="text-center text-xs text-ink-soft dark:text-ink-soft-dark">
+        Esta área é destinada a clientes e contadores.
+      </Card>
+    );
   }
 
   const submitTicket = (event: React.FormEvent) => {
@@ -50,34 +55,157 @@ export default function SupportRequestsView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-center justify-between gap-4">
-        <div><h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Requerimentos ao BPO</h2><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Abra solicitações e acompanhe a conversa com a equipe responsável.</p><span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold mt-2 ${bpoOnline ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-500 dark:text-zinc-400'}`}><span className={`h-2 w-2 rounded-full ${bpoOnline ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-600'}`} />Equipe BPO {bpoOnline ? 'online agora' : 'offline no momento'}</span></div>
-        <button onClick={() => setFormOpen(true)} className="flex items-center gap-2 bg-[#0B2C52] text-white text-xs font-semibold px-4 py-2.5 rounded-sm cursor-pointer"><Plus className="h-4 w-4" /> Novo requerimento</button>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">Requerimentos ao BPO</h1>
+          <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed">Abra solicitações e acompanhe a conversa com a equipe responsável.</p>
+          <Badge tone={bpoOnline ? 'green' : 'neutral'} dot className="mt-2">
+            Equipe BPO {bpoOnline ? 'online agora' : 'offline no momento'}
+          </Badge>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} onClick={() => setFormOpen(true)}>
+          Novo requerimento
+        </Button>
       </div>
 
-      {formOpen && <form onSubmit={submitTicket} className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-5 space-y-4 shadow-sm">
-        <div className="flex justify-between"><div><h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Abrir requerimento</h3><p className="text-[11px] text-zinc-500 dark:text-zinc-400">Descreva claramente o que precisa ser atendido.</p></div><button type="button" onClick={() => setFormOpen(false)} className="cursor-pointer text-zinc-500 dark:text-zinc-400"><X className="h-4 w-4" /></button></div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Categoria<select value={category} onChange={e => setCategory(e.target.value as typeof category)} className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2.5 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"><option value="FINANCEIRO">Financeiro</option><option value="DOCUMENTOS">Documentos</option><option value="PAGAMENTOS">Pagamentos</option><option value="RECEBIMENTOS">Recebimentos</option><option value="CONTABIL">Contábil</option><option value="ACESSO">Acesso ao sistema</option><option value="OUTROS">Outros</option></select></label>
-          <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Prioridade<select value={priority} onChange={e => setPriority(e.target.value as SupportTicketPriority)} className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2.5 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"><option value="BAIXA">Baixa</option><option value="NORMAL">Normal</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></label>
-        </div>
-        <input value={subject} onChange={e => setSubject(e.target.value)} required placeholder="Assunto do requerimento" className="w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2.5 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100" />
-        <textarea value={description} onChange={e => setDescription(e.target.value)} required rows={4} placeholder="Explique sua necessidade, prazo e informações importantes..." className="w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2.5 text-xs resize-none bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100" />
-        <div className="flex justify-end"><button className="bg-[#C8102E] text-white text-xs font-semibold px-4 py-2.5 rounded-sm cursor-pointer">Enviar ao BPO</button></div>
-      </form>}
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Abrir requerimento"
+        description="Descreva claramente o que precisa ser atendido."
+        footer={
+          <Button type="submit" form="support-new-ticket-form">
+            Enviar ao BPO
+          </Button>
+        }
+      >
+        <form id="support-new-ticket-form" onSubmit={submitTicket} className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
+              Categoria
+              <select value={category} onChange={e => setCategory(e.target.value as typeof category)} className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2.5 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]">
+                <option value="FINANCEIRO">Financeiro</option>
+                <option value="DOCUMENTOS">Documentos</option>
+                <option value="PAGAMENTOS">Pagamentos</option>
+                <option value="RECEBIMENTOS">Recebimentos</option>
+                <option value="CONTABIL">Contábil</option>
+                <option value="ACESSO">Acesso ao sistema</option>
+                <option value="OUTROS">Outros</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
+              Prioridade
+              <select value={priority} onChange={e => setPriority(e.target.value as SupportTicketPriority)} className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2.5 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]">
+                <option value="BAIXA">Baixa</option>
+                <option value="NORMAL">Normal</option>
+                <option value="ALTA">Alta</option>
+                <option value="URGENTE">Urgente</option>
+              </select>
+            </label>
+          </div>
+          <input value={subject} onChange={e => setSubject(e.target.value)} required placeholder="Assunto do requerimento" className="w-full border border-line dark:border-line-dark rounded-lg p-2.5 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark placeholder:text-ink-soft dark:placeholder:text-ink-soft-dark" />
+          <textarea value={description} onChange={e => setDescription(e.target.value)} required rows={4} placeholder="Explique sua necessidade, prazo e informações importantes..." className="w-full border border-line dark:border-line-dark rounded-lg p-2.5 text-xs resize-none bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark placeholder:text-ink-soft dark:placeholder:text-ink-soft-dark" />
+        </form>
+      </Modal>
 
       <div className="grid lg:grid-cols-[320px_1fr] gap-5 min-h-[520px]">
-        <div className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm overflow-hidden">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 text-xs font-semibold text-zinc-900 dark:text-zinc-100">Meus requerimentos ({tickets.length})</div>
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-[580px] overflow-y-auto">{tickets.map(ticket => <button key={ticket.id} onClick={() => setSelectedId(ticket.id)} className={`w-full p-4 text-left cursor-pointer ${selected?.id === ticket.id ? 'bg-[#0B2C52]/5 dark:bg-[#9DB8D9]/10 border-l-4 border-[#C8102E]' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/40'}`}><div className="flex justify-between gap-2"><span className="font-mono text-[10px] text-zinc-400 dark:text-zinc-500">{ticket.protocol}</span><span className="text-[9px] font-semibold text-[#0B2C52] dark:text-[#9DB8D9]">{STATUS_LABELS[ticket.status]}</span></div><p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 mt-1 truncate">{ticket.subject}</p><div className="flex items-center gap-1 text-[10px] text-zinc-400 dark:text-zinc-500 mt-2"><Clock3 className="h-3 w-3" /> {new Date(ticket.updatedAt).toLocaleString('pt-BR')}</div></button>)}{tickets.length === 0 && <div className="p-8 text-center text-xs text-zinc-400 dark:text-zinc-500">Nenhum requerimento aberto.</div>}</div>
-        </div>
+        <Card padding={false} className="overflow-hidden">
+          <div className="p-4 border-b border-line dark:border-line-dark text-xs font-bold text-ink dark:text-ink-dark">
+            Meus requerimentos ({tickets.length})
+          </div>
+          <div className="divide-y divide-line dark:divide-line-dark max-h-[580px] overflow-y-auto">
+            {tickets.map(ticket => (
+              <button
+                key={ticket.id}
+                onClick={() => setSelectedId(ticket.id)}
+                className={`w-full p-4 text-left cursor-pointer transition-colors ${selected?.id === ticket.id ? 'bg-brand-blue-50 dark:bg-brand-navy-700/15 border-l-4 border-brand-red-600' : 'hover:bg-canvas dark:hover:bg-white/[0.03]'}`}
+              >
+                <div className="flex justify-between gap-2">
+                  <span className="font-mono text-[10px] text-ink-soft dark:text-ink-soft-dark">{ticket.protocol}</span>
+                  <span className="text-[9px] font-semibold text-brand-navy-900 dark:text-brand-navy-700/90">{STATUS_LABELS[ticket.status]}</span>
+                </div>
+                <p className="text-xs font-semibold text-ink dark:text-ink-dark mt-1 truncate">{ticket.subject}</p>
+                <div className="flex items-center gap-1 text-[10px] text-ink-soft dark:text-ink-soft-dark mt-2">
+                  <Clock3 className="h-3 w-3" /> {new Date(ticket.updatedAt).toLocaleString('pt-BR')}
+                </div>
+              </button>
+            ))}
+            {tickets.length === 0 && (
+              <EmptyState icon={<MessageSquare />} title="Nenhum requerimento aberto." />
+            )}
+          </div>
+        </Card>
 
-        <div className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm flex flex-col overflow-hidden">
-          {selected ? <><div className="p-5 border-b border-zinc-200 dark:border-zinc-800"><div className="flex flex-wrap justify-between gap-2"><div><span className="font-mono text-[10px] text-zinc-400 dark:text-zinc-500">{selected.protocol}</span><h3 className="font-semibold text-zinc-900 dark:text-zinc-50 mt-1">{selected.subject}</h3></div><span className="text-[10px] font-semibold bg-[#0B2C52]/10 dark:bg-[#9DB8D9]/10 text-[#0B2C52] dark:text-[#9DB8D9] px-2 py-1 rounded-full h-fit">{STATUS_LABELS[selected.status]}</span></div><p className="text-xs text-zinc-600 dark:text-zinc-400 mt-3 whitespace-pre-wrap">{selected.description}</p></div>
-            <div className="flex-1 p-5 space-y-3 bg-zinc-50 dark:bg-[#091320]/40 overflow-y-auto max-h-[360px]">{selected.messages.length === 0 && <div className="text-center text-xs text-zinc-400 dark:text-zinc-500 py-10"><MessageSquare className="h-7 w-7 mx-auto mb-2" />Aguardando resposta da equipe BPO.</div>}{selected.messages.map(item => { const mine = item.authorId === currentUser.id; return <div key={item.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-sm px-3 py-2 ${mine ? 'bg-[#0B2C52] text-white' : 'border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100'}`}><p className="text-[10px] font-semibold opacity-70">{item.authorName}</p>{item.content && <p className="text-xs mt-0.5 whitespace-pre-wrap">{item.content}</p>}{item.attachments?.map(file => <a key={file.id} href={file.url} download={file.name} className={`mt-2 flex items-center gap-2 rounded-sm px-2.5 py-2 text-[10px] font-semibold ${mine ? 'bg-white/10 hover:bg-white/20' : 'border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/70 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><FileText className="h-4 w-4 shrink-0" /><span className="truncate">{file.name}</span></a>)}<p className="text-[9px] opacity-60 mt-1">{new Date(item.createdAt).toLocaleString('pt-BR')}</p></div></div>; })}</div>
-            {!['RESOLVIDO', 'ENCERRADO'].includes(selected.status) && <form onSubmit={sendMessage} className="p-4 border-t border-zinc-200 dark:border-zinc-800 space-y-2">{attachment && <div className="flex items-center justify-between text-[10px] bg-blue-50 dark:bg-blue-500/10 text-[#0B2C52] dark:text-[#9DB8D9] border border-blue-100 dark:border-blue-500/25 rounded-sm px-3 py-2"><span className="truncate font-semibold">{attachment.name}</span><button type="button" onClick={() => setAttachment(null)} className="cursor-pointer"><X className="h-3.5 w-3.5" /></button></div>}{sendError && <p className="text-[10px] text-rose-600 dark:text-rose-400">{sendError}</p>}<div className="flex gap-2"><label className="border border-zinc-200 dark:border-zinc-700 p-2.5 rounded-sm cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300" title="Anexar arquivo"><Paperclip className="h-4 w-4" /><input type="file" className="hidden" onChange={event => setAttachment(event.target.files?.[0] || null)} /></label><input value={message} onChange={e => setMessage(e.target.value)} placeholder="Escreva uma mensagem para o BPO..." className="flex-1 border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100" /><button disabled={sending} className="bg-[#C8102E] disabled:opacity-50 text-white p-2.5 rounded-sm cursor-pointer"><Send className="h-4 w-4" /></button></div></form>}</> : <div className="flex-1 flex items-center justify-center text-xs text-zinc-400 dark:text-zinc-500">Selecione ou abra um requerimento.</div>}
-        </div>
+        <Card padding={false} className="flex flex-col overflow-hidden">
+          {selected ? (
+            <>
+              <div className="p-5 border-b border-line dark:border-line-dark">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div>
+                    <span className="font-mono text-[10px] text-ink-soft dark:text-ink-soft-dark">{selected.protocol}</span>
+                    <h3 className="font-bold text-ink dark:text-ink-dark mt-1">{selected.subject}</h3>
+                  </div>
+                  <Badge tone="navy" className="h-fit">{STATUS_LABELS[selected.status]}</Badge>
+                </div>
+                <p className="text-xs text-ink-soft dark:text-ink-soft-dark mt-3 whitespace-pre-wrap">{selected.description}</p>
+              </div>
+              <div className="flex-1 p-5 space-y-3 bg-canvas/60 dark:bg-white/[0.02] overflow-y-auto max-h-[360px]">
+                {selected.messages.length === 0 && (
+                  <EmptyState icon={<MessageSquare />} title="Aguardando resposta da equipe BPO." className="py-10" />
+                )}
+                {selected.messages.map(item => {
+                  const mine = item.authorId === currentUser.id;
+                  return (
+                    <div key={item.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-lg px-3 py-2 ${mine ? 'bg-brand-navy-900 text-white' : 'border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark'}`}>
+                        <p className="text-[10px] font-semibold opacity-70">{item.authorName}</p>
+                        {item.content && <p className="text-xs mt-0.5 whitespace-pre-wrap">{item.content}</p>}
+                        {item.attachments?.map(file => (
+                          <a key={file.id} href={file.url} download={file.name} className={`mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[10px] font-semibold ${mine ? 'bg-white/10 hover:bg-white/20' : 'border border-line dark:border-line-dark bg-canvas dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10'}`}>
+                            <FileText className="h-4 w-4 shrink-0" /><span className="truncate">{file.name}</span>
+                          </a>
+                        ))}
+                        <p className="text-[9px] opacity-60 mt-1">{new Date(item.createdAt).toLocaleString('pt-BR')}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {!['RESOLVIDO', 'ENCERRADO'].includes(selected.status) && (
+                <form onSubmit={sendMessage} className="p-4 border-t border-line dark:border-line-dark space-y-2">
+                  {attachment && (
+                    <div className="flex items-center justify-between text-[10px] bg-brand-blue-50 dark:bg-brand-navy-700/15 text-brand-navy-900 dark:text-brand-navy-700/90 border border-brand-navy-700/20 dark:border-brand-navy-700/25 rounded-lg px-3 py-2">
+                      <span className="truncate font-semibold">{attachment.name}</span>
+                      <button type="button" onClick={() => setAttachment(null)} className="cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  )}
+                  {sendError && <p className="text-[10px] text-brand-red-600 dark:text-red-400">{sendError}</p>}
+                  <div className="flex gap-2">
+                    <label className="border border-line dark:border-line-dark p-2.5 rounded-lg cursor-pointer hover:bg-canvas dark:hover:bg-white/5 text-ink dark:text-ink-dark" title="Anexar arquivo">
+                      <Paperclip className="h-4 w-4" />
+                      <input type="file" className="hidden" onChange={event => setAttachment(event.target.files?.[0] || null)} />
+                    </label>
+                    <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Escreva uma mensagem para o BPO..." className="flex-1 border border-line dark:border-line-dark rounded-lg px-3 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark placeholder:text-ink-soft dark:placeholder:text-ink-soft-dark focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30" />
+                    <button
+                      type="submit"
+                      disabled={sending}
+                      aria-label="Enviar mensagem"
+                      title="Enviar mensagem"
+                      className="h-9 w-9 shrink-0 rounded-lg bg-brand-red-600 hover:bg-brand-red-500 disabled:opacity-50 text-white flex items-center justify-center cursor-pointer disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-xs text-ink-soft dark:text-ink-soft-dark">
+              Selecione ou abra um requerimento.
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );

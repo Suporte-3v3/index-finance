@@ -1,5 +1,10 @@
 import * as XLSX from "xlsx";
 import { ReportExportFormat, ReportRecord } from "../types";
+import { createIdexReportPdf, ReportOrientation } from "./idexReportTemplate";
+import {
+  buildReportFileBaseName,
+  formatBrazilianDate,
+} from "./reportFormatters";
 
 export type ReportCell = string | number;
 
@@ -16,10 +21,23 @@ export type ReportSectionData =
 
 export interface ReportDocumentData {
   title: string;
+  reportType?: string;
+  description?: string;
   companyName: string;
+  companyCnpj?: string;
   filters: string;
+  appliedFilters?: { label: string; value: string }[];
+  period?: {
+    startDate?: string;
+    endDate?: string;
+    dateBasis?: string;
+    regime?: string;
+  };
   generatedAt: string;
   generatedBy: string;
+  notes?: string;
+  orientation?: ReportOrientation;
+  timeZone?: string;
   sections: ReportSectionData[];
 }
 
@@ -54,123 +72,6 @@ const formatFileSize = (bytes: number) => {
   return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 };
 
-const safeFileName = (value: string) =>
-  value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "relatorio";
-
-const displayCell = (value: ReportCell) =>
-  typeof value === "number"
-    ? value.toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : value;
-
-const asciiText = (value: string) =>
-  value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^\x20-\x7E]/g, "?");
-
-const escapePdfText = (value: string) =>
-  asciiText(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-
-const wrapLine = (value: string, maxLength = 112) => {
-  const words = asciiText(value).split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  words.forEach((word) => {
-    if (!current) current = word;
-    else if (`${current} ${word}`.length <= maxLength) current += ` ${word}`;
-    else {
-      lines.push(current);
-      current = word;
-    }
-  });
-  if (current) lines.push(current);
-  return lines.length ? lines : [""];
-};
-
-const sectionToLines = (section: ReportSectionData): string[] => {
-  if (section.kind === "kpis") {
-    const lines: string[] = [];
-    if (section.title) lines.push(section.title.toUpperCase());
-    section.items.forEach((item) => lines.push(`${item.label}: ${item.value}`));
-    return lines;
-  }
-  const lines = [section.title.toUpperCase(), section.columns.join(" | "), "-".repeat(80)];
-  if (section.rows.length === 0) lines.push("Nenhum registro encontrado para os filtros informados.");
-  section.rows.forEach((row) => {
-    wrapLine(row.map(displayCell).join(" | ")).forEach((line) => lines.push(line));
-  });
-  return lines;
-};
-
-const createPdf = (doc: ReportDocumentData) => {
-  const lines = [
-    doc.title,
-    `Empresa: ${doc.companyName}`,
-    `Filtros: ${doc.filters}`,
-    `Gerado em: ${new Date(doc.generatedAt).toLocaleString("pt-BR")} por ${doc.generatedBy}`,
-    "",
-    ...doc.sections.flatMap((section) => [...sectionToLines(section), ""]),
-  ];
-
-  const pages: string[][] = [];
-  for (let index = 0; index < lines.length; index += 46) {
-    pages.push(lines.slice(index, index + 46));
-  }
-
-  const fontObjectId = 3 + pages.length * 2;
-  const objects: string[] = [];
-  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = `<< /Type /Pages /Kids [${pages
-    .map((_, index) => `${3 + index * 2} 0 R`)
-    .join(" ")}] /Count ${pages.length} >>`;
-
-  pages.forEach((pageLines, index) => {
-    const pageId = 3 + index * 2;
-    const contentId = pageId + 1;
-    const stream = [
-      "BT",
-      "/F1 8 Tf",
-      "36 560 Td",
-      "11 TL",
-      ...pageLines.map((line, lineIndex) =>
-        `${lineIndex === 0 ? "" : "T* "}(${escapePdfText(line)}) Tj`,
-      ),
-      "ET",
-    ].join("\n");
-    objects[pageId] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] ` +
-      `/Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentId} 0 R >>`;
-    objects[contentId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
-  });
-  objects[fontObjectId] =
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  for (let id = 1; id <= fontObjectId; id += 1) {
-    offsets[id] = pdf.length;
-    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
-  }
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${fontObjectId + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-  for (let id = 1; id <= fontObjectId; id += 1) {
-    pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf +=
-    `trailer\n<< /Size ${fontObjectId + 1} /Root 1 0 R >>\n` +
-    `startxref\n${xrefOffset}\n%%EOF`;
-  return pdf;
-};
-
 const uniqueSheetName = (base: string, used: Set<string>) => {
   const clean = base.replace(/[\\/*?:[\]]/g, " ").trim().slice(0, 31) || "Dados";
   let name = clean;
@@ -186,12 +87,17 @@ const uniqueSheetName = (base: string, used: Set<string>) => {
 const createExcel = (doc: ReportDocumentData) => {
   const workbook = XLSX.utils.book_new();
   const usedSheetNames = new Set<string>();
-
+  const period = doc.period?.startDate && doc.period?.endDate
+    ? `${formatBrazilianDate(doc.period.startDate)} a ${formatBrazilianDate(doc.period.endDate)}`
+    : "-";
   const summaryRows: ReportCell[][] = [
+    ["IDEX FINANCE - CENTRAL DE RELATÓRIOS"],
     [doc.title],
     ["Empresa", doc.companyName],
+    ["CNPJ", doc.companyCnpj || "-"],
+    ["Período", period],
     ["Filtros", doc.filters],
-    ["Gerado em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
+    ["Emitido em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
     ["Gerado por", doc.generatedBy],
   ];
   doc.sections
@@ -219,16 +125,19 @@ const createExcel = (doc: ReportDocumentData) => {
       );
     });
 
-  const base64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
-  return base64;
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
 };
 
 export function createReportArtifact(
   doc: ReportDocumentData,
   format: ReportExportFormat,
 ): ReportArtifact {
-  const date = doc.generatedAt.slice(0, 10);
-  const baseName = `${safeFileName(doc.title)}-${date}`;
+  const baseName = buildReportFileBaseName(
+    doc.reportType || doc.title,
+    doc.companyName,
+    doc.period || {},
+    doc.generatedAt,
+  );
 
   if (format === "EXCEL") {
     const base64 = createExcel(doc);
@@ -242,8 +151,7 @@ export function createReportArtifact(
     };
   }
 
-  const pdf = createPdf(doc);
-  const bytes = new TextEncoder().encode(pdf);
+  const bytes = createIdexReportPdf(doc);
   return {
     format,
     fileName: `${baseName}.pdf`,

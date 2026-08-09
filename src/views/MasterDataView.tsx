@@ -13,16 +13,7 @@ import {
 import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, MasterDataOption, MasterDataType } from "../types";
 import CurrencyInput from "../components/CurrencyInput";
-
-const MD_AVATAR_PALETTE = [
-  "bg-indigo-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-sky-500",
-  "bg-purple-500",
-  "bg-teal-500",
-];
+import { Badge, Button, Card, EmptyState, IconButton, Modal } from "../components/ui";
 
 const getInitials = (name: string) =>
   name
@@ -32,14 +23,6 @@ const getInitials = (name: string) =>
     .map((word) => word[0])
     .join("")
     .toUpperCase();
-
-const getAvatarTint = (seed: string) => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return MD_AVATAR_PALETTE[Math.abs(hash) % MD_AVATAR_PALETTE.length];
-};
 
 const tabs: {
   type: MasterDataType | "BANK";
@@ -132,197 +115,168 @@ export default function MasterDataView() {
   };
 
   return (
-    <div className="space-y-4">
-      {editingBank && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setEditingBank(null)}
-        >
-          <form
-            onSubmit={saveBankEdit}
-            onClick={(event) => event.stopPropagation()}
-            className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-2xl w-full max-w-xl overflow-hidden"
-          >
-            <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
-              <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">Editar conta bancária</h3>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
-                Atualize todas as informações da conta.
-              </p>
-            </div>
-            <div className="p-5 grid sm:grid-cols-2 gap-4">
-              <Input
-                label="Banco"
-                value={editingBank.bankName}
-                onChange={(value) =>
-                  setEditingBank({ ...editingBank, bankName: value })
+    <div className="space-y-5">
+      <Modal
+        open={Boolean(editingBank)}
+        onClose={() => setEditingBank(null)}
+        title="Editar conta bancária"
+        description="Atualize todas as informações da conta."
+        footer={
+          <Button type="submit" form="master-data-bank-edit-form">
+            Salvar alterações
+          </Button>
+        }
+      >
+        {editingBank && (
+          <form id="master-data-bank-edit-form" onSubmit={saveBankEdit} className="grid sm:grid-cols-2 gap-4">
+            <Input
+              label="Banco"
+              value={editingBank.bankName}
+              onChange={(value) =>
+                setEditingBank({ ...editingBank, bankName: value })
+              }
+            />
+            <Input
+              label="Agência"
+              value={editingBank.agency}
+              onChange={(value) =>
+                setEditingBank({ ...editingBank, agency: value })
+              }
+            />
+            <Input
+              label="Número da conta"
+              value={editingBank.accountNumber}
+              onChange={(value) =>
+                setEditingBank({ ...editingBank, accountNumber: value })
+              }
+            />
+            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
+              Tipo
+              <select
+                value={editingBank.type}
+                onChange={(event) =>
+                  setEditingBank({
+                    ...editingBank,
+                    type: event.target.value as BankAccount["type"],
+                  })
                 }
-              />
-              <Input
-                label="Agência"
-                value={editingBank.agency}
-                onChange={(value) =>
-                  setEditingBank({ ...editingBank, agency: value })
-                }
-              />
-              <Input
-                label="Número da conta"
-                value={editingBank.accountNumber}
-                onChange={(value) =>
-                  setEditingBank({ ...editingBank, accountNumber: value })
-                }
-              />
-              <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
-                Tipo
-                <select
-                  value={editingBank.type}
-                  onChange={(event) =>
-                    setEditingBank({
-                      ...editingBank,
-                      type: event.target.value as BankAccount["type"],
-                    })
-                  }
-                  className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
-                >
-                  <option>Corrente</option>
-                  <option>Poupança</option>
-                  <option>Investimento</option>
-                </select>
-              </label>
-              <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 sm:col-span-2">
-                Saldo atual
-                <CurrencyInput
-                  required
-                  value={editingBank.balance}
-                  onChange={(balance) =>
-                    setEditingBank({ ...editingBank, balance })
-                  }
-                  className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
-                />
-              </label>
-            </div>
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingBank(null)}
-                className="px-4 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400"
+                className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark dark:[color-scheme:dark]"
               >
-                Cancelar
-              </button>
-              <button className="px-4 py-2 bg-[#0B2C52] text-white rounded-sm text-xs font-semibold">
-                Salvar alterações
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      {editingItem && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setEditingItem(null)}
-        >
-          <form
-            onSubmit={saveItemEdit}
-            onClick={(event) => event.stopPropagation()}
-            className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-2xl w-full max-w-lg overflow-hidden"
-          >
-            <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
-              <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
-                Editar{" "}
-                {tabs
-                  .find((item) => item.type === editingItem.type)
-                  ?.label.toLowerCase()}
-              </h3>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
-                Atualize as informações deste cadastro.
-              </p>
-            </div>
-            <div className="p-5 space-y-4">
-              <Input
-                label="Nome"
-                value={editingItem.name}
-                onChange={(value) =>
-                  setEditingItem({ ...editingItem, name: value })
+                <option>Corrente</option>
+                <option>Poupança</option>
+                <option>Investimento</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide sm:col-span-2">
+              Saldo atual
+              <CurrencyInput
+                required
+                value={editingBank.balance}
+                onChange={(balance) =>
+                  setEditingBank({ ...editingBank, balance })
                 }
+                className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark"
               />
-              {editingItem.type === "SUBCATEGORY" && (
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
-                  Categoria principal
-                  <select
-                    required
-                    value={editingItem.parentId || ""}
-                    onChange={(event) =>
-                      setEditingItem({
-                        ...editingItem,
-                        parentId: event.target.value,
-                      })
-                    }
-                    className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
-                  >
-                    <option value="">Selecione</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label className="flex items-center gap-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={editingItem.active}
+            </label>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(editingItem)}
+        onClose={() => setEditingItem(null)}
+        title={
+          editingItem
+            ? `Editar ${tabs.find((item) => item.type === editingItem.type)?.label.toLowerCase()}`
+            : undefined
+        }
+        description="Atualize as informações deste cadastro."
+        size="sm"
+        footer={
+          <Button type="submit" form="master-data-item-edit-form">
+            Salvar alterações
+          </Button>
+        }
+      >
+        {editingItem && (
+          <form id="master-data-item-edit-form" onSubmit={saveItemEdit} className="space-y-4">
+            <Input
+              label="Nome"
+              value={editingItem.name}
+              onChange={(value) =>
+                setEditingItem({ ...editingItem, name: value })
+              }
+            />
+            {editingItem.type === "SUBCATEGORY" && (
+              <label className="block text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
+                Categoria principal
+                <select
+                  required
+                  value={editingItem.parentId || ""}
                   onChange={(event) =>
                     setEditingItem({
                       ...editingItem,
-                      active: event.target.checked,
+                      parentId: event.target.value,
                     })
                   }
-                  className="h-4 w-4"
-                />{" "}
-                Cadastro ativo
+                  className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark dark:[color-scheme:dark]"
+                >
+                  <option value="">Selecione</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
               </label>
-            </div>
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingItem(null)}
-                className="px-4 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400"
-              >
-                Cancelar
-              </button>
-              <button className="px-4 py-2 bg-[#0B2C52] text-white rounded-sm text-xs font-semibold">
-                Salvar alterações
-              </button>
-            </div>
+            )}
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink dark:text-ink-dark">
+              <input
+                type="checkbox"
+                checked={editingItem.active}
+                onChange={(event) =>
+                  setEditingItem({
+                    ...editingItem,
+                    active: event.target.checked,
+                  })
+                }
+                className="h-4 w-4"
+              />{" "}
+              Cadastro ativo
+            </label>
           </form>
-        </div>
-      )}
+        )}
+      </Modal>
+
       <div>
-        <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Cadastros</h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+        <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">Cadastros</h1>
+        <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed mt-1">
           Gerencie as informações utilizadas nos formulários e lançamentos de{" "}
           {activeCompany.tradeName}.
         </p>
       </div>
       <div className="grid lg:grid-cols-[230px_1fr] gap-4">
-        <aside className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-2 h-fit">
+        <Card padding={false} className="p-2 h-fit">
           {tabs.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.type}
                 onClick={() => setTab(item.type)}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-sm text-xs font-semibold cursor-pointer ${tab === item.type ? "bg-[#0B2C52] text-white" : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${tab === item.type ? "bg-brand-navy-900 text-white" : "text-ink dark:text-ink-dark hover:bg-canvas dark:hover:bg-white/5"}`}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
               </button>
             );
           })}
-        </aside>
+        </Card>
         <main className="space-y-4">
-          <form onSubmit={submit} className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm p-4">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+          <form
+            onSubmit={submit}
+            className="bg-surface dark:bg-surface-dark rounded-xl border border-line dark:border-line-dark shadow-[0_1px_2px_rgba(23,32,51,0.05)] p-5"
+          >
+            <h3 className="text-sm font-bold text-ink dark:text-ink-dark mb-3">
               Adicionar{" "}
               {tabs.find((item) => item.type === tab)?.label.toLowerCase()}
             </h3>
@@ -345,7 +299,7 @@ export default function MasterDataView() {
                     setBank({ ...bank, accountNumber: value })
                   }
                 />
-                <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
+                <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
                   Tipo
                   <select
                     value={bank.type}
@@ -355,19 +309,19 @@ export default function MasterDataView() {
                         type: e.target.value as typeof bank.type,
                       })
                     }
-                    className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
+                    className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark dark:[color-scheme:dark]"
                   >
                     <option>Corrente</option>
                     <option>Poupança</option>
                     <option>Investimento</option>
                   </select>
                 </label>
-                <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
+                <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
                   Saldo inicial
                   <CurrencyInput
                     value={bank.balance}
                     onChange={(balance) => setBank({ ...bank, balance })}
-                    className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
+                    className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark"
                   />
                 </label>
               </div>
@@ -378,14 +332,14 @@ export default function MasterDataView() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nome do cadastro"
-                  className="flex-1 min-w-56 border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  className="flex-1 min-w-56 border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark placeholder:text-ink-soft dark:placeholder:text-ink-soft-dark"
                 />
                 {tab === "SUBCATEGORY" && (
                   <select
                     required
                     value={parentId}
                     onChange={(e) => setParentId(e.target.value)}
-                    className="border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
+                    className="border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark dark:[color-scheme:dark]"
                   >
                     <option value="">Categoria principal</option>
                     {categories.map((item) => (
@@ -397,15 +351,15 @@ export default function MasterDataView() {
                 )}
               </div>
             )}
-            <button className="mt-3 bg-[#0B2C52] text-white rounded-sm px-4 py-2 text-xs font-semibold flex items-center gap-1.5">
-              <Plus className="h-4 w-4" /> Adicionar
-            </button>
+            <Button type="submit" size="sm" className="mt-3" icon={<Plus className="h-4 w-4" />}>
+              Adicionar
+            </Button>
           </form>
-          <section className="bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 rounded-sm overflow-hidden">
-            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          <Card padding={false} className="overflow-hidden">
+            <div className="p-4 border-b border-line dark:border-line-dark text-sm font-bold text-ink dark:text-ink-dark">
               Registros cadastrados
             </div>
-            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <div className="divide-y divide-line dark:divide-line-dark">
               {tab === "BANK"
                 ? bankAccounts
                     .filter((item) => item.companyId === activeCompany.id)
@@ -419,13 +373,11 @@ export default function MasterDataView() {
                       />
                     ))
                 : items.map((item) => (
-                    <div key={item.id} className="p-4 flex items-center gap-3 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40">
-                      <span className="flex-1 px-2 py-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-200">
+                    <div key={item.id} className="p-4 flex items-center gap-3 hover:bg-canvas/60 dark:hover:bg-white/[0.03]">
+                      <span className="flex-1 px-2 py-1.5 text-xs font-semibold text-ink dark:text-ink-dark">
                         {(tab === "SUPPLIER" || tab === "CUSTOMER") ? (
                           <span className="flex items-center gap-2">
-                            <span
-                              className={`h-6 w-6 rounded-full ${getAvatarTint(item.name)} text-white text-[9px] font-semibold flex items-center justify-center shrink-0`}
-                            >
+                            <span className="h-6 w-6 rounded-full bg-brand-navy-900 text-white text-[9px] font-semibold flex items-center justify-center shrink-0">
                               {getInitials(item.name)}
                             </span>
                             {item.name}
@@ -438,23 +390,27 @@ export default function MasterDataView() {
                         onClick={() =>
                           updateMasterData(item.id, { active: !item.active })
                         }
-                        className={`inline-flex items-center gap-1.5 text-[9px] font-semibold px-2 py-1 rounded border cursor-pointer ${item.active ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" : "bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700"}`}
+                        className="cursor-pointer"
                       >
-                        <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
-                        {item.active ? "Ativo" : "Inativo"}
+                        <Badge tone={item.active ? "green" : "neutral"} dot>
+                          {item.active ? "Ativo" : "Inativo"}
+                        </Badge>
                       </button>
-                      <button
+                      <Button
+                        size="sm"
+                        variant="text"
+                        icon={<Pencil className="h-4 w-4" />}
                         onClick={() => setEditingItem({ ...item })}
-                        className="text-blue-700 dark:text-blue-400 p-2 flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
                       >
-                        <Pencil className="h-4 w-4" /> Editar
-                      </button>
-                      <button
+                        Editar
+                      </Button>
+                      <IconButton
+                        icon={<Trash2 />}
+                        label="Excluir"
+                        variant="danger"
+                        size="sm"
                         onClick={() => deleteMasterData(item.id)}
-                        className="text-red-500 dark:text-red-400 p-2 cursor-pointer"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      />
                     </div>
                   ))}
               {(tab === "BANK"
@@ -462,12 +418,10 @@ export default function MasterDataView() {
                     (item) => item.companyId === activeCompany.id,
                   ).length === 0
                 : items.length === 0) && (
-                <p className="p-10 text-center text-xs text-zinc-400 dark:text-zinc-500">
-                  Nenhum registro cadastrado.
-                </p>
+                <EmptyState title="Nenhum registro cadastrado." />
               )}
             </div>
-          </section>
+          </Card>
         </main>
       </div>
     </div>
@@ -483,13 +437,13 @@ function Input({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
+    <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide">
       {label}
       <input
         required
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full border border-zinc-200 dark:border-zinc-700 rounded-sm p-2 text-xs bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100"
+        className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark"
       />
     </label>
   );
@@ -507,21 +461,16 @@ function Row({
   onEdit: () => void;
 }) {
   return (
-    <div className="p-4 flex justify-between gap-3 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40">
+    <div className="p-4 flex justify-between gap-3 hover:bg-canvas/60 dark:hover:bg-white/[0.03]">
       <div>
-        <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50">{title}</p>
-        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">{detail}</p>
+        <p className="text-xs font-semibold text-ink dark:text-ink-dark">{title}</p>
+        <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-1">{detail}</p>
       </div>
       <div className="flex items-center gap-1">
-        <button
-          onClick={onEdit}
-          className="text-blue-700 dark:text-blue-400 p-2 flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
-        >
-          <Pencil className="h-4 w-4" /> Editar
-        </button>
-        <button onClick={onDelete} className="text-red-500 dark:text-red-400 p-2 cursor-pointer">
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <Button size="sm" variant="text" icon={<Pencil className="h-4 w-4" />} onClick={onEdit}>
+          Editar
+        </Button>
+        <IconButton icon={<Trash2 />} label="Excluir" variant="danger" size="sm" onClick={onDelete} />
       </div>
     </div>
   );

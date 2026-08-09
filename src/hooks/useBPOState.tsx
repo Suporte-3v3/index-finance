@@ -58,6 +58,7 @@ import {
   ReportCell,
   ReportSectionData,
 } from "../services/reportFiles";
+import { formatBrazilianDate } from "../services/reportFormatters";
 import {
   computeReportSections,
   computeDreSections,
@@ -416,6 +417,8 @@ interface BPOContextType {
     blocks: ReportBlockConfig[];
     filters: ReportFilters;
     dreOptions?: DreReportOptions;
+    notes?: string;
+    orientation?: "auto" | "portrait" | "landscape";
     format: ReportExportFormat;
     templateId?: string;
     templateName?: string;
@@ -428,6 +431,8 @@ interface BPOContextType {
     blocks: ReportBlockConfig[];
     filters: Omit<ReportFilters, "startDate" | "endDate">;
     dreOptions?: DreReportOptions;
+    notes?: string;
+    orientation?: "auto" | "portrait" | "landscape";
   }) => ReportTemplate | null;
   duplicateReportTemplate: (id: string) => void;
   archiveReportTemplate: (id: string, archived: boolean) => void;
@@ -2641,8 +2646,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     const artifact = createReportArtifact(
       {
         title: name,
+        reportType: type,
         companyName: activeCompany.tradeName,
+        companyCnpj: activeCompany.cnpj,
         filters,
+        period: {
+          startDate: options.startDate,
+          endDate: options.endDate,
+        },
         generatedAt,
         generatedBy: currentUser.name,
         sections,
@@ -2716,6 +2727,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       blocks,
       filters,
       dreOptions,
+      notes,
+      orientation,
       format,
       templateId,
       templateName,
@@ -2734,20 +2747,94 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       ),
     };
 
-    const sections =
+    const requestedSections =
       modelType === "DRE Gerencial"
         ? computeDreSections(filters, dreOptions || {}, dataSource)
         : computeReportSections(modelType, blocks, filters, dataSource);
+    const summaryBlockKey = {
+      "Contas a Pagar": "AP_SUMMARY",
+      "Contas a Receber": "AR_SUMMARY",
+      "Fluxo de Caixa": "CF_BALANCE_SUMMARY",
+    } as const;
+    const requiredSummary = modelType === "DRE Gerencial"
+      ? []
+      : blocks.some((block) => block.blockKey === summaryBlockKey[modelType])
+        ? []
+        : computeReportSections(
+            modelType,
+            [{
+              instanceId: "idex-required-summary",
+              blockKey: summaryBlockKey[modelType],
+              visualization: "table",
+            }],
+            filters,
+            dataSource,
+          );
+    const sections = [...requiredSummary, ...requestedSections];
 
     const filtersSummary = buildFiltersSummary(modelType, filters, dreOptions);
     const generatedAt = new Date().toISOString();
+    const dateBasisLabel = {
+      due: "Vencimento",
+      payment: "Pagamento/Recebimento",
+      competence: "Competência",
+    }[filters.dateBasis];
+    const appliedFilters = [
+      { label: "Período", value: `${formatBrazilianDate(filters.startDate)} a ${formatBrazilianDate(filters.endDate)}` },
+      { label: "Base da data", value: dateBasisLabel },
+      ...(filters.supplier ? [{ label: "Fornecedor", value: filters.supplier }] : []),
+      ...(filters.customer ? [{ label: "Cliente", value: filters.customer }] : []),
+      ...(filters.category ? [{ label: "Categoria", value: filters.category }] : []),
+      ...(filters.costCenter ? [{ label: "Centro de custo", value: filters.costCenter }] : []),
+      ...(filters.status ? [{ label: "Status", value: filters.status }] : []),
+      ...(filters.paymentMethod ? [{ label: "Forma", value: filters.paymentMethod }] : []),
+      ...(filters.bankAccountId
+        ? [{
+            label: "Conta financeira",
+            value: dataSource.bankAccounts.find((account) => account.id === filters.bankAccountId)?.bankName || "Conta selecionada",
+          }]
+        : []),
+      ...(modelType === "Fluxo de Caixa" && filters.cashFlowView
+        ? [{
+            label: "Visão",
+            value: { realized: "Realizado", projected: "Projetado", both: "Realizado e projetado" }[filters.cashFlowView],
+          }]
+        : []),
+      ...(modelType === "Fluxo de Caixa" && filters.cashFlowGrouping
+        ? [{
+            label: "Agrupamento",
+            value: { daily: "Diário", weekly: "Semanal", monthly: "Mensal" }[filters.cashFlowGrouping],
+          }]
+        : []),
+      ...(modelType === "DRE Gerencial" && dreOptions?.costCenter && !filters.costCenter
+        ? [{ label: "Centro de custo", value: dreOptions.costCenter }]
+        : []),
+    ];
+    const description = {
+      "Contas a Pagar": "Pagamentos, obrigações e despesas do período.",
+      "Contas a Receber": "Recebimentos, inadimplência e receitas do período.",
+      "Fluxo de Caixa": "Entradas, saídas e saldo das contas financeiras.",
+      "DRE Gerencial": "Demonstração gerencial do resultado do período.",
+    }[modelType];
     const artifact = createReportArtifact(
       {
         title: name,
+        reportType: modelType,
+        description,
         companyName: activeCompany.tradeName,
+        companyCnpj: activeCompany.cnpj,
         filters: filtersSummary,
+        appliedFilters,
+        period: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dateBasis: dateBasisLabel,
+          regime: filters.dateBasis === "competence" ? "Competência" : filters.dateBasis === "payment" ? "Caixa" : undefined,
+        },
         generatedAt,
         generatedBy: currentUser.name,
+        notes: notes || dreOptions?.comment,
+        orientation: orientation || "auto",
         sections,
       },
       format,
@@ -2820,6 +2907,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
             blocks: input.blocks,
             filters: input.filters,
             dreOptions: input.dreOptions,
+            notes: input.notes,
+            orientation: input.orientation,
             updatedAt: now,
           };
           return updated;
@@ -2835,6 +2924,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       blocks: input.blocks,
       filters: input.filters,
       dreOptions: input.dreOptions,
+      notes: input.notes,
+      orientation: input.orientation,
       favorite: false,
       archived: false,
       createdAt: now,
