@@ -47,7 +47,7 @@ export interface Company {
   createdAt: string;
   status: CompanyStatus;
   approvalLimit: number; // Max amount before requiring multi-level BPO admin approval
-  logoDataUrl?: string; // Logo raster normalizada para menu e relatórios; Idex é o fallback.
+  logoDataUrl?: string | null; // Logo raster normalizada para menu e relatórios; Idex é o fallback.
   clientModules?: ClientModule[]; // Modules enabled in the client workspace for this company
 }
 
@@ -63,10 +63,6 @@ export interface User {
   // Quando role === "CLIENT": restringe o usuário a "Operador do cliente",
   // com acesso apenas ao saldo diário da Bolsa (não ao saldo acumulado).
   clientOperator?: boolean;
-  // Senha individual definida na criação do usuário. Usuários sem senha
-  // própria (contas seed) continuam autenticando com a senha de acesso
-  // padrão da plataforma.
-  password?: string;
 }
 
 export interface BankAccount {
@@ -75,7 +71,7 @@ export interface BankAccount {
   bankName: string;
   agency: string;
   accountNumber: string;
-  type: "Corrente" | "Poupança" | "Investimento";
+  type: "Corrente" | "Poupança" | "Investimento" | "Caixa";
   balance: number;
   isBolsaAccount?: boolean; // Conta interna "Bolsa" do módulo Caixa da Padaria
 }

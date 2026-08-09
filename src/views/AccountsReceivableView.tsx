@@ -237,13 +237,13 @@ export default function AccountsReceivableView({
     setFormStep(2);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (recurrence === "Parcelada" && Number(installmentCount) < 2) {
       alert("Informe pelo menos 2 parcelas ou escolha outra recorrência.");
       return;
     }
-    addAccountReceivable({
+    const result = await addAccountReceivable({
       description,
       customer,
       category,
@@ -265,15 +265,20 @@ export default function AccountsReceivableView({
       attachmentUrl: attachmentName ? "#" : undefined,
       responsibleId: currentUser.id,
     });
+    if (!result.success) {
+      alert(result.error || "Não foi possível cadastrar a conta a receber.");
+      return;
+    }
     resetForm();
   };
 
-  const handleFullReceipt = (id: string, amount: number) => {
+  const handleFullReceipt = async (id: string, amount: number) => {
     const today = new Date().toISOString().split("T")[0];
-    receiveAccountReceivable(id, amount, today);
+    const result = await receiveAccountReceivable(id, amount, today);
+    if (!result.success) alert(result.error || "Não foi possível registrar o recebimento.");
   };
 
-  const handlePartialReceiptSubmit = (e: React.FormEvent) => {
+  const handlePartialReceiptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receivingId) return;
     if (receivedAmountVal <= 0) {
@@ -282,7 +287,11 @@ export default function AccountsReceivableView({
     }
 
     const today = new Date().toISOString().split("T")[0];
-    receiveAccountReceivable(receivingId, receivedAmountVal, today);
+    const result = await receiveAccountReceivable(receivingId, receivedAmountVal, today);
+    if (!result.success) {
+      alert(result.error || "Não foi possível registrar o recebimento.");
+      return;
+    }
     setReceivingId(null);
     setReceivedAmountVal(0);
   };
@@ -291,9 +300,13 @@ export default function AccountsReceivableView({
     setCancelTargetId(id);
   };
 
-  const confirmCancel = () => {
+  const confirmCancel = async () => {
     if (!cancelTargetId) return;
-    cancelAccountReceivable(cancelTargetId);
+    const result = await cancelAccountReceivable(cancelTargetId);
+    if (!result.success) {
+      alert(result.error || "Não foi possível cancelar o título.");
+      return;
+    }
     setCancelTargetId(null);
   };
 

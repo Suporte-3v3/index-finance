@@ -16,17 +16,8 @@ import {
   Lock,
   Pencil,
   X,
-  Eye,
-  EyeOff,
-  RefreshCw
+  Copy,
 } from 'lucide-react';
-
-const generatePassword = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
-  let pwd = '';
-  for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
-  return pwd;
-};
 
 const getInitials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase();
 
@@ -38,6 +29,7 @@ export default function TeamView() {
     updateTeamMemberPermissions,
     updateTeamMember,
     deleteTeamMember,
+    resetTeamMemberPassword,
     currentUser
   } = useBPOState();
 
@@ -48,17 +40,16 @@ export default function TeamView() {
   const [editEmail, setEditEmail] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('CLIENT');
-  const [editPassword, setEditPassword] = useState('');
-  const [showEditPassword, setShowEditPassword] = useState(false);
   const [editError, setEditError] = useState('');
+  const [temporaryPassword, setTemporaryPassword] = useState('');
+  const [temporaryPasswordEmail, setTemporaryPasswordEmail] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
 
   // Invitation Form
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('BPO_TEAM');
   const [title, setTitle] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [clientOperator, setClientOperator] = useState(false);
 
@@ -93,14 +84,10 @@ export default function TeamView() {
     { id: 'reconciliation.execute', name: 'Executar Conciliação Bancária (OFX)', cat: 'Operações' },
   ];
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) {
       alert('Preencha os campos obrigatórios.');
-      return;
-    }
-    if (!password || password.length < 6) {
-      alert('Defina uma senha de acesso com pelo menos 6 caracteres.');
       return;
     }
     if (role !== 'BPO_ADMIN' && selectedCompanyIds.length === 0) {
@@ -121,7 +108,8 @@ export default function TeamView() {
 
     const isOperator = role === 'CLIENT' && clientOperator;
 
-    addTeamMember({
+    setIsSavingUser(true);
+    const result = await addTeamMember({
       name,
       email,
       role,
@@ -132,21 +120,25 @@ export default function TeamView() {
         ? permissionsByRole[role].filter(p => p !== 'approvals.approve')
         : permissionsByRole[role],
       clientOperator: isOperator,
-      password
     });
+    setIsSavingUser(false);
+    if (!result.success || !result.temporaryPassword) {
+      alert(result.error || 'Não foi possível criar o usuário.');
+      return;
+    }
 
     setName('');
     setEmail('');
     setRole('BPO_TEAM');
     setTitle('');
-    setPassword('');
-    setShowPassword(false);
     setSelectedCompanyIds([]);
     setClientOperator(false);
     setIsFormOpen(false);
+    setTemporaryPasswordEmail(email.trim().toLowerCase());
+    setTemporaryPassword(result.temporaryPassword);
   };
 
-  const handleTogglePermission = (permissionId: string) => {
+  const handleTogglePermission = async (permissionId: string) => {
     if (!selectedUserId) return;
     const currentPerms = selectedUser?.permissions || [];
 
@@ -157,16 +149,18 @@ export default function TeamView() {
       updatedPerms = [...currentPerms, permissionId];
     }
 
-    updateTeamMemberPermissions(selectedUserId, updatedPerms);
+    const result = await updateTeamMemberPermissions(selectedUserId, updatedPerms);
+    if (!result.success) alert(result.error || 'Não foi possível atualizar a permissão.');
   };
 
-  const handleStatusToggle = (userId: string, isCurrentlyActive: boolean) => {
+  const handleStatusToggle = async (userId: string, isCurrentlyActive: boolean) => {
     const target = users.find(u => u.id === userId);
     if (!target) return;
-    updateTeamMemberPermissions(userId, target.permissions, isCurrentlyActive ? 'INACTIVE' : 'ACTIVE');
+    const result = await updateTeamMemberPermissions(userId, target.permissions, isCurrentlyActive ? 'INACTIVE' : 'ACTIVE');
+    if (!result.success) alert(result.error || 'Não foi possível atualizar o status.');
   };
 
-  const handleUserCompanyToggle = (companyId: string) => {
+  const handleUserCompanyToggle = async (companyId: string) => {
     if (!selectedUser || selectedUser.role === 'BPO_ADMIN') return;
     const currentCompanies = selectedUser.companies || [];
     const updatedCompanies = selectedUser.role === 'CLIENT'
@@ -178,13 +172,14 @@ export default function TeamView() {
       alert('Este perfil precisa permanecer vinculado a pelo menos uma empresa.');
       return;
     }
-    updateTeamMemberPermissions(selectedUser.id, selectedUser.permissions, undefined, updatedCompanies);
+    const result = await updateTeamMemberPermissions(selectedUser.id, selectedUser.permissions, undefined, updatedCompanies);
+    if (!result.success) alert(result.error || 'Não foi possível atualizar as empresas.');
   };
 
-  const handleClientOperatorToggle = () => {
+  const handleClientOperatorToggle = async () => {
     if (!selectedUser || selectedUser.role !== 'CLIENT') return;
     const nextIsOperator = !selectedUser.clientOperator;
-    updateTeamMemberPermissions(
+    const result = await updateTeamMemberPermissions(
       selectedUser.id,
       nextIsOperator
         ? selectedUser.permissions.filter(p => p !== 'approvals.approve')
@@ -193,6 +188,7 @@ export default function TeamView() {
       undefined,
       nextIsOperator
     );
+    if (!result.success) alert(result.error || 'Não foi possível atualizar o perfil.');
   };
 
   const startEditingProfile = () => {
@@ -201,50 +197,50 @@ export default function TeamView() {
     setEditEmail(selectedUser.email);
     setEditTitle(selectedUser.title || '');
     setEditRole(selectedUser.role);
-    setEditPassword('');
-    setShowEditPassword(false);
     setEditError('');
     setIsEditingProfile(true);
   };
 
   const cancelEditingProfile = () => {
     setIsEditingProfile(false);
-    setEditPassword('');
-    setShowEditPassword(false);
     setEditError('');
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!selectedUser) return;
-    if (editPassword && editPassword.length < 6) {
-      setEditError('A nova senha deve ter pelo menos 6 caracteres.');
-      return;
-    }
-    const result = updateTeamMember(selectedUser.id, {
+    const result = await updateTeamMember(selectedUser.id, {
       name: editName,
       email: editEmail,
       title: editTitle,
       role: editRole,
-      password: editPassword || undefined,
     });
     if (!result.success) {
       setEditError(result.error || 'Não foi possível salvar as alterações.');
       return;
     }
     setIsEditingProfile(false);
-    setEditPassword('');
-    setShowEditPassword(false);
     setEditError('');
   };
 
-  const handleDeleteUser = (id: string, userName: string) => {
+  const handleDeleteUser = async (id: string, userName: string) => {
     if (!window.confirm(`Tem certeza que deseja excluir "${userName}"? Esta ação não pode ser desfeita.`)) return;
-    const result = deleteTeamMember(id);
+    const result = await deleteTeamMember(id);
     if (!result.success) {
       alert(result.error || 'Não foi possível excluir este usuário.');
       return;
     }
     if (selectedUserId === id) setSelectedUserId(null);
+  };
+
+  const handleResetPassword = async (userId: string, userEmail: string) => {
+    if (!window.confirm(`Gerar uma nova senha temporária para ${userEmail}? Todas as sessões atuais serão encerradas.`)) return;
+    const result = await resetTeamMemberPassword(userId);
+    if (!result.success || !result.temporaryPassword) {
+      alert(result.error || 'Não foi possível redefinir a senha.');
+      return;
+    }
+    setTemporaryPasswordEmail(userEmail);
+    setTemporaryPassword(result.temporaryPassword);
   };
 
   return (
@@ -257,34 +253,26 @@ export default function TeamView() {
         </div>
 
         <Button icon={<UserPlus className="h-4 w-4" />} onClick={() => setIsFormOpen(true)}>
-          Cadastrar usuário
+          Adicionar perfil
         </Button>
       </div>
 
       {/* Invite Modal */}
       <Modal
         open={isFormOpen}
-        onClose={() => {
-          setIsFormOpen(false);
-          setPassword('');
-          setShowPassword(false);
-        }}
-        title="Cadastrar usuário na plataforma"
-        description="Defina o perfil e as empresas que poderão ser acessadas."
+        onClose={() => setIsFormOpen(false)}
+        title="Criar usuário"
+        description="Defina o perfil e as empresas. A credencial será criada no PostgreSQL."
         footer={
           <>
             <Button
               variant="text"
-              onClick={() => {
-                setIsFormOpen(false);
-                setPassword('');
-                setShowPassword(false);
-              }}
+              onClick={() => setIsFormOpen(false)}
             >
               Cancelar
             </Button>
-            <Button type="submit" form="team-invite-form">
-              Cadastrar usuário
+            <Button type="submit" form="team-invite-form" loading={isSavingUser} disabled={isSavingUser}>
+              Criar usuário e credencial
             </Button>
           </>
         }
@@ -314,39 +302,9 @@ export default function TeamView() {
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide block">Senha de Acesso *</label>
-            <div className="relative flex items-center gap-1.5">
-              <div className="relative flex-1">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  placeholder="Mínimo 6 caracteres"
-                  autoComplete="new-password"
-                  className="w-full p-2 pr-8 bg-canvas dark:bg-white/5 border border-line dark:border-line-dark text-ink dark:text-ink-dark rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-soft dark:text-ink-soft-dark hover:text-ink dark:hover:text-ink-dark cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-              <IconButton
-                icon={<RefreshCw />}
-                label="Gerar senha"
-                variant="solid"
-                onClick={() => {
-                  setPassword(generatePassword());
-                  setShowPassword(true);
-                }}
-              />
-            </div>
-            <p className="text-[9px] text-ink-soft dark:text-ink-soft-dark">Compartilhe esta senha com o usuário; ela não será exibida novamente após o cadastro.</p>
+          <div className="rounded-lg border border-brand-navy-700/20 bg-brand-blue-50 p-3 text-[10px] leading-relaxed text-brand-navy-900 dark:bg-brand-navy-900/20 dark:text-brand-blue-100">
+            O servidor gerará uma senha temporária, exibida uma única vez. O
+            usuário deverá alterá-la no primeiro acesso.
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -413,6 +371,42 @@ export default function TeamView() {
             </label>
           )}
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(temporaryPassword)}
+        onClose={() => {
+          setTemporaryPassword('');
+          setTemporaryPasswordEmail('');
+        }}
+        title="Senha temporária criada"
+        description={`Copie e entregue com segurança para ${temporaryPasswordEmail}. Ela não será exibida novamente.`}
+        footer={
+          <Button
+            onClick={() => {
+              setTemporaryPassword('');
+              setTemporaryPasswordEmail('');
+            }}
+          >
+            Entendi
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas p-3 dark:border-line-dark dark:bg-white/5">
+            <code className="min-w-0 flex-1 select-all break-all text-sm font-bold text-ink dark:text-ink-dark">
+              {temporaryPassword}
+            </code>
+            <IconButton
+              icon={<Copy />}
+              label="Copiar senha temporária"
+              onClick={() => void navigator.clipboard.writeText(temporaryPassword)}
+            />
+          </div>
+          <p className="text-[10px] leading-relaxed text-ink-soft dark:text-ink-soft-dark">
+            No primeiro login, o usuário precisará trocar esta senha antes de acessar qualquer empresa.
+          </p>
+        </div>
       </Modal>
 
       {/* Main Split Layout */}
@@ -507,13 +501,21 @@ export default function TeamView() {
                   />
                 )}
                 {selectedUser.id !== currentUser.id && (
-                  <IconButton
-                    icon={<Trash2 />}
-                    label="Excluir usuário"
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDeleteUser(selectedUser.id, selectedUser.name)}
-                  />
+                  <>
+                    <IconButton
+                      icon={<Key />}
+                      label="Gerar nova senha temporária"
+                      size="sm"
+                      onClick={() => void handleResetPassword(selectedUser.id, selectedUser.email)}
+                    />
+                    <IconButton
+                      icon={<Trash2 />}
+                      label="Desativar usuário"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => void handleDeleteUser(selectedUser.id, selectedUser.name)}
+                    />
+                  </>
                 )}
               </div>
             )}
@@ -575,38 +577,6 @@ export default function TeamView() {
                           <option value="ACCOUNTANT">Contador</option>
                           <option value="CLIENT">Usuário do cliente</option>
                         </select>
-                      </div>
-                      <div className="space-y-1 sm:col-span-2">
-                        <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide block">Nova senha (opcional)</label>
-                        <div className="flex items-center gap-1.5">
-                          <div className="relative flex-1">
-                            <input
-                              type={showEditPassword ? 'text' : 'password'}
-                              minLength={6}
-                              placeholder="Deixe em branco para manter a senha atual"
-                              autoComplete="new-password"
-                              className="w-full p-2 pr-8 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark text-ink dark:text-ink-dark rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30"
-                              value={editPassword}
-                              onChange={(e) => setEditPassword(e.target.value)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowEditPassword(!showEditPassword)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-soft dark:text-ink-soft-dark hover:text-ink dark:hover:text-ink-dark cursor-pointer"
-                            >
-                              {showEditPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                            </button>
-                          </div>
-                          <IconButton
-                            icon={<RefreshCw />}
-                            label="Gerar senha"
-                            variant="solid"
-                            onClick={() => {
-                              setEditPassword(generatePassword());
-                              setShowEditPassword(true);
-                            }}
-                          />
-                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2 pt-1">

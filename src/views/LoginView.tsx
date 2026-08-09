@@ -5,7 +5,6 @@
 
 import React, { useState } from 'react';
 import { useBPOState } from '../hooks/useBPOState';
-import { ACCESS_PASSWORD } from '../services/mockData';
 import idexLogo from '../../assets/idex-finance-logo-transparent.png';
 import { Button, IconButton } from '../components/ui';
 import {
@@ -16,33 +15,16 @@ import {
   LogIn,
   AlertCircle,
   ShieldCheck,
-  UserRound,
-  Calculator,
-  Store,
   Sun,
   Moon,
 } from 'lucide-react';
-
-// Contas de demonstração exibidas como atalhos na tela de login — uma por
-// perfil relevante (o CLIENT tem duas: acesso completo e Operador do
-// cliente, já que se comportam de forma bem diferente no app).
-const QUICK_LOGIN_PROFILES: Array<{
-  email: string;
-  label: string;
-  icon: typeof ShieldCheck;
-}> = [
-  { email: 'admin@idexfinance.com.br', label: 'Administrador BPO', icon: ShieldCheck },
-  { email: 'nayltonnobre@gmail.com', label: 'Cliente (Acesso completo)', icon: UserRound },
-  { email: 'bruna.alfa@exemplo.com.br', label: 'Cliente (Operador)', icon: Store },
-  { email: 'contador@idexfinance.com.br', label: 'Contador', icon: Calculator },
-];
 
 interface LoginViewProps {
   theme: { isDarkMode: boolean; toggleTheme: () => void };
 }
 
 export default function LoginView({ theme }: LoginViewProps) {
-  const { login, users } = useBPOState();
+  const { login } = useBPOState();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,17 +32,16 @@ export default function LoginView({ theme }: LoginViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const performLogin = (targetEmail: string, targetPassword: string) => {
+  const performLogin = async (targetEmail: string, targetPassword: string) => {
     setError(null);
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const result = login(targetEmail, targetPassword);
-      if (!result.success) {
-        setError(result.error || 'Não foi possível entrar. Tente novamente.');
-        setIsSubmitting(false);
-      }
-    }, 400);
+    const result = await login(targetEmail, targetPassword);
+    if (!result.success) {
+      setError(result.error || 'Não foi possível entrar. Tente novamente.');
+    } else {
+      setPassword('');
+    }
+    setIsSubmitting(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -69,13 +50,7 @@ export default function LoginView({ theme }: LoginViewProps) {
       setError('Informe e-mail e senha para continuar.');
       return;
     }
-    performLogin(email, password);
-  };
-
-  const handleProfileLogin = (targetEmail: string) => {
-    setEmail(targetEmail);
-    setPassword(ACCESS_PASSWORD);
-    performLogin(targetEmail, ACCESS_PASSWORD);
+    void performLogin(email, password);
   };
 
   return (
@@ -175,35 +150,9 @@ export default function LoginView({ theme }: LoginViewProps) {
               </Button>
             </form>
 
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-px grow bg-line" />
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-ink-soft">
-                  Perfis de demonstração
-                </span>
-                <div className="h-px grow bg-line" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {QUICK_LOGIN_PROFILES.map(profile => {
-                  const user = users.find(u => u.email === profile.email);
-                  if (!user) return null;
-                  const Icon = profile.icon;
-                  return (
-                    <button
-                      key={user.id}
-                      type="button"
-                      disabled={isSubmitting || user.status !== 'ACTIVE'}
-                      onClick={() => handleProfileLogin(user.email)}
-                      className="flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-line bg-canvas px-2 py-2.5 text-center transition hover:border-brand-navy-700/40 hover:bg-brand-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title={`Entrar como ${user.name}`}
-                    >
-                      <Icon className="h-4 w-4 text-brand-navy-900" />
-                      <span className="text-[9px] font-bold leading-tight text-ink">{profile.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="mt-5 flex items-center justify-center gap-2 border-t border-line pt-4 text-[10px] font-semibold text-ink-soft">
+              <ShieldCheck className="h-4 w-4 text-brand-navy-900" />
+              <span>Sessão segura e acesso limitado às empresas autorizadas.</span>
             </div>
           </section>
 

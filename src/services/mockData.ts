@@ -18,9 +18,6 @@ import {
   ReportRecord
 } from '../types';
 
-// Temporary client-side password while authentication is not backed by a server.
-export const ACCESS_PASSWORD = import.meta.env.VITE_ACCESS_PASSWORD || '123456';
-
 export const INITIAL_TENANTS: Tenant[] = [
   {
     id: 't-1111-1111',

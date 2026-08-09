@@ -1,0 +1,720 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../backend/generated/prisma"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CompanyStatus {
+  IMPLEMENTATION
+  ACTIVE
+  ATTENTION
+  OVERDUE
+  NO_ACTIVITY
+  INACTIVE
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum UserRole {
+  BPO_ADMIN
+  BPO_TEAM
+  CLIENT
+  ACCOUNTANT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+  INVESTMENT
+  CASH
+}
+
+enum MasterDataType {
+  CATEGORY
+  SUBCATEGORY
+  PAYMENT_METHOD
+  COST_CENTER
+  DOCUMENT_TYPE
+  SUPPLIER
+  CUSTOMER
+  BAKERY_REGISTER
+}
+
+enum RecurrenceType {
+  NONE
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  INSTALLMENTS
+}
+
+enum PayableStatus {
+  DRAFT
+  PENDING
+  AWAITING_APPROVAL
+  UPCOMING
+  APPROVED
+  SCHEDULED
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  REJECTED
+  CANCELED
+}
+
+enum ReceivableStatus {
+  DRAFT
+  PENDING
+  OPEN
+  PARTIALLY_RECEIVED
+  RECEIVED
+  OVERDUE
+  COLLECTION
+  NEGOTIATED
+  CANCELED
+}
+
+enum ApprovalType {
+  PAYMENT
+  DOCUMENT
+  SENSITIVE_ACTION
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  CANCELED
+  EXPIRED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  CANCELED
+}
+
+enum DocumentStatus {
+  AWAITING_ANALYSIS
+  AWAITING_APPROVAL
+  SHARED
+  POSTED
+  CANCELED
+}
+
+enum DocumentPurpose {
+  PROCESSING
+  VIEW_ONLY
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+  ALERT
+}
+
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String       @db.VarChar(160)
+  slug      String       @unique @db.VarChar(80)
+  plan      String       @default("PROFESSIONAL") @db.VarChar(50)
+  status    TenantStatus @default(ACTIVE)
+  timezone  String       @default("America/Sao_Paulo") @db.VarChar(60)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt DateTime?    @map("deleted_at") @db.Timestamptz(3)
+
+  companies   Company[]
+  memberships TenantMembership[]
+  auditLogs   AuditLog[]
+
+  @@map("tenants")
+}
+
+model Company {
+  id                  String        @id @default(uuid()) @db.Uuid
+  tenantId            String        @map("tenant_id") @db.Uuid
+  cnpj                String        @db.VarChar(14)
+  corporateName       String        @map("corporate_name") @db.VarChar(200)
+  tradeName           String        @map("trade_name") @db.VarChar(160)
+  segment             String?       @db.VarChar(100)
+  taxRegime           String?       @map("tax_regime") @db.VarChar(80)
+  accountantName      String?       @map("accountant_name") @db.VarChar(160)
+  accountantEmail     String?       @map("accountant_email") @db.VarChar(254)
+  primaryContactName  String?       @map("primary_contact_name") @db.VarChar(160)
+  primaryContactEmail String?       @map("primary_contact_email") @db.VarChar(254)
+  bpoResponsibleId    String?       @map("bpo_responsible_id") @db.Uuid
+  status              CompanyStatus @default(IMPLEMENTATION)
+  approvalLimit       Decimal       @default(0) @map("approval_limit") @db.Decimal(18, 2)
+  logoDataUrl         String?       @map("logo_data_url") @db.Text
+  logoObjectKey       String?       @map("logo_object_key") @db.VarChar(500)
+  clientModules       String[]      @default([]) @map("client_modules")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt           DateTime?     @map("deleted_at") @db.Timestamptz(3)
+
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bpoResponsible   User?                @relation("CompanyBpoResponsible", fields: [bpoResponsibleId], references: [id], onDelete: SetNull)
+  memberships      CompanyMembership[]
+  invitations      CompanyInvitation[]
+  bankAccounts     BankAccount[]
+  masterData       MasterDataOption[]
+  payables         AccountPayable[]
+  receivables      AccountReceivable[]
+  approvals        Approval[]
+  documents        Document[]
+  statementEntries BankStatementEntry[]
+  reconciliations  Reconciliation[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+
+  @@unique([tenantId, cnpj])
+  @@index([tenantId, status])
+  @@index([bpoResponsibleId])
+  @@map("companies")
+}
+
+model User {
+  id                String     @id @default(uuid()) @db.Uuid
+  email             String     @unique @db.VarChar(254)
+  name              String     @db.VarChar(160)
+  emailVerified     Boolean    @default(false) @map("email_verified")
+  image             String?    @db.VarChar(500)
+  status            UserStatus @default(ACTIVE)
+  title             String?    @db.VarChar(120)
+  isPlatformAdmin   Boolean    @default(false) @map("is_platform_admin")
+  emailVerifiedAt   DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  passwordChangedAt DateTime?  @map("password_changed_at") @db.Timestamptz(3)
+  lastLoginAt       DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt         DateTime?  @map("deleted_at") @db.Timestamptz(3)
+
+  tenantMemberships    TenantMembership[]
+  companyMemberships   CompanyMembership[]
+  sessions             UserSession[]
+  authAccounts         AuthAccount[]
+  invitationsCreated   CompanyInvitation[]        @relation("InvitationCreatedBy")
+  responsibleCompanies Company[]                  @relation("CompanyBpoResponsible")
+  payablesCreated      AccountPayable[]           @relation("PayableCreatedBy")
+  payablePayments      AccountPayablePayment[]    @relation("PayablePaymentRegisteredBy")
+  receivablesCreated   AccountReceivable[]        @relation("ReceivableCreatedBy")
+  receivableReceipts   AccountReceivableReceipt[] @relation("ReceivableReceiptRegisteredBy")
+  approvalsRequested   Approval[]                 @relation("ApprovalRequester")
+  approvalSteps        ApprovalStep[]
+  documentsUploaded    Document[]                 @relation("DocumentUploadedBy")
+  reconciliations      Reconciliation[]           @relation("ReconciliationCreatedBy")
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model TenantMembership {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  role      UserRole
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId, status])
+  @@map("tenant_memberships")
+}
+
+model CompanyMembership {
+  id             String           @id @default(uuid()) @db.Uuid
+  companyId      String           @map("company_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  role           UserRole
+  status         MembershipStatus @default(ACTIVE)
+  permissions    String[]         @default([])
+  clientOperator Boolean          @default(false) @map("client_operator")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([userId, status])
+  @@index([companyId, role, status])
+  @@map("company_memberships")
+}
+
+model CompanyInvitation {
+  id          String           @id @default(uuid()) @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  email       String           @db.VarChar(254)
+  role        UserRole
+  permissions String[]         @default([])
+  tokenHash   String           @unique @map("token_hash") @db.VarChar(128)
+  status      MembershipStatus @default(INVITED)
+  expiresAt   DateTime         @map("expires_at") @db.Timestamptz(3)
+  acceptedAt  DateTime?        @map("accepted_at") @db.Timestamptz(3)
+  createdById String           @map("created_by_id") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, email, status])
+  @@index([expiresAt])
+  @@map("company_invitations")
+}
+
+model UserSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(255)
+  ipAddress String?  @map("ip_address") @db.VarChar(64)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model AuthAccount {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  accountId             String    @map("account_id") @db.VarChar(255)
+  providerId            String    @map("provider_id") @db.VarChar(100)
+  accessToken           String?   @map("access_token") @db.Text
+  refreshToken          String?   @map("refresh_token") @db.Text
+  idToken               String?   @map("id_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(3)
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("auth_accounts")
+}
+
+model Verification {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String   @db.VarChar(255)
+  value      String   @db.Text
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@index([expiresAt])
+  @@map("auth_verifications")
+}
+
+model AuthRateLimit {
+  id          String @id @default(uuid()) @db.Uuid
+  key         String @unique @db.VarChar(255)
+  count       Int
+  lastRequest BigInt @map("last_request")
+
+  @@map("auth_rate_limits")
+}
+
+model BankAccount {
+  id             String          @id @default(uuid()) @db.Uuid
+  companyId      String          @map("company_id") @db.Uuid
+  bankName       String          @map("bank_name") @db.VarChar(160)
+  agency         String?         @db.VarChar(20)
+  accountNumber  String          @map("account_number") @db.VarChar(40)
+  type           BankAccountType
+  balance        Decimal         @default(0) @db.Decimal(18, 2)
+  isBolsaAccount Boolean         @default(false) @map("is_bolsa_account")
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz(3)
+
+  company            Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payablePayments    AccountPayablePayment[]
+  receivableReceipts AccountReceivableReceipt[]
+  payables           AccountPayable[]
+  receivables        AccountReceivable[]
+  statementEntries   BankStatementEntry[]
+  reconciliations    Reconciliation[]
+
+  @@unique([companyId, agency, accountNumber])
+  @@index([companyId, active])
+  @@map("bank_accounts")
+}
+
+model MasterDataOption {
+  id        String         @id @default(uuid()) @db.Uuid
+  companyId String         @map("company_id") @db.Uuid
+  type      MasterDataType
+  name      String         @db.VarChar(160)
+  parentId  String?        @map("parent_id") @db.Uuid
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent   MasterDataOption?  @relation("MasterDataHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children MasterDataOption[] @relation("MasterDataHierarchy")
+
+  @@unique([companyId, type, name])
+  @@index([companyId, type, active])
+  @@index([parentId])
+  @@map("master_data_options")
+}
+
+model AccountPayable {
+  id                  String         @id @default(uuid()) @db.Uuid
+  companyId           String         @map("company_id") @db.Uuid
+  description         String         @db.VarChar(500)
+  supplierName        String         @map("supplier_name") @db.VarChar(200)
+  categoryName        String         @map("category_name") @db.VarChar(160)
+  costCenterName      String         @map("cost_center_name") @db.VarChar(160)
+  competenceMonth     String         @map("competence_month") @db.Char(7)
+  issueDate           DateTime       @map("issue_date") @db.Date
+  dueDate             DateTime       @map("due_date") @db.Date
+  amount              Decimal        @db.Decimal(18, 2)
+  interest            Decimal        @default(0) @db.Decimal(18, 2)
+  penalty             Decimal        @default(0) @db.Decimal(18, 2)
+  discount            Decimal        @default(0) @db.Decimal(18, 2)
+  finalAmount         Decimal        @map("final_amount") @db.Decimal(18, 2)
+  paymentMethod       String         @map("payment_method") @db.VarChar(100)
+  bankAccountId       String?        @map("bank_account_id") @db.Uuid
+  recurrence          RecurrenceType @default(NONE)
+  installmentGroupId  String?        @map("installment_group_id") @db.Uuid
+  installmentNumber   Int?           @map("installment_number")
+  installmentCount    Int?           @map("installment_count")
+  documentNumber      String?        @map("document_number") @db.VarChar(100)
+  notes               String?        @db.Text
+  attachmentObjectKey String?        @map("attachment_object_key") @db.VarChar(500)
+  attachmentName      String?        @map("attachment_name") @db.VarChar(255)
+  status              PayableStatus  @default(DRAFT)
+  responsibleId       String?        @map("responsible_id") @db.Uuid
+  needsApproval       Boolean        @default(false) @map("needs_approval")
+  paymentDate         DateTime?      @map("payment_date") @db.Date
+  paidAmount          Decimal        @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  createdById         String         @map("created_by_id") @db.Uuid
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  canceledAt          DateTime?      @map("canceled_at") @db.Timestamptz(3)
+  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  company     Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount?            @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  createdBy   User                    @relation("PayableCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  payments    AccountPayablePayment[]
+
+  @@index([companyId, dueDate, status])
+  @@index([companyId, competenceMonth])
+  @@index([companyId, supplierName])
+  @@index([createdById])
+  @@index([bankAccountId])
+  @@map("accounts_payable")
+}
+
+model AccountPayablePayment {
+  id               String   @id @default(uuid()) @db.Uuid
+  payableId        String   @map("payable_id") @db.Uuid
+  bankAccountId    String   @map("bank_account_id") @db.Uuid
+  date             DateTime @db.Date
+  amount           Decimal  @db.Decimal(18, 2)
+  interest         Decimal  @default(0) @db.Decimal(18, 2)
+  penalty          Decimal  @default(0) @db.Decimal(18, 2)
+  discount         Decimal  @default(0) @db.Decimal(18, 2)
+  notes            String?  @db.Text
+  receiptObjectKey String?  @map("receipt_object_key") @db.VarChar(500)
+  registeredById   String   @map("registered_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  payable      AccountPayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount    @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  registeredBy User           @relation("PayablePaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+
+  @@index([payableId, date])
+  @@index([bankAccountId, date])
+  @@map("account_payable_payments")
+}
+
+model AccountReceivable {
+  id                  String           @id @default(uuid()) @db.Uuid
+  companyId           String           @map("company_id") @db.Uuid
+  description         String           @db.VarChar(500)
+  customerName        String           @map("customer_name") @db.VarChar(200)
+  categoryName        String           @map("category_name") @db.VarChar(160)
+  costCenterName      String           @map("cost_center_name") @db.VarChar(160)
+  competenceMonth     String           @map("competence_month") @db.Char(7)
+  issueDate           DateTime         @map("issue_date") @db.Date
+  dueDate             DateTime         @map("due_date") @db.Date
+  amount              Decimal          @db.Decimal(18, 2)
+  interest            Decimal          @default(0) @db.Decimal(18, 2)
+  penalty             Decimal          @default(0) @db.Decimal(18, 2)
+  discount            Decimal          @default(0) @db.Decimal(18, 2)
+  receivedAmount      Decimal          @default(0) @map("received_amount") @db.Decimal(18, 2)
+  paymentMethod       String           @map("payment_method") @db.VarChar(100)
+  bankAccountId       String?          @map("bank_account_id") @db.Uuid
+  recurrence          RecurrenceType   @default(NONE)
+  installmentGroupId  String?          @map("installment_group_id") @db.Uuid
+  installmentNumber   Int?             @map("installment_number")
+  installmentCount    Int?             @map("installment_count")
+  documentNumber      String?          @map("document_number") @db.VarChar(100)
+  notes               String?          @db.Text
+  attachmentObjectKey String?          @map("attachment_object_key") @db.VarChar(500)
+  attachmentName      String?          @map("attachment_name") @db.VarChar(255)
+  status              ReceivableStatus @default(DRAFT)
+  responsibleId       String?          @map("responsible_id") @db.Uuid
+  receiptDate         DateTime?        @map("receipt_date") @db.Date
+  createdById         String           @map("created_by_id") @db.Uuid
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  canceledAt          DateTime?        @map("canceled_at") @db.Timestamptz(3)
+  deletedAt           DateTime?        @map("deleted_at") @db.Timestamptz(3)
+
+  company     Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount?               @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  createdBy   User                       @relation("ReceivableCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  receipts    AccountReceivableReceipt[]
+
+  @@index([companyId, dueDate, status])
+  @@index([companyId, competenceMonth])
+  @@index([companyId, customerName])
+  @@index([createdById])
+  @@index([bankAccountId])
+  @@map("accounts_receivable")
+}
+
+model AccountReceivableReceipt {
+  id               String   @id @default(uuid()) @db.Uuid
+  receivableId     String   @map("receivable_id") @db.Uuid
+  bankAccountId    String   @map("bank_account_id") @db.Uuid
+  date             DateTime @db.Date
+  amount           Decimal  @db.Decimal(18, 2)
+  interest         Decimal  @default(0) @db.Decimal(18, 2)
+  penalty          Decimal  @default(0) @db.Decimal(18, 2)
+  discount         Decimal  @default(0) @db.Decimal(18, 2)
+  notes            String?  @db.Text
+  receiptObjectKey String?  @map("receipt_object_key") @db.VarChar(500)
+  registeredById   String   @map("registered_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  receivable   AccountReceivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount       @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  registeredBy User              @relation("ReceivableReceiptRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+
+  @@index([receivableId, date])
+  @@index([bankAccountId, date])
+  @@map("account_receivable_receipts")
+}
+
+model Approval {
+  id                  String         @id @default(uuid()) @db.Uuid
+  companyId           String         @map("company_id") @db.Uuid
+  type                ApprovalType
+  relatedEntityType   String         @map("related_entity_type") @db.VarChar(80)
+  relatedEntityId     String         @map("related_entity_id") @db.Uuid
+  description         String         @db.VarChar(500)
+  amount              Decimal?       @db.Decimal(18, 2)
+  dueDate             DateTime?      @map("due_date") @db.Date
+  requesterId         String         @map("requester_id") @db.Uuid
+  recipientId         String?        @map("recipient_id") @db.Uuid
+  approvalDeadline    DateTime?      @map("approval_deadline") @db.Timestamptz(3)
+  status              ApprovalStatus @default(PENDING)
+  justification       String?        @db.Text
+  attachmentObjectKey String?        @map("attachment_object_key") @db.VarChar(500)
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requester User           @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  steps     ApprovalStep[]
+
+  @@index([companyId, status, createdAt])
+  @@index([recipientId, status])
+  @@index([relatedEntityType, relatedEntityId])
+  @@map("approvals")
+}
+
+model ApprovalStep {
+  id         String           @id @default(uuid()) @db.Uuid
+  approvalId String           @map("approval_id") @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  role       UserRole
+  decision   ApprovalDecision
+  comment    String?          @db.Text
+  ipAddress  String?          @map("ip_address") @db.Inet
+  userAgent  String?          @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([approvalId, createdAt])
+  @@map("approval_steps")
+}
+
+model Document {
+  id                   String          @id @default(uuid()) @db.Uuid
+  companyId            String          @map("company_id") @db.Uuid
+  category             String          @db.VarChar(80)
+  name                 String          @db.VarChar(255)
+  description          String?         @db.Text
+  competenceMonth      String?         @map("competence_month") @db.Char(7)
+  uploadedById         String          @map("uploaded_by_id") @db.Uuid
+  recipientId          String?         @map("recipient_id") @db.Uuid
+  objectKey            String          @map("object_key") @db.VarChar(500)
+  fileSizeBytes        BigInt          @map("file_size_bytes")
+  mimeType             String          @map("mime_type") @db.VarChar(150)
+  sha256               String          @db.Char(64)
+  relatedEntityType    String?         @map("related_entity_type") @db.VarChar(80)
+  relatedEntityId      String?         @map("related_entity_id") @db.Uuid
+  status               DocumentStatus  @default(AWAITING_ANALYSIS)
+  purpose              DocumentPurpose @default(PROCESSING)
+  aiSummary            String?         @map("ai_summary") @db.Text
+  extractedData        Json?           @map("extracted_data")
+  processingConfidence Decimal?        @map("processing_confidence") @db.Decimal(5, 4)
+  analysisWarnings     String[]        @default([]) @map("analysis_warnings")
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  canceledAt           DateTime?       @map("canceled_at") @db.Timestamptz(3)
+  deletedAt            DateTime?       @map("deleted_at") @db.Timestamptz(3)
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  uploadedBy User    @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, sha256])
+  @@index([companyId, status, createdAt])
+  @@index([recipientId, status])
+  @@index([relatedEntityType, relatedEntityId])
+  @@map("documents")
+}
+
+model BankStatementEntry {
+  id                   String   @id @default(uuid()) @db.Uuid
+  companyId            String   @map("company_id") @db.Uuid
+  bankAccountId        String   @map("bank_account_id") @db.Uuid
+  externalId           String?  @map("external_id") @db.VarChar(160)
+  date                 DateTime @db.Date
+  description          String   @db.VarChar(500)
+  amount               Decimal  @db.Decimal(18, 2)
+  documentNumber       String?  @map("document_number") @db.VarChar(100)
+  reconciliationStatus String   @default("PENDING") @map("reconciliation_status") @db.VarChar(40)
+  importedAt           DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount     BankAccount      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  reconciliations Reconciliation[]
+
+  @@unique([bankAccountId, externalId])
+  @@index([companyId, date])
+  @@index([bankAccountId, reconciliationStatus, date])
+  @@map("bank_statement_entries")
+}
+
+model Reconciliation {
+  id                  String    @id @default(uuid()) @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  bankAccountId       String    @map("bank_account_id") @db.Uuid
+  statementEntryId    String    @map("statement_entry_id") @db.Uuid
+  financialEntityType String    @map("financial_entity_type") @db.VarChar(60)
+  financialEntityId   String    @map("financial_entity_id") @db.Uuid
+  amount              Decimal   @db.Decimal(18, 2)
+  notes               String?   @db.Text
+  reconciledById      String    @map("reconciled_by_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  reversedAt          DateTime? @map("reversed_at") @db.Timestamptz(3)
+
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount    BankAccount        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  statementEntry BankStatementEntry @relation(fields: [statementEntryId], references: [id], onDelete: Restrict)
+  reconciledBy   User               @relation("ReconciliationCreatedBy", fields: [reconciledById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, createdAt])
+  @@index([statementEntryId])
+  @@index([financialEntityType, financialEntityId])
+  @@map("reconciliations")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  companyId    String?  @map("company_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  action       String   @db.VarChar(120)
+  entityType   String   @map("entity_type") @db.VarChar(100)
+  entityId     String?  @map("entity_id") @db.Uuid
+  previousData Json?    @map("previous_data")
+  nextData     Json?    @map("next_data")
+  ipAddress    String?  @map("ip_address") @db.Inet
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  origin       String   @default("WEB_APP") @db.VarChar(80)
+  requestId    String?  @map("request_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  companyId   String?          @map("company_id") @db.Uuid
+  userId      String?          @map("user_id") @db.Uuid
+  title       String           @db.VarChar(200)
+  message     String           @db.Text
+  type        NotificationType @default(INFO)
+  relatedLink String?          @map("related_link") @db.VarChar(500)
+  readAt      DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt   DateTime?        @map("expires_at") @db.Timestamptz(3)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([companyId, createdAt])
+  @@map("notifications")
+}

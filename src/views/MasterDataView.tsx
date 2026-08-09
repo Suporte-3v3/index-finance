@@ -13,7 +13,7 @@ import {
 import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, MasterDataOption, MasterDataType } from "../types";
 import CurrencyInput from "../components/CurrencyInput";
-import { Badge, Button, Card, EmptyState, IconButton, Modal } from "../components/ui";
+import { Badge, Button, Card, EmptyState, IconButton, Modal, useToast } from "../components/ui";
 
 const getInitials = (name: string) =>
   name
@@ -41,6 +41,7 @@ const tabs: {
 ];
 
 export default function MasterDataView() {
+  const { showToast } = useToast();
   const {
     activeCompany,
     currentUser,
@@ -76,42 +77,75 @@ export default function MasterDataView() {
       item.type === "CATEGORY" &&
       item.active,
   );
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (tab === "BANK") addBankAccount(bank);
-    else addMasterData(tab, name, tab === "SUBCATEGORY" ? parentId : undefined);
-    setName("");
-    setParentId("");
-    setBank({
-      bankName: "",
-      agency: "",
-      accountNumber: "",
-      type: "Corrente",
-      balance: 0,
-    });
+    try {
+      if (tab === "BANK") await addBankAccount(bank);
+      else await addMasterData(tab, name, tab === "SUBCATEGORY" ? parentId : undefined);
+      setName("");
+      setParentId("");
+      setBank({
+        bankName: "",
+        agency: "",
+        accountNumber: "",
+        type: "Corrente",
+        balance: 0,
+      });
+      showToast("success", "Cadastro salvo no banco de dados.");
+    } catch (error) {
+      showToast("error", "Não foi possível salvar.", error instanceof Error ? error.message : undefined);
+    }
   };
-  const saveItemEdit = (event: React.FormEvent) => {
+  const saveItemEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingItem || !editingItem.name.trim()) return;
-    updateMasterData(editingItem.id, {
-      name: editingItem.name.trim(),
-      parentId:
-        editingItem.type === "SUBCATEGORY" ? editingItem.parentId : undefined,
-      active: editingItem.active,
-    });
-    setEditingItem(null);
+    try {
+      await updateMasterData(editingItem.id, {
+        name: editingItem.name.trim(),
+        parentId:
+          editingItem.type === "SUBCATEGORY" ? editingItem.parentId : undefined,
+        active: editingItem.active,
+      });
+      setEditingItem(null);
+      showToast("success", "Cadastro atualizado.");
+    } catch (error) {
+      showToast("error", "Não foi possível atualizar.", error instanceof Error ? error.message : undefined);
+    }
   };
-  const saveBankEdit = (event: React.FormEvent) => {
+  const saveBankEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingBank) return;
-    updateBankAccount(editingBank.id, {
-      bankName: editingBank.bankName.trim(),
-      agency: editingBank.agency.trim(),
-      accountNumber: editingBank.accountNumber.trim(),
-      type: editingBank.type,
-      balance: Number(editingBank.balance),
-    });
-    setEditingBank(null);
+    try {
+      await updateBankAccount(editingBank.id, {
+        bankName: editingBank.bankName.trim(),
+        agency: editingBank.agency.trim(),
+        accountNumber: editingBank.accountNumber.trim(),
+        type: editingBank.type,
+        balance: Number(editingBank.balance),
+      });
+      setEditingBank(null);
+      showToast("success", "Conta bancária atualizada.");
+    } catch (error) {
+      showToast("error", "Não foi possível atualizar a conta.", error instanceof Error ? error.message : undefined);
+    }
+  };
+
+  const removeBank = async (id: string) => {
+    try {
+      await deleteBankAccount(id);
+      showToast("success", "Conta bancária desativada.");
+    } catch (error) {
+      showToast("error", "Não foi possível desativar a conta.", error instanceof Error ? error.message : undefined);
+    }
+  };
+
+  const removeItem = async (id: string) => {
+    try {
+      await deleteMasterData(id);
+      showToast("success", "Cadastro desativado.");
+    } catch (error) {
+      showToast("error", "Não foi possível desativar o cadastro.", error instanceof Error ? error.message : undefined);
+    }
   };
 
   return (
@@ -368,8 +402,8 @@ export default function MasterDataView() {
                         key={account.id}
                         title={`${account.bankName} · ${account.accountNumber}`}
                         detail={`Agência ${account.agency} · ${account.type} · Saldo R$ ${account.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                        onEdit={() => setEditingBank({ ...account })}
-                        onDelete={() => deleteBankAccount(account.id)}
+                        onEdit={account.isBolsaAccount ? undefined : () => setEditingBank({ ...account })}
+                        onDelete={account.isBolsaAccount ? undefined : () => void removeBank(account.id)}
                       />
                     ))
                 : items.map((item) => (
@@ -388,7 +422,9 @@ export default function MasterDataView() {
                       </span>
                       <button
                         onClick={() =>
-                          updateMasterData(item.id, { active: !item.active })
+                          void updateMasterData(item.id, { active: !item.active }).catch((error) =>
+                            showToast("error", "Não foi possível alterar o status.", error instanceof Error ? error.message : undefined),
+                          )
                         }
                         className="cursor-pointer"
                       >
@@ -409,7 +445,7 @@ export default function MasterDataView() {
                         label="Excluir"
                         variant="danger"
                         size="sm"
-                        onClick={() => deleteMasterData(item.id)}
+                        onClick={() => void removeItem(item.id)}
                       />
                     </div>
                   ))}
@@ -457,8 +493,8 @@ function Row({
   key?: React.Key;
   title: string;
   detail: string;
-  onDelete: () => void;
-  onEdit: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <div className="p-4 flex justify-between gap-3 hover:bg-canvas/60 dark:hover:bg-white/[0.03]">
@@ -466,12 +502,18 @@ function Row({
         <p className="text-xs font-semibold text-ink dark:text-ink-dark">{title}</p>
         <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-1">{detail}</p>
       </div>
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="text" icon={<Pencil className="h-4 w-4" />} onClick={onEdit}>
-          Editar
-        </Button>
-        <IconButton icon={<Trash2 />} label="Excluir" variant="danger" size="sm" onClick={onDelete} />
-      </div>
+      {(onEdit || onDelete) && (
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <Button size="sm" variant="text" icon={<Pencil className="h-4 w-4" />} onClick={onEdit}>
+              Editar
+            </Button>
+          )}
+          {onDelete && (
+            <IconButton icon={<Trash2 />} label="Excluir" variant="danger" size="sm" onClick={onDelete} />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,28 @@
+name: idex-finance
+
+services:
+  postgres:
+    image: postgres:17.10-alpine
+    container_name: idex-finance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-idex_finance}
+      POSTGRES_USER: ${POSTGRES_USER:-idex_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-idex_local_dev_only}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - idex_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-idex_app} -d ${POSTGRES_DB:-idex_finance}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  idex_postgres_data:
+    name: idex-finance-postgres-data

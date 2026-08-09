@@ -363,10 +363,14 @@ export default function AdminDashboard() {
                       {formatBRL(shift.initialBalance)}
                       {shift.previousShiftFinalBalance !== undefined &&
                         shift.previousShiftFinalBalance !== shift.initialBalance && (
-                          <AlertTriangle
-                            className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400 shrink-0"
+                          <span
                             title={`Diferente do saldo final do turno anterior (${formatBRL(shift.previousShiftFinalBalance)})${shift.initialBalanceJustification ? ` — ${shift.initialBalanceJustification}` : ""}`}
-                          />
+                          >
+                            <AlertTriangle
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400 shrink-0"
+                            />
+                          </span>
                         )}
                     </span>
                   </td>

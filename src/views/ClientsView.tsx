@@ -86,6 +86,7 @@ export default function ClientsView() {
   const [approvalLimit, setApprovalLimit] = useState(10000);
   const [companyLogoDataUrl, setCompanyLogoDataUrl] = useState("");
   const [isLogoProcessing, setIsLogoProcessing] = useState(false);
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [companyStatus, setCompanyStatus] =
     useState<Company["status"]>("Implantação");
   const [bpoResponsibleId, setBpoResponsibleId] = useState(currentUser.id);
@@ -130,6 +131,7 @@ export default function ClientsView() {
   );
   const bpoUsers = users.filter(
     (user) =>
+      user.id === currentUser.id &&
       user.status === "ACTIVE" &&
       (user.role === "BPO_ADMIN" || user.role === "BPO_TEAM"),
   );
@@ -165,7 +167,7 @@ export default function ClientsView() {
     setFormError("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
     if (isLogoProcessing) {
@@ -193,6 +195,7 @@ export default function ClientsView() {
       return;
     }
 
+    setIsSavingCompany(true);
     const data = {
       tenantId: activeTenant?.id || "t-1111-1111",
       cnpj,
@@ -206,21 +209,22 @@ export default function ClientsView() {
       primaryContactEmail,
       bpoResponsibleId,
       approvalLimit: Number(approvalLimit),
-      logoDataUrl: companyLogoDataUrl || undefined,
+      logoDataUrl: companyLogoDataUrl || (editingCompanyId ? null : undefined),
       clientModules: selectedClientModules,
     };
     const wasEditing = Boolean(editingCompanyId);
     if (editingCompanyId) {
-      const result = updateCompany(editingCompanyId, {
+      const result = await updateCompany(editingCompanyId, {
         ...data,
         status: companyStatus,
       });
       if (!result.success) {
         setFormError(result.error || "Não foi possível atualizar a empresa.");
+        setIsSavingCompany(false);
         return;
       }
     } else {
-      const result = addCompany(data, {
+      const result = await addCompany(data, {
         initialBankAccount: {
           bankName,
           agency: bankAgency,
@@ -239,6 +243,7 @@ export default function ClientsView() {
       });
       if (!result.success) {
         setFormError(result.error || "Não foi possível cadastrar a empresa.");
+        setIsSavingCompany(false);
         return;
       }
     }
@@ -252,6 +257,7 @@ export default function ClientsView() {
         ? "Empresa e módulos de acesso atualizados com sucesso."
         : "Empresa criada com sucesso.",
     );
+    setIsSavingCompany(false);
   };
 
   const openEdit = (company: Company, focusModules = false) => {
@@ -308,22 +314,26 @@ export default function ClientsView() {
     setIsFormOpen(true);
   };
 
-  const handleStatusChange = (id: string, status: Company["status"]) => {
-    updateCompanyStatus(id, status);
-  };
-
-  const handleDeleteCompany = () => {
-    if (!companyToDelete) return;
-    const deletedName = companyToDelete.tradeName;
-    const result = deleteCompany(companyToDelete.id);
+  const handleStatusChange = async (id: string, status: Company["status"]) => {
+    const result = await updateCompanyStatus(id, status);
     if (!result.success) {
       setPageMessage("");
-      setPageError(result.error || "Não foi possível excluir a empresa.");
+      setPageError(result.error || "Não foi possível atualizar o status.");
+    }
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!companyToDelete) return;
+    const deletedName = companyToDelete.tradeName;
+    const result = await deleteCompany(companyToDelete.id);
+    if (!result.success) {
+      setPageMessage("");
+      setPageError(result.error || "Não foi possível desativar a empresa.");
       return;
     }
     setCompanyToDelete(null);
     setPageError("");
-    setPageMessage(`A empresa “${deletedName}” e seus dados foram excluídos.`);
+    setPageMessage(`A empresa “${deletedName}” foi desativada com segurança.`);
   };
 
   const toggleClientModule = (moduleId: ClientModule) => {
@@ -415,8 +425,8 @@ export default function ClientsView() {
             <Button
               type="submit"
               form="clients-company-form"
-              disabled={isLogoProcessing}
-              loading={isLogoProcessing}
+              disabled={isLogoProcessing || isSavingCompany}
+              loading={isLogoProcessing || isSavingCompany}
             >
               {editingCompanyId
                 ? "Salvar todas as alterações"
@@ -950,13 +960,13 @@ export default function ClientsView() {
         open={Boolean(companyToDelete)}
         onClose={() => setCompanyToDelete(null)}
         onConfirm={handleDeleteCompany}
-        title="Excluir empresa definitivamente?"
+        title="Desativar empresa?"
         description={
           companyToDelete
-            ? `A empresa ${companyToDelete.tradeName} será removida com contas bancárias, cadastros, lançamentos, aprovações, documentos, relatórios e solicitações vinculadas. Usuários que também acessam outras empresas serão preservados. Esta ação não pode ser desfeita sem um backup.`
+            ? `A empresa ${companyToDelete.tradeName} deixará de aparecer nos acessos ativos. Os dados vinculados serão preservados no banco para recuperação e auditoria.`
             : undefined
         }
-        confirmLabel="Excluir empresa e dados"
+        confirmLabel="Desativar empresa"
         tone="danger"
       />
 
@@ -1076,7 +1086,7 @@ export default function ClientsView() {
                   setCompanyToDelete(company);
                 }}
               >
-                Excluir empresa
+                Desativar empresa
               </Button>
               <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-semibold uppercase tracking-wider block">
                 Status do Cliente

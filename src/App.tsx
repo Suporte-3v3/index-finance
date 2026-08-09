@@ -25,6 +25,7 @@ import {
 
 // View Imports
 import LoginView from "./views/LoginView";
+import ChangePasswordView from "./views/ChangePasswordView";
 import DashboardView from "./views/DashboardView";
 import OperationsCenter from "./views/OperationsCenter";
 import CashFlowView from "./views/CashFlowView";
@@ -465,15 +466,41 @@ function BPOWorkspaceShell({
   }, [mobileMenuOpen]);
 
   if (!activeCompany) {
+    if (currentUser.role === "BPO_ADMIN") {
+      return (
+        <div className="min-h-screen bg-canvas p-4 dark:bg-canvas-dark sm:p-8">
+          <div className="mx-auto mb-6 flex max-w-6xl items-center justify-between">
+            <img src={idexLogo} alt="Idex Finance" className="w-32 object-contain" />
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="rounded-lg border border-line px-4 py-2 text-xs font-bold text-ink transition hover:bg-surface dark:border-line-dark dark:text-ink-dark dark:hover:bg-surface-dark"
+            >
+              Sair
+            </button>
+          </div>
+          <div className="mx-auto max-w-6xl">
+            <ClientsView />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-brand-navy-950 text-white flex items-center justify-center font-sans p-6 text-center">
         <div className="space-y-4 max-w-sm">
           <Building2 className="h-12 w-12 mx-auto text-white/40 animate-pulse" />
-          <h2 className="text-lg font-bold">Nenhuma Empresa Ativa</h2>
+          <h2 className="text-lg font-bold">Nenhuma empresa autorizada</h2>
           <p className="text-xs text-white/60">
-            Por favor, reinicie os dados locais para provisionar os inquilinos
-            iniciais de BPO.
+            Sua conta está ativa, mas ainda não possui acesso a uma empresa.
+            Solicite o vínculo ao administrador da plataforma.
           </p>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="rounded-lg border border-white/20 px-4 py-2 text-xs font-bold transition hover:bg-white/10"
+          >
+            Sair
+          </button>
         </div>
       </div>
     );
@@ -1257,8 +1284,23 @@ function BPOWorkspaceShell({
 }
 
 function AppGate() {
-  const { isAuthenticated } = useBPOState();
+  const { isAuthenticated, isAuthLoading, mustChangePassword } = useBPOState();
   const theme = useThemeMode();
+  if (isAuthLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-brand-navy-950">
+        <div className="flex flex-col items-center gap-4 text-white/70">
+          <img
+            src={idexLogo}
+            alt="Idex Finance"
+            className="w-40 animate-pulse object-contain"
+          />
+          <span className="text-xs font-semibold">Validando sessão segura...</span>
+        </div>
+      </div>
+    );
+  }
+  if (isAuthenticated && mustChangePassword) return <ChangePasswordView />;
   return isAuthenticated ? (
     <BPOWorkspaceShell theme={theme} />
   ) : (

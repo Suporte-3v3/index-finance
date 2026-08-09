@@ -135,6 +135,22 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
     loadState("bakeryPixSales", []),
   );
 
+  const persistBolsaAccount = (companyId: string) => {
+    void ensureBolsaAccount(companyId).catch((error) => {
+      console.error("Falha ao preparar a conta Bolsa:", error);
+    });
+  };
+
+  const persistBakeryBankMovement = (
+    bankAccountId: string,
+    delta: number,
+    meta: { action: string; entityType: string; entityId: string },
+  ) => {
+    void applyBakeryBankMovement(bankAccountId, delta, meta).catch((error) => {
+      console.error("Falha ao persistir movimentação bancária da Padaria:", error);
+    });
+  };
+
   useEffect(() => {
     localStorage.setItem("bpo_saas_bakeryShifts", JSON.stringify(shifts));
   }, [shifts]);
@@ -154,7 +170,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
   // Garante que a empresa ativa tenha a conta "Bolsa" assim que o módulo é
   // usado, sem exigir nenhum passo manual de cadastro do BPO.
   useEffect(() => {
-    if (activeCompany) ensureBolsaAccount(activeCompany.id);
+    if (activeCompany) persistBolsaAccount(activeCompany.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompany?.id]);
 
@@ -221,7 +237,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
         error: `${conflictingShift.registerName} já está aberto com ${conflictingShift.operatorName}.`,
       };
 
-    ensureBolsaAccount(activeCompany.id);
+    persistBolsaAccount(activeCompany.id);
 
     const previousShift = getLastClosedShiftForRegister(data.registerId);
 
@@ -272,7 +288,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
     if (data.source === "BOLSA") {
       const bolsa = getBolsaAccount(shift.companyId);
       if (bolsa)
-        applyBakeryBankMovement(bolsa.id, -expense.amount, {
+        persistBakeryBankMovement(bolsa.id, -expense.amount, {
           action: "CAIXA_PADARIA_DESPESA_BOLSA",
           entityType: "BakeryExpense",
           entityId: expense.id,
@@ -309,7 +325,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
     if (expense.source === "BOLSA") {
       const bolsa = getBolsaAccount(expense.companyId);
       if (bolsa)
-        applyBakeryBankMovement(bolsa.id, expense.amount, {
+        persistBakeryBankMovement(bolsa.id, expense.amount, {
           action: "CAIXA_PADARIA_CANCELAR_DESPESA_BOLSA",
           entityType: "BakeryExpense",
           entityId: expense.id,
@@ -340,7 +356,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
 
     const bolsa = getBolsaAccount(shift.companyId);
     if (bolsa)
-      applyBakeryBankMovement(bolsa.id, withdrawal.amount, {
+      persistBakeryBankMovement(bolsa.id, withdrawal.amount, {
         action: "CAIXA_PADARIA_SANGRIA",
         entityType: "BakeryWithdrawal",
         entityId: withdrawal.id,
@@ -376,7 +392,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
     );
     const bolsa = getBolsaAccount(withdrawal.companyId);
     if (bolsa)
-      applyBakeryBankMovement(bolsa.id, -withdrawal.amount, {
+      persistBakeryBankMovement(bolsa.id, -withdrawal.amount, {
         action: "CAIXA_PADARIA_CANCELAR_SANGRIA",
         entityType: "BakeryWithdrawal",
         entityId: withdrawal.id,
@@ -413,7 +429,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
       reconciliationStatus: "Aguardando conciliação",
     };
     setPixSales((prev) => [...prev, sale]);
-    applyBakeryBankMovement(bankAccount.id, sale.amount, {
+    persistBakeryBankMovement(bankAccount.id, sale.amount, {
       action: "CAIXA_PADARIA_VENDA_PIX",
       entityType: "BakeryPixSale",
       entityId: sale.id,
@@ -451,7 +467,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
           : item,
       ),
     );
-    applyBakeryBankMovement(sale.bankAccountId, -sale.amount, {
+    persistBakeryBankMovement(sale.bankAccountId, -sale.amount, {
       action: "CAIXA_PADARIA_CANCELAR_VENDA_PIX",
       entityType: "BakeryPixSale",
       entityId: sale.id,
@@ -520,7 +536,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
     // fechamento anterior antes de aplicar os novos, para não contar em
     // dobro o saldo bancário.
     (shift.cardMachineEntries || []).forEach((entry) => {
-      applyBakeryBankMovement(entry.bankAccountId, -entry.amount, {
+      persistBakeryBankMovement(entry.bankAccountId, -entry.amount, {
         action: "CAIXA_PADARIA_ESTORNAR_MAQUININHA_REFECHAMENTO",
         entityType: "BakeryShift",
         entityId: shift.id,
@@ -529,7 +545,7 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
 
     const cardMachineEntries = data.cardMachineEntries || [];
     cardMachineEntries.forEach((entry) => {
-      applyBakeryBankMovement(entry.bankAccountId, entry.amount, {
+      persistBakeryBankMovement(entry.bankAccountId, entry.amount, {
         action: "CAIXA_PADARIA_VENDA_MAQUININHA",
         entityType: "BakeryShift",
         entityId: shift.id,

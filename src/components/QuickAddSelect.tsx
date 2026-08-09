@@ -34,7 +34,7 @@ export default function QuickAddSelect({
   value: string;
   onChange: (value: string) => void;
   options: MasterDataOption[];
-  onAdd: (name: string) => void;
+  onAdd: (name: string) => void | Promise<unknown>;
   placeholder?: string;
   containerClassName?: string;
   labelClassName?: string;
@@ -43,14 +43,24 @@ export default function QuickAddSelect({
 }) {
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [addError, setAddError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const confirmAdd = () => {
+  const confirmAdd = async () => {
     const trimmed = newName.trim();
-    if (!trimmed) return;
-    onAdd(trimmed);
-    onChange(trimmed);
-    setNewName("");
-    setIsAdding(false);
+    if (!trimmed || isSaving) return;
+    setAddError("");
+    setIsSaving(true);
+    try {
+      await onAdd(trimmed);
+      onChange(trimmed);
+      setNewName("");
+      setIsAdding(false);
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Não foi possível cadastrar.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -72,7 +82,7 @@ export default function QuickAddSelect({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                confirmAdd();
+                void confirmAdd();
               }
               if (event.key === "Escape") {
                 setIsAdding(false);
@@ -82,7 +92,8 @@ export default function QuickAddSelect({
           />
           <button
             type="button"
-            onClick={confirmAdd}
+            onClick={() => void confirmAdd()}
+            disabled={isSaving}
             title="Salvar novo cadastro"
             className="p-2 bg-[#0B2C52] hover:bg-[#0B2C52]/90 text-white rounded-sm cursor-pointer shrink-0"
           >
@@ -93,6 +104,7 @@ export default function QuickAddSelect({
             onClick={() => {
               setIsAdding(false);
               setNewName("");
+              setAddError("");
             }}
             title="Cancelar"
             className="p-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-sm cursor-pointer shrink-0"
@@ -127,6 +139,7 @@ export default function QuickAddSelect({
           )}
         </div>
       )}
+      {addError && <p className="text-[10px] font-semibold text-red-600">{addError}</p>}
     </div>
   );
 }

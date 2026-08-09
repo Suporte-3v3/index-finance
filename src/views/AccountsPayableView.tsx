@@ -315,13 +315,13 @@ export default function AccountsPayableView({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (recurrence === "Parcelada" && Number(installmentCount) < 2) {
       alert("Informe pelo menos 2 parcelas ou escolha outra recorrência.");
       return;
     }
-    addAccountPayable({
+    const result = await addAccountPayable({
       description,
       supplier,
       category,
@@ -344,6 +344,10 @@ export default function AccountsPayableView({
       responsibleId: currentUser.id,
       needsApproval: Number(amount) >= activeCompany.approvalLimit,
     });
+    if (!result.success) {
+      alert(result.error || "Não foi possível cadastrar a conta a pagar.");
+      return;
+    }
     resetForm();
   };
 
@@ -402,7 +406,7 @@ export default function AccountsPayableView({
     openPanel(selected, "info", true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selected) return;
     setPanelError("");
     if (!editDescription || !editSupplier || !editCategory || !editCostCenter) {
@@ -413,7 +417,7 @@ export default function AccountsPayableView({
       setPanelError("O valor da conta deve ser maior que zero.");
       return;
     }
-    const result = updateAccountPayable(selected.id, {
+    const result = await updateAccountPayable(selected.id, {
       description: editDescription,
       supplier: editSupplier,
       category: editCategory,
@@ -437,7 +441,7 @@ export default function AccountsPayableView({
     setIsEditingInfo(false);
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!selected) return;
     setPanelError("");
     if (!payBankAccountId) {
@@ -448,7 +452,7 @@ export default function AccountsPayableView({
       setPanelError("Informe um valor de pagamento válido.");
       return;
     }
-    const result = payAccountPayable({
+    const result = await payAccountPayable({
       id: selected.id,
       date: payDate,
       bankAccountId: payBankAccountId,
@@ -470,11 +474,11 @@ export default function AccountsPayableView({
     setCancelTargetId(id);
   };
 
-  const confirmCancel = () => {
+  const confirmCancel = async () => {
     if (!cancelTargetId) return;
     const id = cancelTargetId;
     setCancelTargetId(null);
-    const result = cancelAccountPayable(id);
+    const result = await cancelAccountPayable(id);
     if (!result.success) {
       alert(result.error || "Não foi possível cancelar este lançamento.");
       return;
@@ -482,9 +486,9 @@ export default function AccountsPayableView({
     if (selectedId === id) closePanel();
   };
 
-  const handleAttachSimulated = () => {
+  const handleAttachSimulated = async () => {
     if (!selected) return;
-    const result = updateAccountPayable(selected.id, {
+    const result = await updateAccountPayable(selected.id, {
       attachmentName: "boleto_upload_simulado.pdf",
       attachmentUrl: "#",
     });
@@ -1236,7 +1240,9 @@ export default function AccountsPayableView({
                     )}
                     {selected.status === "A vencer" && (
                       <button
-                        onClick={() => scheduleAccountPayable(selected.id)}
+                        onClick={() => void scheduleAccountPayable(selected.id).then((result) => {
+                          if (!result.success) setPanelError(result.error || "Não foi possível agendar o pagamento.");
+                        })}
                         className="w-full text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/25 py-2.5 rounded-lg cursor-pointer"
                       >
                         Agendar pagamento
