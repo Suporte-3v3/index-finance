@@ -25,6 +25,7 @@ export interface ReportDocumentData {
   description?: string;
   companyName: string;
   companyCnpj?: string;
+  companyLogoDataUrl?: string;
   filters: string;
   appliedFilters?: { label: string; value: string }[];
   period?: {

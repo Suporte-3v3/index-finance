@@ -48,6 +48,7 @@ try {
     description: "Pagamentos, obrigações e despesas do período.",
     companyName: "Alfa Tecnologia",
     companyCnpj: "12.345.678/0001-90",
+    companyLogoDataUrl: logoData,
     filters: "Período: 01/07/2026 a 31/07/2026 | Status: Todos | Categoria: Serviços",
     appliedFilters: [
       { label: "Período", value: "01/07/2026 a 31/07/2026" },
@@ -130,7 +131,9 @@ try {
   ] as const;
 
   for (const [fileName, document] of fixtures) {
-    const pdf = createIdexReportPdf(document, logoData);
+    const pdf = fileName === "preview-contas-a-pagar.pdf"
+      ? createIdexReportPdf(document)
+      : createIdexReportPdf(document, logoData);
     await writeFile(path.join(outputDir, fileName), pdf);
   }
 } finally {

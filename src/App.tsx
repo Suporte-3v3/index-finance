@@ -12,6 +12,7 @@ import {
   getEffectiveClientModules,
 } from "./config/clientModules";
 import { searchAll, GlobalSearchResult } from "./services/globalSearch";
+import { resolveCompanyLogo } from "./services/companyBranding";
 import idexLogo from "../assets/idex-finance-logo-transparent.png";
 import {
   ToastProvider,
@@ -478,6 +479,13 @@ function BPOWorkspaceShell({
     );
   }
 
+  const activeBrandLogo = isBpoGlobalMode
+    ? idexLogo
+    : resolveCompanyLogo(activeCompany.logoDataUrl, idexLogo);
+  const activeBrandAlt = activeBrandLogo === idexLogo
+    ? "Idex Finance - Gestão que move resultados"
+    : `Logo de ${activeCompany.tradeName}`;
+
   // Pending approvals count badge
   const pendingApprovalsCount = approvals.filter(
     (a) =>
@@ -794,13 +802,17 @@ function BPOWorkspaceShell({
           >
             <div className="flex flex-col items-center">
               {sidebarCollapsed ? (
-                <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-xl bg-brand-navy-900">
-                  <LayoutDashboard className="h-6 w-6 text-brand-gold-300" />
+                <div className="hidden md:flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-line dark:border-line-dark bg-white p-1.5">
+                  <img
+                    src={activeBrandLogo}
+                    alt={activeBrandAlt}
+                    className="h-full w-full object-contain"
+                  />
                 </div>
               ) : null}
               <img
-                src={idexLogo}
-                alt="Idex Finance — Gestão que move resultados"
+                src={activeBrandLogo}
+                alt={activeBrandAlt}
                 className={cn(sidebarCollapsed ? "md:hidden" : "", "h-16 w-full object-contain")}
               />
               <div
@@ -1097,7 +1109,7 @@ function BPOWorkspaceShell({
             className="md:hidden shrink-0"
           />
 
-          <img src={idexLogo} alt="Idex Finance" className="h-8 w-auto object-contain md:hidden" />
+          <img src={activeBrandLogo} alt={activeBrandAlt} className="h-8 w-16 object-contain md:hidden" />
 
           <div className="hidden md:flex items-center gap-2 min-w-0">
             <span className="text-brand-navy-900 dark:text-ink-soft-dark font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shrink-0">

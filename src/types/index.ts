@@ -47,6 +47,7 @@ export interface Company {
   createdAt: string;
   status: CompanyStatus;
   approvalLimit: number; // Max amount before requiring multi-level BPO admin approval
+  logoDataUrl?: string; // Logo raster normalizada para menu e relatórios; Idex é o fallback.
   clientModules?: ClientModule[]; // Modules enabled in the client workspace for this company
 }
 

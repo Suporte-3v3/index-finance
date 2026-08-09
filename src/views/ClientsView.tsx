@@ -8,6 +8,10 @@ import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, ClientModule, Company } from "../types";
 import CurrencyInput from "../components/CurrencyInput";
 import {
+  COMPANY_LOGO_ACCEPT,
+  normalizeCompanyLogo,
+} from "../services/companyBranding";
+import {
   ALL_CLIENT_MODULES,
   CLIENT_MODULE_OPTIONS,
   getCompanyClientModules,
@@ -25,6 +29,7 @@ import {
   Settings2,
   Trash2,
   X,
+  ImagePlus,
 } from "lucide-react";
 
 const DEFAULT_CATEGORIES = "Aluguel\nEnergia\nMarketing\nFornecedores";
@@ -66,6 +71,7 @@ export default function ClientsView() {
   const [pageMessage, setPageMessage] = useState("");
   const [pageError, setPageError] = useState("");
   const modulesSectionRef = useRef<HTMLDivElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Form Fields
   const [corporateName, setCorporateName] = useState("");
@@ -78,6 +84,8 @@ export default function ClientsView() {
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [approvalLimit, setApprovalLimit] = useState(10000);
+  const [companyLogoDataUrl, setCompanyLogoDataUrl] = useState("");
+  const [isLogoProcessing, setIsLogoProcessing] = useState(false);
   const [companyStatus, setCompanyStatus] =
     useState<Company["status"]>("Implantação");
   const [bpoResponsibleId, setBpoResponsibleId] = useState(currentUser.id);
@@ -137,6 +145,9 @@ export default function ClientsView() {
     setPrimaryContactName("");
     setPrimaryContactEmail("");
     setApprovalLimit(10000);
+    setCompanyLogoDataUrl("");
+    setIsLogoProcessing(false);
+    if (logoInputRef.current) logoInputRef.current.value = "";
     setCompanyStatus("Implantação");
     setBpoResponsibleId(currentUser.id);
     setBankName("");
@@ -157,6 +168,10 @@ export default function ClientsView() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
+    if (isLogoProcessing) {
+      setFormError("Aguarde o processamento da logo antes de salvar.");
+      return;
+    }
     if (
       !corporateName ||
       !tradeName ||
@@ -191,6 +206,7 @@ export default function ClientsView() {
       primaryContactEmail,
       bpoResponsibleId,
       approvalLimit: Number(approvalLimit),
+      logoDataUrl: companyLogoDataUrl || undefined,
       clientModules: selectedClientModules,
     };
     const wasEditing = Boolean(editingCompanyId);
@@ -250,6 +266,7 @@ export default function ClientsView() {
     setPrimaryContactName(company.primaryContactName);
     setPrimaryContactEmail(company.primaryContactEmail);
     setApprovalLimit(company.approvalLimit);
+    setCompanyLogoDataUrl(company.logoDataUrl || "");
     setCompanyStatus(company.status);
     setBpoResponsibleId(company.bpoResponsibleId);
     setSelectedClientModules(getCompanyClientModules(company));
@@ -264,6 +281,25 @@ export default function ClientsView() {
           }),
         0,
       );
+    }
+  };
+
+  const handleLogoFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setFormError("");
+    setIsLogoProcessing(true);
+    try {
+      setCompanyLogoDataUrl(await normalizeCompanyLogo(file));
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Não foi possível importar a logo.",
+      );
+    } finally {
+      setIsLogoProcessing(false);
     }
   };
   const openNew = () => {
@@ -376,7 +412,12 @@ export default function ClientsView() {
             >
               Cancelar
             </Button>
-            <Button type="submit" form="clients-company-form">
+            <Button
+              type="submit"
+              form="clients-company-form"
+              disabled={isLogoProcessing}
+              loading={isLogoProcessing}
+            >
               {editingCompanyId
                 ? "Salvar todas as alterações"
                 : "Criar empresa completa"}
@@ -416,6 +457,64 @@ export default function ClientsView() {
                 value={corporateName}
                 onChange={(e) => setCorporateName(e.target.value)}
               />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-line dark:border-line-dark bg-canvas dark:bg-white/5 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="flex h-24 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line dark:border-line-dark bg-white p-2">
+                {companyLogoDataUrl ? (
+                  <img
+                    src={companyLogoDataUrl}
+                    alt={`Logo de ${tradeName || "empresa cliente"}`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="text-center text-ink-soft">
+                    <ImagePlus className="mx-auto h-6 w-6" />
+                    <span className="mt-1 block text-[10px]">Sem logo</span>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <span className="block text-xs font-bold text-ink dark:text-ink-dark">
+                    Logo da empresa
+                  </span>
+                  <p className="mt-1 text-[10px] leading-relaxed text-ink-soft dark:text-ink-soft-dark">
+                    Será exibida no menu e nos relatórios desta empresa. PNG, JPG ou WebP, até 5 MB. Sem logo, a identidade da Idex será mantida.
+                  </p>
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept={COMPANY_LOGO_ACCEPT}
+                  onChange={handleLogoFile}
+                  className="hidden"
+                  aria-label="Selecionar logo da empresa"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<ImagePlus className="h-3.5 w-3.5" />}
+                    loading={isLogoProcessing}
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    {companyLogoDataUrl ? "Substituir logo" : "Importar logo"}
+                  </Button>
+                  {companyLogoDataUrl && (
+                    <Button
+                      size="sm"
+                      variant="text"
+                      icon={<Trash2 className="h-3.5 w-3.5" />}
+                      onClick={() => setCompanyLogoDataUrl("")}
+                    >
+                      Remover logo
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

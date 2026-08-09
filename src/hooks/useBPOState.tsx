@@ -59,6 +59,7 @@ import {
   ReportSectionData,
 } from "../services/reportFiles";
 import { formatBrazilianDate } from "../services/reportFormatters";
+import { convertCompanyLogoToPng } from "../services/companyBranding";
 import {
   computeReportSections,
   computeDreSections,
@@ -233,6 +234,15 @@ export interface CompanyCreationResult {
   success: boolean;
   error?: string;
 }
+
+const companyAuditSnapshot = (company: Company) => {
+  const { logoDataUrl: _logoDataUrl, ...companyData } = company;
+  void _logoDataUrl;
+  return {
+    ...companyData,
+    hasCustomLogo: Boolean(company.logoDataUrl),
+  };
+};
 
 export interface ReconciliationResult {
   success: boolean;
@@ -524,6 +534,41 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>(() =>
     loadState("companies", INITIAL_COMPANIES),
   );
+
+  useEffect(() => {
+    const legacyLogos = companies.filter((company) =>
+      company.logoDataUrl?.startsWith("data:image/webp"),
+    );
+    if (!legacyLogos.length) return;
+    let cancelled = false;
+    void Promise.all(
+      legacyLogos.map(async (company) => ({
+        companyId: company.id,
+        original: company.logoDataUrl,
+        converted: await convertCompanyLogoToPng(company.logoDataUrl!),
+      })),
+    )
+      .then((convertedLogos) => {
+        if (cancelled) return;
+        setCompanies((current) =>
+          current.map((company) => {
+            const conversion = convertedLogos.find(
+              (item) => item.companyId === company.id,
+            );
+            return conversion && company.logoDataUrl === conversion.original
+              ? { ...company, logoDataUrl: conversion.converted }
+              : company;
+          }),
+        );
+      })
+      .catch(() => {
+        // A logo antiga continua disponível no menu; o usuário pode reenviá-la
+        // caso o navegador não consiga convertê-la automaticamente.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companies]);
   const [users, setUsers] = useState<User[]>(() => {
     const storedUsers = loadState<User[]>("users", INITIAL_USERS);
     const migratedUsers = storedUsers.filter(
@@ -2649,6 +2694,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         reportType: type,
         companyName: activeCompany.tradeName,
         companyCnpj: activeCompany.cnpj,
+        companyLogoDataUrl: activeCompany.logoDataUrl,
         filters,
         period: {
           startDate: options.startDate,
@@ -2823,6 +2869,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         description,
         companyName: activeCompany.tradeName,
         companyCnpj: activeCompany.cnpj,
+        companyLogoDataUrl: activeCompany.logoDataUrl,
         filters: filtersSummary,
         appliedFilters,
         period: {
@@ -3218,7 +3265,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     });
 
     createAuditLog("PROVISIONAR_EMPRESA", "Company", id, id, null, {
-      company: newCompany,
+      company: companyAuditSnapshot(newCompany),
       bankAccount: newBank,
       masterDataCount: newMasterData.length,
       primaryContactUserId: existingPrimaryContact?.id || `u-client-${id}`,
@@ -3251,8 +3298,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         "Company",
         id,
         id,
-        existing,
-        updated,
+        companyAuditSnapshot(existing),
+        companyAuditSnapshot(updated),
       );
       return prev.map((c) => (c.id === id ? updated : c));
     });
@@ -3316,8 +3363,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       "Company",
       id,
       id,
-      existing,
-      updated,
+      companyAuditSnapshot(existing),
+      companyAuditSnapshot(updated),
     );
     return { success: true };
   };
@@ -3347,7 +3394,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       "Company",
       id,
       id,
-      company,
+      companyAuditSnapshot(company),
       null,
     );
     setCompanies(remainingCompanies);

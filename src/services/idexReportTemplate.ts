@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import idexLogo from "../../assets/idex-finance-logo-transparent.png?inline";
+import { resolveCompanyLogo } from "./companyBranding";
 import type {
   ReportCell,
   ReportDocumentData,
@@ -104,7 +105,27 @@ const drawHeader = (pdf: jsPDF, doc: ReportDocumentData, logoSource: string) => 
   pdf.rect(width * 0.76, HEADER_HEIGHT - 1.5, width * 0.24, 1.5, "F");
 
   try {
-    pdf.addImage(logoSource, "PNG", MARGIN_X, 3.4, 17, 17, undefined, "FAST");
+    const format = logoSource.startsWith("data:image/jpeg")
+      ? "JPEG"
+      : logoSource.startsWith("data:image/webp")
+        ? "WEBP"
+        : "PNG";
+    const properties = pdf.getImageProperties(logoSource);
+    const maxWidth = 23;
+    const maxHeight = 20.5;
+    const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height);
+    const logoWidth = properties.width * scale;
+    const logoHeight = properties.height * scale;
+    pdf.addImage(
+      logoSource,
+      format,
+      MARGIN_X + (maxWidth - logoWidth) / 2,
+      1.5 + (maxHeight - logoHeight) / 2,
+      logoWidth,
+      logoHeight,
+      undefined,
+      "FAST",
+    );
   } catch {
     // O texto institucional abaixo mantém o cabeçalho utilizável caso o asset
     // ainda não tenha terminado de carregar em um navegador muito antigo.
@@ -113,12 +134,12 @@ const drawHeader = (pdf: jsPDF, doc: ReportDocumentData, logoSource: string) => 
   pdf.setTextColor(...asColor(COLORS.white));
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(11);
-  pdf.text("Idex Finance", MARGIN_X + 20, 8);
+  pdf.text("Idex Finance", MARGIN_X + 26, 8);
   pdf.setFontSize(7.5);
   pdf.setFont("helvetica", "normal");
   const titleWidth = Math.max(48, width * 0.42);
   const titleLines = pdf.splitTextToSize(doc.reportType || doc.title, titleWidth).slice(0, 2);
-  pdf.text(titleLines, MARGIN_X + 20, 13);
+  pdf.text(titleLines, MARGIN_X + 26, 13);
 
   const rightX = width - MARGIN_X;
   const period = doc.period?.startDate && doc.period?.endDate
@@ -477,8 +498,9 @@ const drawNotes = (pdf: jsPDF, notes: string, startY: number) => {
 
 export const createIdexReportPdf = (
   doc: ReportDocumentData,
-  logoSource = idexLogo,
+  logoOverride?: string,
 ): Uint8Array => {
+  const logoSource = logoOverride || resolveCompanyLogo(doc.companyLogoDataUrl, idexLogo);
   const orientation = chooseOrientation(doc);
   const pdf = new jsPDF({
     orientation,
