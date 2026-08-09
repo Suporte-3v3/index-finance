@@ -3,11 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { AccountPayable, MasterDataType } from "../types";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
+import {
+  Button,
+  Card,
+  MetricCard,
+  SearchField,
+  StatusBadge,
+  ConfirmDialog,
+} from "../components/ui";
 import {
   Plus,
   Search,
@@ -40,30 +48,12 @@ const getRemaining = (ap: AccountPayable) =>
 type PanelTab = "info" | "payment" | "attachments" | "history";
 
 const AP_METRIC_VISUALS = [
-  {
-    icon: AlertTriangle,
-    tint: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
-  },
-  {
-    icon: CalendarClock,
-    tint: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
-  },
-  {
-    icon: Clock,
-    tint: "bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
-  },
-  {
-    icon: Hourglass,
-    tint: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
-  },
-  {
-    icon: CheckCircle,
-    tint: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
-  },
-  {
-    icon: Wallet,
-    tint: "bg-[#0B2C52]/5 text-[#0B2C52] dark:bg-[#123B6B]/25 dark:text-[#9DB8D9]",
-  },
+  { icon: AlertTriangle, tone: "red" },
+  { icon: CalendarClock, tone: "gold" },
+  { icon: Clock, tone: "navy" },
+  { icon: Hourglass, tone: "navy" },
+  { icon: CheckCircle, tone: "green" },
+  { icon: Wallet, tone: "navy" },
 ] as const;
 
 const AP_AVATAR_PALETTE = [
@@ -161,6 +151,16 @@ export default function AccountsPayableView({
   // Registration Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isFormOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFormOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isFormOpen]);
 
   // Form Fields
   const [description, setDescription] = useState("");
@@ -263,34 +263,6 @@ export default function AccountsPayableView({
 
     return matchesSearch && matchesStatus;
   });
-
-  const getStatusBadge = (status: AccountPayable["status"]) => {
-    switch (status) {
-      case "Rascunho":
-        return "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
-      case "Pendente":
-      case "A vencer":
-        return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/25";
-      case "Aguardando aprovação":
-        return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25";
-      case "Aprovada":
-        return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/25";
-      case "Agendada":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/25";
-      case "Paga":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25";
-      case "Parcialmente paga":
-        return "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-300 dark:border-cyan-500/25";
-      case "Vencida":
-        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/25";
-      case "Rejeitada":
-        return "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-500/20 dark:text-rose-200 dark:border-rose-500/30";
-      case "Cancelada":
-        return "bg-zinc-200 text-zinc-800 border-zinc-300 line-through dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700";
-      default:
-        return "bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
-    }
-  };
 
   const canEdit = (ap: AccountPayable) =>
     hasPermission("accounts-payable.update") &&
@@ -495,12 +467,13 @@ export default function AccountsPayableView({
   };
 
   const handleCancel = (id: string) => {
-    if (
-      !window.confirm(
-        "Deseja realmente cancelar este lançamento? O registro histórico será preservado para auditoria.",
-      )
-    )
-      return;
+    setCancelTargetId(id);
+  };
+
+  const confirmCancel = () => {
+    if (!cancelTargetId) return;
+    const id = cancelTargetId;
+    setCancelTargetId(null);
     const result = cancelAccountPayable(id);
     if (!result.success) {
       alert(result.error || "Não foi possível cancelar este lançamento.");
@@ -529,7 +502,7 @@ export default function AccountsPayableView({
     if (diffDays < 0)
       return { text: `${Math.abs(diffDays)} dia${Math.abs(diffDays) === 1 ? "" : "s"} vencido`, tone: "text-rose-600 dark:text-rose-400" };
     if (diffDays === 0) return { text: "Vence hoje", tone: "text-amber-600 dark:text-amber-400" };
-    return { text: `Vence em ${diffDays} dia${diffDays === 1 ? "" : "s"}`, tone: "text-zinc-500 dark:text-zinc-400" };
+    return { text: `Vence em ${diffDays} dia${diffDays === 1 ? "" : "s"}`, tone: "text-ink-soft dark:text-ink-soft-dark" };
   };
 
   return (
@@ -539,11 +512,11 @@ export default function AccountsPayableView({
         <div>
           <h2
             id="payable-title"
-            className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight"
+            className="text-xl font-semibold text-ink dark:text-ink-dark tracking-tight"
           >
             Contas a Pagar
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs">
+          <p className="text-ink-soft dark:text-ink-soft-dark text-xs">
             Gestão de compromissos, agendamentos, validação de boletos e
             histórico de liquidações.
           </p>
@@ -551,22 +524,14 @@ export default function AccountsPayableView({
 
         <div className="flex items-center gap-2">
           {hasPermission("accounts-payable.create") && onNavigate && (
-            <button
-              onClick={onNavigate}
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#091320] hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-sm transition-colors cursor-pointer shadow-xs"
-            >
-              <ChevronRight className="h-4 w-4" />
+            <Button variant="outline" icon={<ChevronRight className="h-4 w-4" />} onClick={onNavigate}>
               Ir para Lançamentos
-            </button>
+            </Button>
           )}
           {hasPermission("accounts-payable.create") && (
-            <button
-              onClick={() => setIsFormOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#C8102E] hover:bg-[#8F071B] px-4 py-2.5 rounded-sm transition-colors cursor-pointer shadow-xs"
-            >
-              <Plus className="h-4 w-4" />
+            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setIsFormOpen(true)}>
               Nova conta a pagar
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -574,48 +539,30 @@ export default function AccountsPayableView({
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {payableMetrics.map((metric, index) => {
           const visual = AP_METRIC_VISUALS[index];
-          const VisualIcon = visual.icon;
           return (
-            <div
+            <MetricCard
               key={metric.label}
-              className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 p-2.5 flex flex-col gap-2"
-            >
-              <div
-                className={`h-7 w-7 rounded-sm flex items-center justify-center ${visual.tint}`}
-              >
-                <VisualIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-              </div>
-              <div>
-                <p className="text-[9px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase">
-                  {metric.label}
-                </p>
-                <p className="text-base font-semibold mt-0.5 text-zinc-900 dark:text-zinc-50">
-                  {formatBRL(metric.amount)}
-                </p>
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                  {metric.count} título{metric.count === 1 ? "" : "s"}
-                </p>
-              </div>
-            </div>
+              icon={<visual.icon strokeWidth={2.25} />}
+              label={metric.label}
+              value={formatBRL(metric.amount)}
+              helpText={`${metric.count} título${metric.count === 1 ? "" : "s"}`}
+              tone={visual.tone}
+            />
           );
         })}
       </div>
 
       {/* Grid Filtering / Searching */}
-      <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400 dark:text-zinc-500" />
-          <input
-            type="text"
-            placeholder="Buscar por Descrição, Fornecedor ou Doc..."
-            className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 hover:bg-zinc-100/50 dark:hover:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 rounded-sm border border-zinc-200 dark:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-[#C8102E] transition-colors"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+      <Card className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <SearchField
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Buscar por Descrição, Fornecedor ou Doc..."
+          containerClassName="w-full md:w-96"
+        />
 
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 px-3 py-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300">
+          <div className="flex items-center gap-1.5 bg-canvas dark:bg-white/5 px-3 py-1.5 rounded-lg border border-line dark:border-line-dark text-xs text-ink dark:text-ink-dark">
             <Filter className="h-3.5 w-3.5" />
             <select
               className="bg-transparent font-medium focus:outline-none cursor-pointer dark:[color-scheme:dark]"
@@ -633,36 +580,42 @@ export default function AccountsPayableView({
             </select>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Step-by-Step Step Form Modal */}
       {isFormOpen && (
-        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div
+          className="fixed inset-0 bg-brand-navy-950/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          onClick={resetForm}
+        >
+          <div
+            className="bg-surface dark:bg-surface-dark rounded-2xl border border-line dark:border-line-dark shadow-2xl max-w-xl w-full overflow-hidden motion-safe:animate-[modalIn_180ms_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
-            <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 bg-gradient-to-r from-[#0B2C52] to-[#C8102E] text-white flex items-center justify-between">
+            <div className="p-5 border-b border-line dark:border-line-dark bg-brand-navy-900 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold">
                   Lançar Nova Conta a Pagar
                 </h3>
-                <p className="text-[10px] text-[#F2D3A0]">
+                <p className="text-[10px] text-brand-gold-300">
                   Dividido em 3 etapas de verificação operacional para BPO.
                 </p>
               </div>
               <button
                 onClick={resetForm}
-                className="text-[#F2D3A0] hover:text-white font-semibold text-xs cursor-pointer"
+                className="text-brand-gold-300 hover:text-white font-semibold text-xs cursor-pointer"
               >
                 Fechar
               </button>
             </div>
 
             {/* Steps Indicator bar */}
-            <div className="flex bg-[#0B2C52] border-b border-[#0B2C52]/20 px-5 py-3.5 text-xs justify-between font-medium">
+            <div className="flex bg-brand-navy-900 border-b border-brand-navy-900/20 px-5 py-3.5 text-xs justify-between font-medium">
               <span
                 className={`flex items-center gap-1.5 ${formStep >= 1 ? "text-white font-semibold" : "text-white/40"}`}
               >
-                <span className="h-5 w-5 rounded bg-[#C8102E] text-white flex items-center justify-center text-[10px] font-semibold">
+                <span className="h-5 w-5 rounded bg-brand-red-600 text-white flex items-center justify-center text-[10px] font-semibold">
                   1
                 </span>{" "}
                 Fornecedor
@@ -671,7 +624,7 @@ export default function AccountsPayableView({
                 className={`flex items-center gap-1.5 ${formStep >= 2 ? "text-white font-semibold" : "text-white/40"}`}
               >
                 <span
-                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 2 ? "bg-[#C8102E] text-white" : "bg-[#061425] text-white/40"}`}
+                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 2 ? "bg-brand-red-600 text-white" : "bg-brand-navy-950 text-white/40"}`}
                 >
                   2
                 </span>{" "}
@@ -681,7 +634,7 @@ export default function AccountsPayableView({
                 className={`flex items-center gap-1.5 ${formStep >= 3 ? "text-white font-semibold" : "text-white/40"}`}
               >
                 <span
-                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 3 ? "bg-[#C8102E] text-white" : "bg-[#061425] text-white/40"}`}
+                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 3 ? "bg-brand-red-600 text-white" : "bg-brand-navy-950 text-white/40"}`}
                 >
                   3
                 </span>{" "}
@@ -697,14 +650,14 @@ export default function AccountsPayableView({
               {formStep === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-right-5 duration-150">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                       Descrição da Conta *
                     </label>
                     <input
                       type="text"
                       required
                       placeholder="Ex: Licença mensal Softwares ERP"
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-[#C8102E]"
+                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red-600"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                     />
@@ -746,37 +699,37 @@ export default function AccountsPayableView({
                 <div className="space-y-4 animate-in slide-in-from-right-5 duration-150">
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Mês Competência
                       </label>
                       <input
                         type="month"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={competenceMonth}
                         onChange={(e) => setCompetenceMonth(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Data Emissão
                       </label>
                       <input
                         type="date"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={issueDate}
                         onChange={(e) => setIssueDate(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Data Vencimento *
                       </label>
                       <input
                         type="date"
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={dueDate}
                         onChange={(e) => setDueDate(e.target.value)}
                       />
@@ -785,23 +738,23 @@ export default function AccountsPayableView({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Valor Principal (R$) *
                       </label>
                       <CurrencyInput
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={amount}
                         onChange={setAmount}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Desconto (R$)
                       </label>
                       <CurrencyInput
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={discount}
                         onChange={setDiscount}
                       />
@@ -810,22 +763,22 @@ export default function AccountsPayableView({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Juros (R$)
                       </label>
                       <CurrencyInput
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={interest}
                         onChange={setInterest}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Multa (R$)
                       </label>
                       <CurrencyInput
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={penalty}
                         onChange={setPenalty}
                       />
@@ -833,7 +786,7 @@ export default function AccountsPayableView({
                   </div>
 
                   {/* Informational Limit warning */}
-                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/70 rounded-sm text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/70 rounded-lg text-[10px] text-ink-soft dark:text-ink-soft-dark font-medium">
                     Previsão de Valor Líquido Final:{" "}
                     <strong className="text-zinc-700 dark:text-zinc-200">
                       {formatBRL(
@@ -868,12 +821,12 @@ export default function AccountsPayableView({
                     />
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Debitar de Qual Conta *
                       </label>
                       <select
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                         value={bankAccountId}
                         onChange={(e) => setBankAccountId(e.target.value)}
                       >
@@ -888,11 +841,11 @@ export default function AccountsPayableView({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Recorrência
                       </label>
                       <select
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                         value={recurrence}
                         onChange={(e) => setRecurrence(e.target.value as any)}
                       >
@@ -906,13 +859,13 @@ export default function AccountsPayableView({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Número do Documento / NF
                       </label>
                       <input
                         type="text"
                         placeholder="Ex: NF-12042"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={documentNumber}
                         onChange={(e) => setDocumentNumber(e.target.value)}
                       />
@@ -920,22 +873,22 @@ export default function AccountsPayableView({
                   </div>
 
                   {recurrence === "Parcelada" && (
-                    <div className="p-3 bg-[#0B2C52]/5 dark:bg-[#123B6B]/20 border border-[#0B2C52]/20 dark:border-[#3E6DA6]/40 rounded-sm space-y-2">
+                    <div className="p-3 bg-brand-navy-900/5 dark:bg-brand-navy-700/20 border border-brand-navy-900/20 dark:border-brand-navy-700/40 rounded-lg space-y-2">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                           Quantidade de parcelas
                         </label>
                         <input
                           type="number"
                           min={2}
                           step={1}
-                          className="w-full p-2 text-xs bg-white dark:bg-[#091320] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                          className="w-full p-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                           value={installmentCount}
                           onChange={(e) => setInstallmentCount(e.target.value)}
                         />
                       </div>
                       {Number(installmentCount) >= 2 && (
-                        <p className="text-[10px] text-[#0B2C52] dark:text-[#B9CDE6] font-semibold">
+                        <p className="text-[10px] text-brand-navy-900 dark:text-blue-100 font-semibold">
                           {installmentCount}x de aprox.{" "}
                           {formatBRL(
                             (Number(amount) +
@@ -953,14 +906,14 @@ export default function AccountsPayableView({
                   )}
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                       Anexar Fatura / Boleto (PDF/Imagem)
                     </label>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         placeholder="Nome do arquivo faturado..."
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={attachmentName}
                         onChange={(e) => setAttachmentName(e.target.value)}
                       />
@@ -969,7 +922,7 @@ export default function AccountsPayableView({
                         onClick={() =>
                           setAttachmentName("boleto_upload_simulado.pdf")
                         }
-                        className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 p-2 rounded-sm cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
+                        className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-line dark:border-line-dark p-2 rounded-lg cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
                       >
                         <Paperclip className="h-3.5 w-3.5" /> Simular
                       </button>
@@ -977,13 +930,13 @@ export default function AccountsPayableView({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                       Observações adicionais
                     </label>
                     <textarea
                       placeholder="Alguma instrução de pagamento..."
                       rows={2}
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
@@ -992,12 +945,12 @@ export default function AccountsPayableView({
               )}
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800 pt-4 mt-6">
+              <div className="flex items-center justify-between border-t border-line dark:border-line-dark pt-4 mt-6">
                 {formStep > 1 ? (
                   <button
                     type="button"
                     onClick={() => setFormStep((prev) => (prev - 1) as any)}
-                    className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-semibold px-4 py-2 rounded-sm cursor-pointer text-zinc-800 dark:text-zinc-200"
+                    className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-semibold px-4 py-2 rounded-lg cursor-pointer text-zinc-800 dark:text-zinc-200"
                   >
                     Voltar Etapa
                   </button>
@@ -1009,13 +962,13 @@ export default function AccountsPayableView({
                   <button
                     type="button"
                     onClick={resetForm}
-                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-medium px-3 py-2 cursor-pointer"
+                    className="text-xs text-ink-soft dark:text-ink-soft-dark hover:text-zinc-950 dark:hover:text-white font-medium px-3 py-2 cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="text-xs font-semibold bg-zinc-950 hover:bg-zinc-850 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 text-white px-4 py-2 rounded-sm shadow-xs cursor-pointer"
+                    className="text-xs font-semibold bg-brand-red-600 hover:bg-brand-red-500 text-white px-4 py-2 rounded-lg shadow-xs cursor-pointer"
                   >
                     {formStep === 3 ? "Finalizar Lançamento" : "Próxima Etapa"}
                   </button>
@@ -1029,32 +982,32 @@ export default function AccountsPayableView({
       {/* Main content: table + side panel */}
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         {/* Table */}
-        <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden flex-1 min-w-0 w-full">
+        <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs overflow-hidden flex-1 min-w-0 w-full">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left border-collapse">
               <thead>
-                <tr className="bg-zinc-50 dark:bg-[#091320]/60 border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <tr className="bg-zinc-50 dark:bg-surface-dark/60 border-b border-line dark:border-line-dark">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                     Lançamento
                   </th>
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                     Fornecedor
                   </th>
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                     Vencimento
                   </th>
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-right">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-right">
                     Valor
                   </th>
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-center">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-center">
                     Status
                   </th>
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-right">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-right">
                     Ações
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
+              <tbody className="divide-y divide-line dark:divide-line-dark text-xs">
                 {filteredPayables.map((ap) => {
                   const isSelected = selectedId === ap.id;
                   const isOverdue =
@@ -1068,14 +1021,14 @@ export default function AccountsPayableView({
                       className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer ${isSelected ? "bg-zinc-50/70 dark:bg-zinc-800/40" : ""}`}
                       onClick={() => handleRowClick(ap)}
                     >
-                      <td className="p-4 font-semibold text-zinc-900 dark:text-zinc-50">
+                      <td className="p-4 font-semibold text-ink dark:text-ink-dark">
                         {ap.description}
                         {ap.installmentCount && (
                           <span className="ml-1.5 text-[9px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/25 px-1.5 py-0.5 rounded align-middle">
                             {ap.installmentNumber}/{ap.installmentCount}
                           </span>
                         )}
-                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-normal">
+                        <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-normal">
                           Nº: {ap.documentNumber || "N/A"} | Cat: {ap.category}
                         </div>
                       </td>
@@ -1100,7 +1053,7 @@ export default function AccountsPayableView({
                         )}
                       </td>
                       <td className="p-4 text-right font-mono">
-                        <div className="font-semibold text-zinc-900 dark:text-zinc-50">
+                        <div className="font-semibold text-ink dark:text-ink-dark">
                           {formatBRL(ap.finalAmount)}
                         </div>
                         {ap.status === "Parcialmente paga" && (
@@ -1110,12 +1063,7 @@ export default function AccountsPayableView({
                         )}
                       </td>
                       <td className="p-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded border ${getStatusBadge(ap.status)}`}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
-                          {ap.status}
-                        </span>
+                        <StatusBadge status={ap.status} />
                       </td>
                       <td
                         className="p-4 text-right"
@@ -1143,7 +1091,7 @@ export default function AccountsPayableView({
                           {canCancel(ap) && (
                             <button
                               onClick={() => handleCancel(ap.id)}
-                              className="text-[10px] bg-zinc-50 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 font-semibold px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer flex items-center gap-1"
+                              className="text-[10px] bg-zinc-50 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 font-semibold px-2 py-1 rounded border border-line dark:border-line-dark cursor-pointer flex items-center gap-1"
                               title="Cancelar Registro"
                             >
                               <Ban className="h-3 w-3" /> Cancelar
@@ -1158,7 +1106,7 @@ export default function AccountsPayableView({
                   <tr>
                     <td
                       colSpan={6}
-                      className="p-8 text-center text-zinc-400 dark:text-zinc-500 italic"
+                      className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic"
                     >
                       Nenhuma conta a pagar encontrada correspondente aos termos
                       de busca.
@@ -1172,47 +1120,42 @@ export default function AccountsPayableView({
 
         {/* Side panel */}
         {selected && (
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs w-full lg:w-[380px] shrink-0 lg:sticky lg:top-4 overflow-hidden">
-            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+          <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs w-full lg:w-[380px] shrink-0 lg:sticky lg:top-4 overflow-hidden">
+            <div className="p-4 border-b border-line dark:border-line-dark flex items-center justify-between">
               <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                 Detalhes do título
               </h3>
               <button
                 onClick={closePanel}
-                className="p-1 rounded-sm text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+                className="p-1 rounded-lg text-ink-soft dark:text-ink-soft-dark hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="p-4 space-y-1 border-b border-zinc-100 dark:border-zinc-800">
+            <div className="p-4 space-y-1 border-b border-line dark:border-line-dark">
               <div className="flex items-center justify-between">
-                <span
-                  className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded border ${getStatusBadge(selected.status)}`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
-                  {selected.status}
-                </span>
+                <StatusBadge status={selected.status} />
                 {dueLabel(selected) && (
                   <span className={`text-[10px] font-semibold ${dueLabel(selected)!.tone}`}>
                     {dueLabel(selected)!.text}
                   </span>
                 )}
               </div>
-              <p className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+              <p className="text-xl font-semibold text-ink dark:text-ink-dark">
                 {formatBRL(
                   selected.status === "Parcialmente paga"
                     ? getRemaining(selected)
                     : selected.finalAmount,
                 )}
               </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-semibold">
+              <p className="text-xs text-ink-soft dark:text-ink-soft-dark font-semibold">
                 {selected.supplier}
               </p>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-zinc-100 dark:border-zinc-800 text-[11px] font-semibold">
+            <div className="flex border-b border-line dark:border-line-dark text-[11px] font-semibold">
               {(
                 [
                   { id: "info", label: "Informações", icon: Info },
@@ -1231,8 +1174,8 @@ export default function AccountsPayableView({
                   }}
                   className={`flex-1 flex items-center justify-center gap-1 py-2.5 border-b-2 cursor-pointer transition-colors ${
                     panelTab === tab.id
-                      ? "border-[#0B2C52] dark:border-[#9DB8D9] text-[#0B2C52] dark:text-[#9DB8D9]"
-                      : "border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
+                      ? "border-brand-navy-900 dark:border-blue-200 text-brand-navy-900 dark:text-blue-200"
+                      : "border-transparent text-ink-soft dark:text-ink-soft-dark hover:text-zinc-600 dark:hover:text-zinc-300"
                   }`}
                 >
                   <tab.icon className="h-3.5 w-3.5" /> {tab.label}
@@ -1242,7 +1185,7 @@ export default function AccountsPayableView({
 
             <div className="p-4 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
               {panelError && (
-                <div className="flex items-start gap-2 text-xs text-[#C8102E] bg-[#C8102E]/5 dark:bg-[#C8102E]/10 border border-[#C8102E]/20 dark:border-[#C8102E]/30 rounded-sm p-3">
+                <div className="flex items-start gap-2 text-xs text-brand-red-600 bg-brand-red-600/5 dark:bg-brand-red-600/10 border border-brand-red-600/20 dark:border-brand-red-600/30 rounded-lg p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" /> {panelError}
                 </div>
               )}
@@ -1250,7 +1193,7 @@ export default function AccountsPayableView({
               {/* INFORMAÇÕES */}
               {panelTab === "info" && !isEditingInfo && (
                 <div className="space-y-3">
-                  <div className="bg-zinc-50 dark:bg-zinc-800/70 rounded-sm border border-zinc-200/70 dark:border-zinc-700 divide-y divide-zinc-200/70 dark:divide-zinc-700">
+                  <div className="bg-zinc-50 dark:bg-zinc-800/70 rounded-lg border border-zinc-200/70 dark:border-zinc-700 divide-y divide-zinc-200/70 dark:divide-zinc-700">
                     {[
                       ["Fornecedor", selected.supplier],
                       ["Nº Documento", selected.documentNumber || "N/A"],
@@ -1273,7 +1216,7 @@ export default function AccountsPayableView({
                       ["Observação", selected.notes || "—"],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between px-3 py-2">
-                        <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
+                        <span className="text-ink-soft dark:text-ink-soft-dark">{label}</span>
                         <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right">{value}</span>
                       </div>
                     ))}
@@ -1286,7 +1229,7 @@ export default function AccountsPayableView({
                           setPanelTab("payment");
                           openPanel(selected, "payment");
                         }}
-                        className="w-full text-xs font-semibold text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#091320] hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 py-2.5 rounded-sm cursor-pointer"
+                        className="w-full text-xs font-semibold text-zinc-700 dark:text-zinc-200 bg-surface dark:bg-surface-dark hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-line dark:border-line-dark py-2.5 rounded-lg cursor-pointer"
                       >
                         Marcar como pago
                       </button>
@@ -1294,7 +1237,7 @@ export default function AccountsPayableView({
                     {selected.status === "A vencer" && (
                       <button
                         onClick={() => scheduleAccountPayable(selected.id)}
-                        className="w-full text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/25 py-2.5 rounded-sm cursor-pointer"
+                        className="w-full text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/25 py-2.5 rounded-lg cursor-pointer"
                       >
                         Agendar pagamento
                       </button>
@@ -1302,7 +1245,7 @@ export default function AccountsPayableView({
                     {canEdit(selected) && (
                       <button
                         onClick={startEditFromPanel}
-                        className="w-full text-xs font-semibold bg-[#0B2C52] hover:bg-[#0B2C52]/90 text-white py-2.5 rounded-sm cursor-pointer"
+                        className="w-full text-xs font-semibold bg-brand-navy-900 hover:bg-brand-navy-900/90 text-white py-2.5 rounded-lg cursor-pointer"
                       >
                         Editar título
                       </button>
@@ -1314,10 +1257,10 @@ export default function AccountsPayableView({
               {panelTab === "info" && isEditingInfo && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Descrição *</label>
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Descrição *</label>
                     <input
                       type="text"
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                     />
@@ -1350,19 +1293,19 @@ export default function AccountsPayableView({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Emissão</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Emissão</label>
                       <input
                         type="date"
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editIssueDate}
                         onChange={(e) => setEditIssueDate(e.target.value)}
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Vencimento *</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Vencimento *</label>
                       <input
                         type="date"
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editDueDate}
                         onChange={(e) => setEditDueDate(e.target.value)}
                       />
@@ -1370,17 +1313,17 @@ export default function AccountsPayableView({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Valor (R$) *</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Valor (R$) *</label>
                       <CurrencyInput
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editAmount}
                         onChange={setEditAmount}
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Desconto (R$)</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Desconto (R$)</label>
                       <CurrencyInput
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editDiscount}
                         onChange={setEditDiscount}
                       />
@@ -1388,26 +1331,26 @@ export default function AccountsPayableView({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Juros (R$)</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Juros (R$)</label>
                       <CurrencyInput
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editInterest}
                         onChange={setEditInterest}
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Multa (R$)</label>
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Multa (R$)</label>
                       <CurrencyInput
-                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editPenalty}
                         onChange={setEditPenalty}
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Conta bancária de origem</label>
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Conta bancária de origem</label>
                     <select
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                       value={editBankAccountId}
                       onChange={(e) => setEditBankAccountId(e.target.value)}
                     >
@@ -1417,19 +1360,19 @@ export default function AccountsPayableView({
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Nº Documento</label>
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Nº Documento</label>
                     <input
                       type="text"
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                       value={editDocumentNumber}
                       onChange={(e) => setEditDocumentNumber(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Observação</label>
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Observação</label>
                     <textarea
                       rows={2}
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                       value={editNotes}
                       onChange={(e) => setEditNotes(e.target.value)}
                     />
@@ -1438,14 +1381,14 @@ export default function AccountsPayableView({
                     <button
                       type="button"
                       onClick={() => setIsEditingInfo(false)}
-                      className="text-zinc-500 dark:text-zinc-400 font-semibold px-3 py-2 cursor-pointer"
+                      className="text-ink-soft dark:text-ink-soft-dark font-semibold px-3 py-2 cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="button"
                       onClick={handleSaveEdit}
-                      className="bg-[#C8102E] hover:bg-[#8F071B] text-white font-semibold px-4 py-2 rounded-sm cursor-pointer"
+                      className="bg-brand-red-600 hover:bg-brand-red-500 text-white font-semibold px-4 py-2 rounded-lg cursor-pointer"
                     >
                       Salvar alterações
                     </button>
@@ -1457,22 +1400,22 @@ export default function AccountsPayableView({
               {panelTab === "payment" && (
                 <div className="space-y-3">
                   {["Paga", "Cancelada"].includes(selected.status) ? (
-                    <p className="text-zinc-400 dark:text-zinc-500 italic py-6 text-center">
+                    <p className="text-ink-soft dark:text-ink-soft-dark italic py-6 text-center">
                       {selected.status === "Paga"
                         ? "Este título já está totalmente pago."
                         : "Este título foi cancelado e não pode receber pagamentos."}
                     </p>
                   ) : (
                     <>
-                      <div className="bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm p-3 flex items-center justify-between">
-                        <span className="text-zinc-500 dark:text-zinc-400 font-semibold">Saldo em aberto</span>
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-50">{formatBRL(getRemaining(selected))}</span>
+                      <div className="bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-3 flex items-center justify-between">
+                        <span className="text-ink-soft dark:text-ink-soft-dark font-semibold">Saldo em aberto</span>
+                        <span className="font-semibold text-ink dark:text-ink-dark">{formatBRL(getRemaining(selected))}</span>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Banco de origem *</label>
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Banco de origem *</label>
                         <select
-                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                           value={payBankAccountId}
                           onChange={(e) => setPayBankAccountId(e.target.value)}
                         >
@@ -1486,9 +1429,9 @@ export default function AccountsPayableView({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Valor a pagar (R$) *</label>
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Valor a pagar (R$) *</label>
                         <CurrencyInput
-                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                           value={payAmount}
                           onChange={setPayAmount}
                         />
@@ -1501,25 +1444,25 @@ export default function AccountsPayableView({
 
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Juros (R$)</label>
+                          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Juros (R$)</label>
                           <CurrencyInput
-                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                             value={payInterest}
                             onChange={setPayInterest}
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Multa (R$)</label>
+                          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Multa (R$)</label>
                           <CurrencyInput
-                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                             value={payPenalty}
                             onChange={setPayPenalty}
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Desconto (R$)</label>
+                          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Desconto (R$)</label>
                           <CurrencyInput
-                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                             value={payDiscount}
                             onChange={setPayDiscount}
                           />
@@ -1527,12 +1470,12 @@ export default function AccountsPayableView({
                       </div>
 
                       {(Number(payInterest) > 0 || Number(payPenalty) > 0 || Number(payDiscount) > 0) && (
-                        <div className="bg-[#0B2C52]/5 dark:bg-[#123B6B]/20 border border-[#0B2C52]/20 dark:border-[#3E6DA6]/40 rounded-sm p-3 flex items-center justify-between">
+                        <div className="bg-brand-navy-900/5 dark:bg-brand-navy-700/20 border border-brand-navy-900/20 dark:border-brand-navy-700/40 rounded-lg p-3 flex items-center justify-between">
                           <div>
-                            <span className="text-[10px] font-semibold text-[#0B2C52] dark:text-[#9DB8D9] uppercase block">
+                            <span className="text-[10px] font-semibold text-brand-navy-900 dark:text-blue-200 uppercase block">
                               Valor final (com juros/multa/desconto)
                             </span>
-                            <span className="text-lg font-semibold text-[#0B2C52] dark:text-[#9DB8D9]">
+                            <span className="text-lg font-semibold text-brand-navy-900 dark:text-blue-200">
                               {formatBRL(payFinalTotal)}
                             </span>
                           </div>
@@ -1540,7 +1483,7 @@ export default function AccountsPayableView({
                             <button
                               type="button"
                               onClick={() => setPayAmount(payFinalTotal)}
-                              className="text-[10px] font-semibold text-[#0B2C52] dark:text-[#9DB8D9] hover:underline cursor-pointer shrink-0"
+                              className="text-[10px] font-semibold text-brand-navy-900 dark:text-blue-200 hover:underline cursor-pointer shrink-0"
                             >
                               Usar este valor
                             </button>
@@ -1549,29 +1492,29 @@ export default function AccountsPayableView({
                       )}
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Data do pagamento</label>
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Data do pagamento</label>
                         <input
                           type="date"
-                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                           value={payDate}
                           onChange={(e) => setPayDate(e.target.value)}
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Comprovante</label>
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Comprovante</label>
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
                             placeholder="Nenhum comprovante anexado"
                             readOnly
-                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm text-zinc-500 dark:text-zinc-400"
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg text-ink-soft dark:text-ink-soft-dark"
                             value={payReceiptUrl ? "comprovante_upload_simulado.pdf" : ""}
                           />
                           <button
                             type="button"
                             onClick={() => setPayReceiptUrl("#")}
-                            className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 p-2 rounded-sm cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
+                            className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-line dark:border-line-dark p-2 rounded-lg cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
                           >
                             <Paperclip className="h-3.5 w-3.5" /> Simular
                           </button>
@@ -1579,10 +1522,10 @@ export default function AccountsPayableView({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">Observação</label>
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Observação</label>
                         <textarea
                           rows={2}
-                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                          className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                           value={payNotes}
                           onChange={(e) => setPayNotes(e.target.value)}
                         />
@@ -1590,7 +1533,7 @@ export default function AccountsPayableView({
 
                       <button
                         onClick={handleConfirmPayment}
-                        className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-sm cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-lg cursor-pointer"
                       >
                         <CheckCircle className="h-4 w-4" /> Confirmar pagamento
                       </button>
@@ -1603,7 +1546,7 @@ export default function AccountsPayableView({
               {panelTab === "attachments" && (
                 <div className="space-y-3">
                   <div>
-                    <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase block mb-1">Anexo do título</span>
+                    <span className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block mb-1">Anexo do título</span>
                     {selected.attachmentName ? (
                       <a
                         href="#"
@@ -1611,21 +1554,21 @@ export default function AccountsPayableView({
                           e.preventDefault();
                           alert("Abrindo documento com token seguro assinado por S3...");
                         }}
-                        className="font-semibold text-zinc-900 dark:text-zinc-100 hover:underline flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm p-3"
+                        className="font-semibold text-ink dark:text-ink-dark hover:underline flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-3"
                       >
-                        <Paperclip className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
+                        <Paperclip className="h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark shrink-0" />
                         {selected.attachmentName}
-                        <ExternalLink className="h-3 w-3 text-zinc-400 dark:text-zinc-500" />
+                        <ExternalLink className="h-3 w-3 text-ink-soft dark:text-ink-soft-dark" />
                       </a>
                     ) : (
-                      <p className="text-zinc-400 dark:text-zinc-500 italic bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm p-3">
+                      <p className="text-ink-soft dark:text-ink-soft-dark italic bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-3">
                         Nenhum anexo enviado.
                       </p>
                     )}
                     {canEdit(selected) && (
                       <button
                         onClick={handleAttachSimulated}
-                        className="mt-2 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 px-3 py-2 rounded-sm cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1.5"
+                        className="mt-2 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-line dark:border-line-dark px-3 py-2 rounded-lg cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1.5"
                       >
                         <Paperclip className="h-3.5 w-3.5" /> Substituir anexo (simular)
                       </button>
@@ -1634,7 +1577,7 @@ export default function AccountsPayableView({
 
                   {(selected.paymentHistory || []).some((p) => p.receiptUrl) && (
                     <div>
-                      <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase block mb-1">Comprovantes de pagamento</span>
+                      <span className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block mb-1">Comprovantes de pagamento</span>
                       <div className="space-y-1.5">
                         {(selected.paymentHistory || [])
                           .filter((p) => p.receiptUrl)
@@ -1646,7 +1589,7 @@ export default function AccountsPayableView({
                                 e.preventDefault();
                                 alert("Abrindo comprovante com token seguro assinado por S3...");
                               }}
-                              className="font-semibold text-zinc-800 dark:text-zinc-200 hover:underline flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm p-2.5"
+                              className="font-semibold text-zinc-800 dark:text-zinc-200 hover:underline flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-2.5"
                             >
                               <CheckCircle className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
                               Comprovante de {new Date(p.date).toLocaleDateString("pt-BR")} — {formatBRL(p.amount)}
@@ -1662,34 +1605,34 @@ export default function AccountsPayableView({
               {panelTab === "history" && (
                 <div className="space-y-2">
                   {(selected.paymentHistory || []).length === 0 ? (
-                    <p className="text-zinc-400 dark:text-zinc-500 italic py-6 text-center">
+                    <p className="text-ink-soft dark:text-ink-soft-dark italic py-6 text-center">
                       Nenhum pagamento registrado ainda.
                     </p>
                   ) : (
                     [...(selected.paymentHistory || [])]
                       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                       .map((p) => (
-                        <div key={p.id} className="bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-sm p-3 space-y-1.5">
+                        <div key={p.id} className="bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-3 space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold text-zinc-900 dark:text-zinc-50">{formatBRL(p.amount)}</span>
-                            <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                            <span className="font-semibold text-ink dark:text-ink-dark">{formatBRL(p.amount)}</span>
+                            <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                               {new Date(p.date).toLocaleDateString("pt-BR")}
                             </span>
                           </div>
-                          <div className="text-[10px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                          <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark flex items-center gap-1">
                             <Landmark className="h-3 w-3" /> {p.bankAccountName}
                           </div>
                           {(p.interest > 0 || p.penalty > 0 || p.discount > 0) && (
-                            <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
                               {p.interest > 0 && <>Juros: {formatBRL(p.interest)} · </>}
                               {p.penalty > 0 && <>Multa: {formatBRL(p.penalty)} · </>}
                               {p.discount > 0 && <>Desconto: {formatBRL(p.discount)}</>}
                             </div>
                           )}
                           {p.notes && (
-                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 italic">"{p.notes}"</p>
+                            <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark italic">"{p.notes}"</p>
                           )}
-                          <div className="text-[9px] text-zinc-400 dark:text-zinc-500 flex items-center gap-1 pt-1 border-t border-zinc-200/70 dark:border-zinc-700">
+                          <div className="text-[9px] text-ink-soft dark:text-ink-soft-dark flex items-center gap-1 pt-1 border-t border-zinc-200/70 dark:border-zinc-700">
                             <Clock className="h-3 w-3" /> Registrado por {p.registeredByName}
                           </div>
                         </div>
@@ -1701,6 +1644,16 @@ export default function AccountsPayableView({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={cancelTargetId !== null}
+        onClose={() => setCancelTargetId(null)}
+        onConfirm={confirmCancel}
+        title="Cancelar este lançamento?"
+        description="O registro histórico será preservado para auditoria."
+        confirmLabel="Cancelar lançamento"
+        cancelLabel="Voltar"
+      />
     </div>
   );
 }

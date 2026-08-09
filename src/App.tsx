@@ -1,17 +1,26 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BPOProvider, useBPOState } from "./hooks/useBPOState";
 import { BakeryCashProvider } from "./hooks/useBakeryCashState";
-import { ClientModule } from "./types";
+import { ClientModule, Company } from "./types";
 import {
   ALL_CLIENT_MODULES,
   getEffectiveClientModules,
 } from "./config/clientModules";
+import { searchAll, GlobalSearchResult } from "./services/globalSearch";
 import idexLogo from "../assets/idex-finance-logo-transparent.png";
+import {
+  ToastProvider,
+  IconButton,
+  Dropdown,
+  SearchField,
+  Drawer,
+  cn,
+} from "./components/ui";
 
 // View Imports
 import LoginView from "./views/LoginView";
@@ -47,15 +56,10 @@ import {
   Layers,
   Users,
   Terminal,
-  User,
   Menu,
   X,
   Bell,
   Coins,
-  Lock,
-  Info,
-  Crown,
-  Gem,
   LogOut,
   HardDriveDownload,
   PanelLeftClose,
@@ -65,6 +69,16 @@ import {
   Store,
   Sun,
   Moon,
+  ChevronDown,
+  Search,
+  UserRound,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  UsersRound,
+  FolderOpen,
+  Wallet,
+  ClipboardList,
+  ReceiptText,
 } from "lucide-react";
 
 const APP_THEME_STORAGE_KEY = "idex_finance_theme";
@@ -89,7 +103,302 @@ type ViewType =
   | "bakery-cash"
   | "service-desk";
 
-function BPOWorkspaceShell() {
+// Agrupamento visual dos itens do menu lateral (spec: Visão geral / Operação
+// financeira / Gestão). "operations-center" e "support" têm apresentação
+// própria e não passam por este mapa.
+const NAV_GROUP: Record<string, string> = {
+  dashboard: "Visão Geral",
+  "documents-received": "Operação Financeira",
+  approvals: "Operação Financeira",
+  documents: "Operação Financeira",
+  "cash-flow": "Operação Financeira",
+  payable: "Operação Financeira",
+  receivable: "Operação Financeira",
+  reconciliation: "Operação Financeira",
+  "bakery-cash": "Operação Financeira",
+  reports: "Gestão",
+  "master-data": "Gestão",
+};
+
+const getInitials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+
+const SEARCH_CATEGORY_ICON: Record<string, typeof Building2> = {
+  company: Building2,
+  supplier: ArrowDownCircle,
+  customer: ArrowUpCircle,
+  payable: ArrowDownCircle,
+  receivable: ArrowUpCircle,
+  document: FolderOpen,
+  report: ReceiptText,
+};
+
+// Interruptor de tema claro/escuro, aplicado em <html> (não apenas na área de
+// conteúdo) para que o menu lateral, o cabeçalho e a tela de login sigam a
+// mesma preferência salva no navegador.
+function useThemeMode() {
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => localStorage.getItem(APP_THEME_STORAGE_KEY) === "dark",
+  );
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, [isDarkMode]);
+  const toggleTheme = () =>
+    setIsDarkMode((previous) => {
+      const next = !previous;
+      localStorage.setItem(APP_THEME_STORAGE_KEY, next ? "dark" : "light");
+      return next;
+    });
+  return { isDarkMode, toggleTheme };
+}
+
+function CompanySwitcher({
+  companies,
+  activeCompany,
+  onSelect,
+}: {
+  companies: Company[];
+  activeCompany: Company;
+  onSelect: (companyId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const needle = query.trim().toLocaleLowerCase("pt-BR");
+  const filtered = companies.filter(
+    (company) =>
+      !needle ||
+      company.tradeName.toLocaleLowerCase("pt-BR").includes(needle) ||
+      company.cnpj.includes(needle),
+  );
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block mb-1 px-0.5">
+        Empresa operada
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="w-full flex items-center gap-2 rounded-lg border border-line dark:border-line-dark bg-canvas dark:bg-white/5 px-2.5 py-2 text-left hover:border-brand-navy-700/40 dark:hover:border-brand-navy-700/50 transition-colors cursor-pointer"
+      >
+        <span className="h-7 w-7 rounded-full bg-brand-navy-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+          {getInitials(activeCompany.tradeName)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-bold text-ink dark:text-ink-dark truncate">
+            {activeCompany.tradeName}
+          </span>
+          <span className="block text-[10px] text-ink-soft dark:text-ink-soft-dark truncate">
+            {activeCompany.cnpj}
+          </span>
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark transition-transform shrink-0",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1.5 w-full min-w-64 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark shadow-lg p-2 space-y-1.5 motion-safe:animate-[popIn_120ms_ease-out] origin-top">
+          {companies.length > 5 && (
+            <SearchField
+              value={query}
+              onChange={setQuery}
+              placeholder="Buscar empresa..."
+              className="h-8 text-xs"
+              autoFocus
+            />
+          )}
+          <div className="max-h-64 overflow-y-auto space-y-0.5">
+            {filtered.map((company) => (
+              <button
+                key={company.id}
+                type="button"
+                onClick={() => {
+                  onSelect(company.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className={cn(
+                  "w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors cursor-pointer",
+                  company.id === activeCompany.id
+                    ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white font-bold"
+                    : "hover:bg-canvas dark:hover:bg-white/5 text-ink dark:text-ink-dark",
+                )}
+              >
+                <span className="h-6 w-6 rounded-full bg-zinc-200 dark:bg-white/10 text-[9px] font-bold flex items-center justify-center shrink-0 text-ink-soft dark:text-ink-soft-dark">
+                  {getInitials(company.tradeName)}
+                </span>
+                <span className="truncate">{company.tradeName}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark text-center py-3">
+                Nenhuma empresa encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GlobalSearch({
+  onNavigate,
+}: {
+  onNavigate: (result: GlobalSearchResult) => void;
+}) {
+  const {
+    companies,
+    masterData,
+    accountsPayable,
+    accountsReceivable,
+    documents,
+    reports,
+    reportTemplates,
+    currentUser,
+    activeCompany,
+  } = useBPOState();
+  const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setFocused(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFocused(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  const groups = useMemo(
+    () =>
+      activeCompany
+        ? searchAll(
+            query,
+            {
+              companies,
+              masterData,
+              accountsPayable,
+              accountsReceivable,
+              documents,
+              reports,
+              reportTemplates,
+            },
+            { currentUser, activeCompanyId: activeCompany.id },
+          )
+        : [],
+    [
+      query,
+      companies,
+      masterData,
+      accountsPayable,
+      accountsReceivable,
+      documents,
+      reports,
+      reportTemplates,
+      currentUser,
+      activeCompany,
+    ],
+  );
+
+  const showPanel = focused && query.trim().length >= 2;
+
+  return (
+    <div ref={containerRef} className="relative w-full max-w-xs">
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        onFocus={() => setFocused(true)}
+        placeholder="Buscar empresas, contas, documentos..."
+        aria-label="Busca global"
+      />
+      {showPanel && (
+        <div className="absolute z-30 mt-1.5 w-full min-w-80 max-h-96 overflow-y-auto rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark shadow-lg p-2 motion-safe:animate-[popIn_120ms_ease-out] origin-top">
+          {groups.length === 0 ? (
+            <p className="text-xs text-ink-soft dark:text-ink-soft-dark text-center py-6">
+              Nenhum resultado para "{query}".
+            </p>
+          ) : (
+            groups.map((group) => {
+              const Icon = SEARCH_CATEGORY_ICON[group.category] || Search;
+              return (
+                <div key={group.category} className="mb-1.5 last:mb-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ink-soft dark:text-ink-soft-dark px-2 py-1">
+                    {group.label}
+                  </p>
+                  {group.results.map((result) => (
+                    <button
+                      key={result.id}
+                      type="button"
+                      onClick={() => {
+                        onNavigate(result);
+                        setQuery("");
+                        setFocused(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-canvas dark:hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold text-ink dark:text-ink-dark truncate">
+                          {result.title}
+                        </span>
+                        {result.subtitle && (
+                          <span className="block text-[10px] text-ink-soft dark:text-ink-soft-dark truncate">
+                            {result.subtitle}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BPOWorkspaceShell({
+  theme,
+}: {
+  theme: { isDarkMode: boolean; toggleTheme: () => void };
+}) {
   const {
     currentUser,
     activeCompany,
@@ -104,6 +413,7 @@ function BPOWorkspaceShell() {
     clearNotifications,
     logout,
   } = useBPOState();
+  const { isDarkMode, toggleTheme } = theme;
 
   const enabledClientModules = getEffectiveClientModules(
     activeCompany,
@@ -131,17 +441,6 @@ function BPOWorkspaceShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("bpo_saas_sidebar_collapsed") === "true",
   );
-  // Light/dark appearance for the workspace content — the sidebar keeps its own fixed dark navy regardless.
-  const [isDarkMode, setIsDarkMode] = useState(
-    () => localStorage.getItem(APP_THEME_STORAGE_KEY) === "dark",
-  );
-  const toggleTheme = () => {
-    setIsDarkMode((previous) => {
-      const next = !previous;
-      localStorage.setItem(APP_THEME_STORAGE_KEY, next ? "dark" : "light");
-      return next;
-    });
-  };
   // BPO Admin starts in the global multi-company view; per-company modules only surface once a company is entered.
   const [bpoInCompanyContext, setBpoInCompanyContext] = useState(false);
   const isBpoGlobalMode =
@@ -151,15 +450,26 @@ function BPOWorkspaceShell() {
     if (currentUser.role === "CLIENT" && !isClientViewAllowed(activeView)) {
       setActiveView(enabledClientModules[0] || clientFallbackView);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompany?.id, activeCompany?.clientModules, activeView, currentUser.role]);
+
+  // Fecha o menu mobile com Esc, mesmo sem clicar no scrim.
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileMenuOpen]);
 
   if (!activeCompany) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center font-sans p-6 text-center">
+      <div className="min-h-screen bg-brand-navy-950 text-white flex items-center justify-center font-sans p-6 text-center">
         <div className="space-y-4 max-w-sm">
-          <Building2 className="h-12 w-12 mx-auto text-zinc-500 animate-pulse" />
+          <Building2 className="h-12 w-12 mx-auto text-white/40 animate-pulse" />
           <h2 className="text-lg font-bold">Nenhuma Empresa Ativa</h2>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-white/60">
             Por favor, reinicie os dados locais para provisionar os inquilinos
             iniciais de BPO.
           </p>
@@ -239,7 +549,7 @@ function BPOWorkspaceShell() {
     {
       id: "documents",
       label: "Central de Documentos",
-      icon: Database,
+      icon: FolderOpen,
       view: "documents" as const,
       permission: null,
     },
@@ -248,7 +558,7 @@ function BPOWorkspaceShell() {
           {
             id: "documents-received",
             label: "Lançamentos",
-            icon: FileText,
+            icon: ClipboardList,
             view: "documents-received" as const,
             permission: null,
           },
@@ -297,9 +607,9 @@ function BPOWorkspaceShell() {
     "payable",
     "receivable",
     "reconciliation",
+    "bakery-cash",
     "reports",
     "master-data",
-    "bakery-cash",
     "support",
   ];
   const orderedNavigationItems = [...navigationItems].sort(
@@ -318,7 +628,7 @@ function BPOWorkspaceShell() {
     {
       id: "team",
       label: "Colaboradores (RBAC)",
-      icon: Users,
+      icon: UsersRound,
       view: "team" as const,
       role: "BPO_ADMIN",
     },
@@ -423,6 +733,14 @@ function BPOWorkspaceShell() {
     }
   };
 
+  const handleSearchNavigate = (result: GlobalSearchResult) => {
+    if (result.companyId && result.companyId !== activeCompany.id) {
+      switchCompany(result.companyId);
+      if (currentUser.role === "BPO_ADMIN") setBpoInCompanyContext(true);
+    }
+    handleSwitchView(result.view as ViewType);
+  };
+
   const toggleSidebar = () => {
     setSidebarCollapsed((previous) => {
       const next = !previous;
@@ -431,65 +749,33 @@ function BPOWorkspaceShell() {
     });
   };
 
+  let previousNavGroup: string | null = null;
+
   return (
-    <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row font-sans text-zinc-900">
-      {/* Mobile Top Navigation Bar */}
-      <header className="md:hidden bg-[#061425] text-[#F2D3A0] border-b border-white/10 px-4 py-3 flex items-center justify-end z-40 shrink-0 sticky top-0 relative">
-        <img
-          src={idexLogo}
-          alt="Idex Finance"
-          className="absolute left-1/2 -translate-x-1/2 h-10 w-28 object-contain"
+    <div className="min-h-screen flex bg-canvas dark:bg-canvas-dark text-ink dark:text-ink-dark font-sans">
+      {/* Scrim de fundo do menu mobile — fecha ao tocar fora */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-brand-navy-950/50 z-40 md:hidden motion-safe:animate-[fadeIn_150ms_ease-out]"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
         />
-
-        <div className="flex items-center gap-2">
-          {/* Notification Button */}
-          <button
-            onClick={() => setNotificationsOpen(true)}
-            className="p-1.5 text-[#F2D3A0]/80 hover:text-white relative cursor-pointer"
-          >
-            <Bell className="h-5 w-5" />
-            {unreadNotifications.length > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 bg-[#C8102E] text-white rounded-full flex items-center justify-center text-[9px] font-black border border-[#0B2C52]">
-                {unreadNotifications.length}
-              </span>
-            )}
-          </button>
-
-          {/* Hamburger Menu */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 text-[#F2D3A0]/80 hover:text-white cursor-pointer"
-          >
-            {mobileMenuOpen ? (
-              <X className="h-6 w-6" />
-            ) : (
-              <Menu className="h-6 w-6" />
-            )}
-          </button>
-
-          {/* Logout Button */}
-          <button
-            onClick={logout}
-            title="Sair"
-            className="p-1.5 text-[#F2D3A0]/80 hover:text-white cursor-pointer"
-          >
-            <LogOut className="h-5 w-5" />
-          </button>
-        </div>
-      </header>
+      )}
 
       {/* Responsive Left Sidebar */}
       <aside
-        className={`
-        fixed inset-y-0 left-0 transform md:sticky md:top-0 md:h-screen md:translate-x-0 transition-[width,transform] duration-200 ease-in-out
-        w-64 ${sidebarCollapsed ? "md:w-20" : "md:w-64"} bg-[#061425] text-white/90 border-r border-white/10 flex flex-col justify-between z-50 shrink-0
-        ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-      `}
+        className={cn(
+          "fixed inset-y-0 left-0 transform md:sticky md:top-0 md:h-screen md:translate-x-0 transition-[width,transform] duration-200 ease-in-out",
+          "w-64",
+          sidebarCollapsed ? "md:w-20" : "md:w-64",
+          "bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark border-r border-line dark:border-line-dark flex flex-col justify-between z-50 shrink-0",
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        )}
       >
         <button
           onClick={toggleSidebar}
           title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-          className="hidden md:flex absolute -right-3 top-8 h-7 w-7 items-center justify-center rounded-full bg-white text-[#0B2C52] border border-[#0B2C52]/15 shadow-md hover:bg-[#F2D3A0] transition-colors cursor-pointer z-10"
+          className="hidden md:flex absolute -right-3 top-8 h-7 w-7 items-center justify-center rounded-full bg-surface dark:bg-surface-dark text-brand-navy-900 dark:text-ink-dark border border-line dark:border-line-dark shadow-md hover:bg-brand-gold-300/30 dark:hover:bg-white/10 transition-colors cursor-pointer z-10"
         >
           {sidebarCollapsed ? (
             <PanelLeftOpen className="h-4 w-4" />
@@ -498,86 +784,73 @@ function BPOWorkspaceShell() {
           )}
         </button>
 
-        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto [scrollbar-width:thin] [scrollbar-color:rgba(242,211,160,0.35)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#F2D3A0]/30 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto scrollbar-thin">
           {/* Brand Logo & Switchers */}
           <div
-            className={`${sidebarCollapsed ? "md:p-3" : "md:p-5"} p-5 border-b border-white/10 space-y-4`}
+            className={cn(
+              sidebarCollapsed ? "md:p-3" : "md:p-5",
+              "p-5 border-b border-line dark:border-line-dark space-y-4",
+            )}
           >
             <div className="flex flex-col items-center">
               {sidebarCollapsed ? (
-                <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-xl bg-[#0B2C52] border border-white/10">
-                  <LayoutDashboard className="h-6 w-6 text-[#F2D3A0]" />
+                <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-xl bg-brand-navy-900">
+                  <LayoutDashboard className="h-6 w-6 text-brand-gold-300" />
                 </div>
               ) : null}
               <img
                 src={idexLogo}
                 alt="Idex Finance — Gestão que move resultados"
-                className={`${sidebarCollapsed ? "md:hidden" : ""} h-20 w-full object-contain`}
+                className={cn(sidebarCollapsed ? "md:hidden" : "", "h-16 w-full object-contain")}
               />
               <div
-                className={`${sidebarCollapsed ? "md:hidden" : ""} w-12 h-0.5 bg-[#C8102E] mt-1 rounded-full`}
+                className={cn(
+                  sidebarCollapsed ? "md:hidden" : "",
+                  "w-12 h-0.5 bg-brand-red-600 mt-1 rounded-full",
+                )}
               />
             </div>
 
             {/* Client / Tenant switcher — hidden in BPO global mode; use the Operations Center to enter a company instead */}
             {!isBpoGlobalMode && (
-              <div
-                className={`${sidebarCollapsed ? "md:hidden" : ""} space-y-1`}
-              >
-                <label className="text-[9px] font-bold text-[#F2D3A0]/60 uppercase tracking-wider block">
-                  Empresa Operada
-                </label>
-                <div className="relative">
-                  <Building2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[#F2D3A0]/65" />
-                  <select
-                    className="w-full bg-[#061425] border border-white/10 text-white text-xs pl-8 pr-2 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-[#C8102E] font-bold shadow-2xs"
-                    value={activeCompany.id}
-                    onChange={(e) => {
-                      switchCompany(e.target.value);
-                      if (currentUser.role === "BPO_ADMIN")
-                        setBpoInCompanyContext(true);
-                    }}
-                  >
-                    {companies
-                      .filter(
-                        (c) =>
-                          currentUser.role === "BPO_ADMIN" ||
-                          currentUser.companies?.includes(c.id),
-                      )
-                      .map((c) => (
-                        <option
-                          key={c.id}
-                          value={c.id}
-                          className="bg-[#061425] text-white"
-                        >
-                          {c.tradeName}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+              <div className={sidebarCollapsed ? "md:hidden" : ""}>
+                <CompanySwitcher
+                  companies={companies.filter(
+                    (c) =>
+                      currentUser.role === "BPO_ADMIN" ||
+                      currentUser.companies?.includes(c.id),
+                  )}
+                  activeCompany={activeCompany}
+                  onSelect={(companyId) => {
+                    switchCompany(companyId);
+                    if (currentUser.role === "BPO_ADMIN")
+                      setBpoInCompanyContext(true);
+                  }}
+                />
               </div>
             )}
           </div>
 
           {/* Navigation Links List */}
           <nav
-            className={`${sidebarCollapsed ? "md:px-3" : "md:px-4"} p-4 space-y-1 flex-grow`}
+            className={cn(sidebarCollapsed ? "md:px-3" : "md:px-4", "p-4 space-y-1 grow")}
           >
             {hasPermission("operations-center.view") && (
-              <div className="pb-3 mb-3 border-b border-white/10">
+              <div className="pb-3 mb-3 border-b border-line dark:border-line-dark">
                 <button
                   onClick={() => handleSwitchView("operations-center")}
                   title={sidebarCollapsed ? "Centro de Operação" : undefined}
-                  className={`w-full flex items-center justify-between px-3 ${sidebarCollapsed ? "md:justify-center md:px-2" : ""} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                  className={cn(
+                    "w-full flex items-center justify-between px-3",
+                    sidebarCollapsed ? "md:justify-center md:px-2" : "",
+                    "py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer",
                     activeView === "operations-center"
-                      ? "bg-[#C8102E] text-white border-l-4 border-[#F2D3A0] font-bold"
-                      : "bg-white/5 text-white hover:bg-white/10"
-                  }`}
+                      ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white border-l-4 border-brand-red-600"
+                      : "text-ink-soft dark:text-ink-soft-dark hover:bg-canvas dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark",
+                  )}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Layers
-                      className={`h-4 w-4 ${activeView === "operations-center" ? "text-[#F2D3A0]" : "text-[#F2D3A0]/75"}`}
-                    />
+                    <Layers className="h-4 w-4" />
                     <span className={sidebarCollapsed ? "md:hidden" : ""}>
                       Centro de Operação
                     </span>
@@ -586,11 +859,6 @@ function BPOWorkspaceShell() {
               </div>
             )}
 
-            <span
-              className={`${sidebarCollapsed ? "md:hidden" : ""} text-[9px] font-bold text-[#F2D3A0]/40 uppercase tracking-wider px-3 block mb-2`}
-            >
-              Visão Geral
-            </span>
             {orderedNavigationItems.map((item) => {
               if (item.id === "operations-center") return null;
               if (item.permission && !hasPermission(item.permission))
@@ -607,16 +875,6 @@ function BPOWorkspaceShell() {
 
               const isSelected = activeView === item.view;
               const Icon = item.icon;
-              const section =
-                item.id === "documents-received" ||
-                (["CLIENT", "ACCOUNTANT"].includes(currentUser.role) &&
-                  item.id === "approvals")
-                  ? "Operação"
-                  : item.id === "cash-flow"
-                    ? "Financeiro"
-                    : item.id === "reports"
-                      ? "Gestão"
-                      : null;
 
               if (item.id === "support") {
                 return (
@@ -625,28 +883,32 @@ function BPOWorkspaceShell() {
                     onClick={() => handleSwitchView(item.view)}
                     title={sidebarCollapsed ? "Fale com o BPO" : undefined}
                     aria-label="Precisa de ajuda? Fale com o BPO"
-                    className={`mt-4 w-full rounded-xl border bg-white text-left shadow-xs transition-all cursor-pointer ${
+                    className={cn(
+                      "mt-4 w-full rounded-xl border text-left transition-all cursor-pointer",
                       sidebarCollapsed
                         ? "md:flex md:h-11 md:items-center md:justify-center md:p-0 p-3"
-                        : "p-3"
-                    } ${
+                        : "p-3",
                       isSelected
-                        ? "border-[#C8102E] ring-2 ring-[#C8102E]/20"
-                        : "border-zinc-200 hover:border-[#C8102E]/60 hover:shadow-md"
-                    }`}
+                        ? "border-brand-red-600 bg-brand-red-50 dark:bg-brand-red-600/10 ring-2 ring-brand-red-600/20"
+                        : "border-line dark:border-line-dark bg-canvas dark:bg-white/5 hover:border-brand-red-600/50",
+                    )}
                   >
                     <div
-                      className={`flex items-center ${sidebarCollapsed ? "md:justify-center" : ""} gap-3`}
+                      className={cn(
+                        "flex items-center",
+                        sidebarCollapsed ? "md:justify-center" : "",
+                        "gap-3",
+                      )}
                     >
                       <MessageSquareText
-                        className="h-6 w-6 shrink-0 text-[#C8102E]"
+                        className="h-6 w-6 shrink-0 text-brand-red-600"
                         strokeWidth={1.8}
                       />
                       <div className={sidebarCollapsed ? "md:hidden" : ""}>
-                        <span className="block text-xs font-extrabold leading-tight text-zinc-900">
+                        <span className="block text-xs font-extrabold leading-tight text-ink dark:text-ink-dark">
                           Precisa de ajuda?
                         </span>
-                        <span className="mt-1 block text-xs font-medium leading-tight text-zinc-600">
+                        <span className="mt-1 block text-xs font-medium leading-tight text-ink-soft dark:text-ink-soft-dark">
                           Fale com o BPO
                         </span>
                       </div>
@@ -655,42 +917,48 @@ function BPOWorkspaceShell() {
                 );
               }
 
+              const group = NAV_GROUP[item.id] ?? null;
+              const showGroupHeader = group !== null && group !== previousNavGroup;
+              previousNavGroup = group;
+
               return (
                 <React.Fragment key={item.id}>
-                  {section && (
+                  {showGroupHeader && (
                     <span
-                      className={`${sidebarCollapsed ? "md:hidden" : ""} text-[9px] font-bold text-[#F2D3A0]/40 uppercase tracking-wider px-3 block pt-4 pb-1`}
+                      className={cn(
+                        sidebarCollapsed ? "md:hidden" : "",
+                        "text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider px-3 block pt-4 pb-1",
+                      )}
                     >
-                      {section}
+                      {group}
                     </span>
                   )}
                   <button
                     onClick={() => handleSwitchView(item.view)}
                     title={sidebarCollapsed ? item.label : undefined}
-                    className={`
-                    relative w-full flex items-center justify-between px-3 ${sidebarCollapsed ? "md:justify-center md:px-2" : ""} py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer
-                    ${
+                    className={cn(
+                      "relative w-full flex items-center justify-between px-3",
+                      sidebarCollapsed ? "md:justify-center md:px-2" : "",
+                      "py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer",
                       isSelected
-                        ? "bg-[#C8102E] text-white border-l-4 border-[#F2D3A0] font-bold"
-                        : "text-white/70 hover:bg-white/5 hover:text-white"
-                    }
-                  `}
+                        ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white border-l-4 border-brand-red-600 font-bold"
+                        : "text-ink-soft dark:text-ink-soft-dark hover:bg-canvas dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark",
+                    )}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon
-                        className={`h-4 w-4 ${isSelected ? "text-[#F2D3A0]" : "text-white/60"}`}
-                      />
+                      <Icon className="h-4 w-4 shrink-0" />
                       <span className={sidebarCollapsed ? "md:hidden" : ""}>
                         {item.label}
                       </span>
                     </div>
                     {item.badge && (
                       <span
-                        className={`${sidebarCollapsed ? "md:absolute md:translate-x-3 md:-translate-y-3" : ""} h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center ${
-                          isSelected
-                            ? "bg-white text-[#C8102E]"
-                            : "bg-[#C8102E] text-white"
-                        }`}
+                        className={cn(
+                          sidebarCollapsed
+                            ? "md:absolute md:translate-x-3 md:-translate-y-3"
+                            : "",
+                          "h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center bg-brand-red-600 text-white",
+                        )}
                       >
                         {item.badge}
                       </span>
@@ -703,10 +971,16 @@ function BPOWorkspaceShell() {
             {/* Admin BPO Section */}
             {currentUser.role === "BPO_ADMIN" && (
               <div
-                className={`${sidebarCollapsed ? "md:pt-2 md:border-t md:border-white/10" : "pt-4"} space-y-1`}
+                className={cn(
+                  sidebarCollapsed ? "md:pt-2 md:border-t md:border-line-dark" : "pt-4",
+                  "space-y-1",
+                )}
               >
                 <span
-                  className={`${sidebarCollapsed ? "md:hidden" : ""} text-[9px] font-bold text-[#F2D3A0]/40 uppercase tracking-wider px-3 block mb-2`}
+                  className={cn(
+                    sidebarCollapsed ? "md:hidden" : "",
+                    "text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider px-3 block mb-2",
+                  )}
                 >
                   Controle Geral BPO
                 </span>
@@ -719,26 +993,29 @@ function BPOWorkspaceShell() {
                       key={item.id}
                       onClick={() => handleSwitchView(item.view)}
                       title={sidebarCollapsed ? item.label : undefined}
-                      className={`
-                        w-full flex items-center justify-between px-3 ${sidebarCollapsed ? "md:justify-center md:px-2" : ""} py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer
-                        ${
-                          isSelected
-                            ? "bg-[#C8102E] text-white border-l-4 border-[#F2D3A0] font-bold"
-                            : "text-white/70 hover:bg-white/5 hover:text-white"
-                        }
-                      `}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3",
+                        sidebarCollapsed ? "md:justify-center md:px-2" : "",
+                        "py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer",
+                        isSelected
+                          ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white border-l-4 border-brand-red-600 font-bold"
+                          : "text-ink-soft dark:text-ink-soft-dark hover:bg-canvas dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark",
+                      )}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Icon
-                          className={`h-4 w-4 ${isSelected ? "text-[#F2D3A0]" : "text-white/60"}`}
-                        />
+                        <Icon className="h-4 w-4 shrink-0" />
                         <span className={sidebarCollapsed ? "md:hidden" : ""}>
                           {item.label}
                         </span>
                       </div>
                       {"badge" in item && item.badge && (
                         <span
-                          className={`${sidebarCollapsed ? "md:absolute md:translate-x-3 md:-translate-y-3" : ""} h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center ${isSelected ? "bg-white text-[#C8102E]" : "bg-[#C8102E] text-white"}`}
+                          className={cn(
+                            sidebarCollapsed
+                              ? "md:absolute md:translate-x-3 md:-translate-y-3"
+                              : "",
+                            "h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center bg-brand-red-600 text-white",
+                          )}
                         >
                           {item.badge}
                         </span>
@@ -753,187 +1030,237 @@ function BPOWorkspaceShell() {
 
         {/* Signed-in user */}
         <div
-          className={`${sidebarCollapsed ? "md:p-3" : "md:p-4"} p-4 border-t border-white/10 space-y-3.5 bg-black/15`}
+          className={cn(
+            sidebarCollapsed ? "md:p-3" : "md:p-4",
+            "p-4 border-t border-line dark:border-line-dark space-y-3 bg-canvas/60 dark:bg-white/2",
+          )}
         >
           <div
-            className={`flex items-center gap-3 p-2.5 ${sidebarCollapsed ? "md:justify-center md:gap-0 md:p-2" : ""} bg-white/5 rounded-lg border border-white/10`}
+            className={cn(
+              "flex items-center gap-3 p-2.5",
+              sidebarCollapsed ? "md:justify-center md:gap-0 md:p-2" : "",
+              "bg-surface dark:bg-white/5 rounded-lg border border-line dark:border-line-dark",
+            )}
           >
-            <div
-              className={`${sidebarCollapsed ? "md:hidden" : ""} space-y-0.5 truncate grow`}
-            >
-              <span className="text-[10px] font-black text-white block truncate leading-tight">
+            <span className="h-8 w-8 rounded-full bg-brand-navy-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+              {getInitials(currentUser.name)}
+            </span>
+            <div className={cn(sidebarCollapsed ? "md:hidden" : "", "space-y-0.5 truncate grow")}>
+              <span className="text-[11px] font-bold text-ink dark:text-ink-dark block truncate leading-tight">
                 {currentUser.name}
               </span>
-              <span className="text-[9px] text-[#F2D3A0]/80 font-bold block truncate">
+              <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-medium block truncate">
                 {currentUser.title || "Membro do Time"}
               </span>
             </div>
-            <button
+            <IconButton
+              icon={<LogOut className="h-4 w-4" />}
+              label="Sair"
+              variant="ghost"
+              size="sm"
               onClick={logout}
-              title="Sair"
-              className={`${sidebarCollapsed ? "md:hidden" : ""} p-1.5 text-[#F2D3A0]/70 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer shrink-0`}
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-            {sidebarCollapsed && (
-              <button
-                onClick={logout}
-                title="Sair"
-                className="hidden md:flex p-1.5 text-[#F2D3A0]/70 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer shrink-0"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            )}
+              className={cn(sidebarCollapsed ? "md:hidden" : "", "shrink-0")}
+            />
           </div>
+          {sidebarCollapsed && (
+            <IconButton
+              icon={<LogOut className="h-4 w-4" />}
+              label="Sair"
+              variant="ghost"
+              size="sm"
+              onClick={logout}
+              className="hidden md:flex mx-auto"
+            />
+          )}
           <p
-            className={`${sidebarCollapsed ? "md:hidden" : ""} text-center text-[8px] uppercase tracking-wider text-white/35`}
+            className={cn(
+              sidebarCollapsed ? "md:hidden" : "",
+              "text-center text-[9px] uppercase tracking-wider text-ink-soft/70 dark:text-ink-soft-dark/60",
+            )}
           >
             Desenvolvido por{" "}
-            <span className="text-[#F2D3A0]/60 font-bold">NFlow Analytics</span>
+            <span className="text-ink-soft dark:text-ink-soft-dark font-bold">
+              NFlow Analytics
+            </span>
           </p>
         </div>
       </aside>
 
-      {/* Main Workspace Frame */}
-      <main className={`flex-grow flex flex-col min-w-0 ${isDarkMode ? "dark" : ""}`}>
-        {/* Desktop Top Header Bar */}
-        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white dark:bg-[#091320] border-b border-[#0B2C52]/10 dark:border-white/10 shrink-0 sticky top-0 z-30 shadow-xs transition-colors duration-150">
-          <div className="flex items-center gap-2">
-            <span className="text-[#0B2C52] dark:text-[#9DB8D9] font-semibold text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <LayoutDashboard className="h-3.5 w-3.5 text-[#C8102E]" /> Idex
+      {/* Main column: unified header + content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="sticky top-0 z-30 flex items-center gap-3 px-4 md:px-8 h-17 bg-surface dark:bg-surface-dark border-b border-line dark:border-line-dark shrink-0 shadow-[0_1px_2px_rgba(23,32,51,0.04)]">
+          <IconButton
+            icon={mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+            variant="ghost"
+            onClick={() => setMobileMenuOpen((value) => !value)}
+            className="md:hidden shrink-0"
+          />
+
+          <img src={idexLogo} alt="Idex Finance" className="h-8 w-auto object-contain md:hidden" />
+
+          <div className="hidden md:flex items-center gap-2 min-w-0">
+            <span className="text-brand-navy-900 dark:text-ink-soft-dark font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+              <LayoutDashboard className="h-3.5 w-3.5 text-brand-red-600" /> Idex
               Finance Workspace
             </span>
-            <span className="text-zinc-300 dark:text-zinc-700">/</span>
-            <span className="text-[#0B2C52] dark:text-zinc-100 font-semibold text-xs flex items-center gap-1.5 bg-[#0B2C52]/5 dark:bg-white/5 border-l-2 border-[#C8102E] border-y border-r border-[#0B2C52]/15 dark:border-white/10 px-3 py-1.5 rounded-sm shadow-2xs">
-              <Building2 className="h-3.5 w-3.5 text-[#0B2C52]/70 dark:text-zinc-400" />{" "}
-              {activeCompany.tradeName} ({activeCompany.cnpj})
+            <span className="text-line dark:text-line-dark">/</span>
+            <span className="text-brand-navy-900 dark:text-ink-dark font-semibold text-xs flex items-center gap-1.5 bg-brand-blue-50 dark:bg-white/5 border-l-2 border-brand-red-600 px-3 py-1.5 rounded-md truncate">
+              <Building2 className="h-3.5 w-3.5 text-brand-navy-700 dark:text-ink-soft-dark shrink-0" />{" "}
+              <span className="truncate">
+                {activeCompany.tradeName} ({activeCompany.cnpj})
+              </span>
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggleTheme}
-              title={isDarkMode ? "Usar tema claro" : "Usar tema escuro"}
-              className="flex items-center justify-center h-8 w-8 text-[#0B2C52]/70 dark:text-zinc-400 hover:bg-[#0B2C52]/10 dark:hover:bg-white/10 hover:text-[#0B2C52] dark:hover:text-zinc-100 rounded-sm cursor-pointer transition-colors"
-            >
-              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+          <div className="flex-1 flex justify-end md:justify-center">
+            <GlobalSearch onNavigate={handleSearchNavigate} />
+          </div>
 
-            {/* Direct Alert Notification Button */}
-            <button
-              onClick={() => setNotificationsOpen(true)}
-              className="p-2 text-[#0B2C52]/70 dark:text-zinc-400 hover:bg-[#0B2C52]/10 dark:hover:bg-white/10 hover:text-[#0B2C52] dark:hover:text-zinc-100 rounded-sm relative cursor-pointer transition-colors"
-            >
-              <Bell className="h-4.5 w-4.5" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <IconButton
+              icon={isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              label={isDarkMode ? "Usar tema claro" : "Usar tema escuro"}
+              variant="ghost"
+              onClick={toggleTheme}
+            />
+            <div className="relative">
+              <IconButton
+                icon={<Bell className="h-4 w-4" />}
+                label="Notificações"
+                variant="ghost"
+                onClick={() => setNotificationsOpen(true)}
+              />
               {unreadNotifications.length > 0 && (
-                <span className="absolute top-1 right-1 h-4 w-4 bg-[#C8102E] text-white rounded-full flex items-center justify-center text-[9px] font-semibold">
+                <span className="absolute top-1 right-1 h-4 w-4 bg-brand-red-600 text-white rounded-full flex items-center justify-center text-[9px] font-bold pointer-events-none">
                   {unreadNotifications.length}
                 </span>
               )}
-            </button>
-
-            {/* Profile status label */}
-            <div className="flex items-center gap-2.5 font-sans">
-              <div className="text-right">
-                <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 block leading-tight">
-                  {currentUser.name}
-                </span>
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block font-medium">
-                  {currentUser.role.replace(/_/g, " ")}
-                </span>
-              </div>
             </div>
+            <Dropdown
+              align="right"
+              trigger={
+                <button
+                  type="button"
+                  className="hidden sm:flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-canvas dark:hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  <span className="h-8 w-8 rounded-full bg-brand-navy-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                    {getInitials(currentUser.name)}
+                  </span>
+                  <span className="text-left hidden lg:block">
+                    <span className="text-xs font-semibold text-ink dark:text-ink-dark block leading-tight">
+                      {currentUser.name}
+                    </span>
+                    <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark block font-medium">
+                      {currentUser.role.replace(/_/g, " ")}
+                    </span>
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark hidden lg:block" />
+                </button>
+              }
+              items={[
+                ...(["CLIENT", "ACCOUNTANT"].includes(currentUser.role)
+                  ? [
+                      {
+                        label: "Central de Ajuda",
+                        icon: <MessageSquareText className="h-3.5 w-3.5" />,
+                        onClick: () => handleSwitchView("support"),
+                      },
+                    ]
+                  : []),
+                { label: "Sair", icon: <LogOut className="h-3.5 w-3.5" />, onClick: logout, danger: true },
+              ]}
+            />
           </div>
         </header>
 
-        {/* View Content Port */}
-        <div className="flex-grow p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto animate-in fade-in duration-150 bg-[#FAFAFA] dark:bg-[#091320] transition-colors duration-150">
-          {renderActiveView()}
-        </div>
-      </main>
-
-      {/* Side Slide-out Notification Drawer Panel */}
-      {notificationsOpen && (
-        <div className={`fixed inset-y-0 right-0 w-80 bg-white dark:bg-[#091320] border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col justify-between animate-in slide-in-from-right duration-200 font-sans text-xs ${isDarkMode ? "dark" : ""}`}>
-          <div className="flex flex-col flex-grow">
-            <div className="p-4 bg-[#0B2C52] text-white flex items-center justify-between border-b-2 border-[#C8102E]">
-              <div className="flex items-center gap-1.5">
-                <Bell className="h-4 w-4 text-[#F2D3A0]" />
-                <h3 className="font-semibold text-sm">Alertas e Notificações</h3>
-              </div>
-              <button
-                onClick={() => setNotificationsOpen(false)}
-                className="text-[#F2D3A0] hover:text-white font-semibold cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800 overflow-y-auto flex-grow max-h-[80vh]">
-              {visibleNotifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  onClick={() => markNotificationRead(notif.id)}
-                  className={`p-4 hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors cursor-pointer relative border-l-4 ${
-                    notif.isRead
-                      ? "border-zinc-200 dark:border-zinc-800 opacity-60"
-                      : "border-[#C8102E] bg-[#F2D3A0]/10 dark:bg-[#F2D3A0]/5 font-semibold"
-                  }`}
-                >
-                  <div className="flex justify-between items-start gap-1.5 mb-1 text-[10px] text-zinc-400 dark:text-zinc-500">
-                    <span className="font-mono">
-                      {new Date(notif.createdAt).toLocaleTimeString("pt-BR")}
-                    </span>
-                    <span className="uppercase font-semibold tracking-wider">
-                      {notif.type}
-                    </span>
-                  </div>
-                  <h4 className="text-xs font-semibold text-zinc-800 dark:text-zinc-100 mb-0.5">
-                    {notif.title}
-                  </h4>
-                  <p className="text-zinc-500 dark:text-zinc-400 leading-normal text-[11px]">
-                    {notif.message}
-                  </p>
-                </div>
-              ))}
-              {visibleNotifications.length === 0 && (
-                <div className="p-8 text-center text-zinc-400 dark:text-zinc-500 italic">
-                  Nenhum alerta recente.
-                </div>
-              )}
-            </div>
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl w-full mx-auto p-4 md:p-8 motion-safe:animate-[fadeIn_180ms_ease-out]">
+            {renderActiveView()}
           </div>
+        </main>
+      </div>
 
-          <div className="p-4 bg-zinc-50 dark:bg-white/5 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+      {/* Painel de notificações */}
+      <Drawer
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        title={
+          <span className="flex items-center gap-1.5">
+            <Bell className="h-4 w-4 text-brand-red-600" /> Alertas e Notificações
+          </span>
+        }
+        footer={
+          <div className="flex items-center justify-between w-full">
             <button
               onClick={clearNotifications}
-              className="text-[11px] text-zinc-900 dark:text-zinc-100 font-semibold hover:underline cursor-pointer"
+              className="text-[11px] text-ink dark:text-ink-dark font-semibold hover:underline cursor-pointer"
             >
               Marcar todas como lidas
             </button>
             <span
-              className="text-[10px] text-amber-700 dark:text-amber-400 font-mono"
+              className="text-[10px] text-amber-700 dark:text-brand-gold-300 font-mono"
               title="Os dados deste ambiente ainda ficam somente neste navegador."
             >
               Dados locais · sem sincronização
             </span>
           </div>
+        }
+      >
+        <div className="divide-y divide-line dark:divide-line-dark">
+          {visibleNotifications.map((notif) => (
+            <div
+              key={notif.id}
+              onClick={() => markNotificationRead(notif.id)}
+              className={cn(
+                "p-4 hover:bg-canvas dark:hover:bg-white/5 transition-colors cursor-pointer border-l-4",
+                notif.isRead
+                  ? "border-transparent opacity-60"
+                  : "border-brand-red-600 bg-brand-gold-300/10 dark:bg-brand-gold-300/5 font-semibold",
+              )}
+            >
+              <div className="flex justify-between items-start gap-1.5 mb-1 text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                <span className="font-mono">
+                  {new Date(notif.createdAt).toLocaleTimeString("pt-BR")}
+                </span>
+                <span className="uppercase font-semibold tracking-wider">{notif.type}</span>
+              </div>
+              <h4 className="text-xs font-semibold text-ink dark:text-ink-dark mb-0.5">
+                {notif.title}
+              </h4>
+              <p className="text-ink-soft dark:text-ink-soft-dark leading-normal text-[11px]">
+                {notif.message}
+              </p>
+            </div>
+          ))}
+          {visibleNotifications.length === 0 && (
+            <div className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic text-xs">
+              Nenhum alerta recente.
+            </div>
+          )}
         </div>
-      )}
+      </Drawer>
     </div>
   );
 }
 
 function AppGate() {
   const { isAuthenticated } = useBPOState();
-  return isAuthenticated ? <BPOWorkspaceShell /> : <LoginView />;
+  const theme = useThemeMode();
+  return isAuthenticated ? (
+    <BPOWorkspaceShell theme={theme} />
+  ) : (
+    <LoginView theme={theme} />
+  );
 }
 
 export default function App() {
   return (
     <BPOProvider>
       <BakeryCashProvider>
-        <AppGate />
+        <ToastProvider>
+          <AppGate />
+        </ToastProvider>
       </BakeryCashProvider>
     </BPOProvider>
   );

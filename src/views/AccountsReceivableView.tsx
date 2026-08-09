@@ -3,14 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
-import { AccountReceivable } from "../types";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
 import {
+  Button,
+  Card,
+  MetricCard,
+  SearchField,
+  StatusBadge,
+  ConfirmDialog,
+} from "../components/ui";
+import {
   Plus,
-  Search,
   Filter,
   DollarSign,
   CalendarClock,
@@ -28,30 +34,12 @@ import {
 } from "lucide-react";
 
 const AR_METRIC_VISUALS = [
-  {
-    icon: Clock,
-    tint: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300",
-  },
-  {
-    icon: CalendarClock,
-    tint: "bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
-  },
-  {
-    icon: AlertTriangle,
-    tint: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
-  },
-  {
-    icon: CheckCircle,
-    tint: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
-  },
-  {
-    icon: TrendingDown,
-    tint: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300",
-  },
-  {
-    icon: Wallet,
-    tint: "bg-[#0B2C52]/5 text-[#0B2C52] dark:bg-[#123B6B]/25 dark:text-[#9DB8D9]",
-  },
+  { icon: Clock, tone: "navy" },
+  { icon: CalendarClock, tone: "gold" },
+  { icon: AlertTriangle, tone: "red" },
+  { icon: CheckCircle, tone: "green" },
+  { icon: TrendingDown, tone: "red" },
+  { icon: Wallet, tone: "navy" },
 ] as const;
 
 const AR_AVATAR_PALETTE = [
@@ -119,6 +107,18 @@ export default function AccountsReceivableView({
   // Creation Form Modal State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2>(1);
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isFormOpen && !receivingId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsFormOpen(false);
+      setReceivingId(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isFormOpen, receivingId]);
 
   // Form Fields
   const [description, setDescription] = useState("");
@@ -207,30 +207,6 @@ export default function AccountsReceivableView({
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusBadge = (status: AccountReceivable["status"]) => {
-    switch (status) {
-      case "Rascunho":
-        return "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
-      case "Pendente":
-        return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/25";
-      case "A receber":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/25";
-      case "Parcialmente recebido":
-        return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25";
-      case "Recebido":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25";
-      case "Vencido":
-        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/25";
-      case "Em cobrança":
-        return "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-500/20 dark:text-rose-200 dark:border-rose-500/30";
-      case "Negociada":
-        return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/25";
-      case "Cancelado":
-        return "bg-zinc-200 text-zinc-800 border-zinc-300 line-through dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700";
-      default:
-        return "bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
-    }
-  };
 
   const resetForm = () => {
     setDescription("");
@@ -312,9 +288,13 @@ export default function AccountsReceivableView({
   };
 
   const handleCancel = (id: string) => {
-    if (window.confirm("Confirmar cancelamento deste recebível?")) {
-      cancelAccountReceivable(id);
-    }
+    setCancelTargetId(id);
+  };
+
+  const confirmCancel = () => {
+    if (!cancelTargetId) return;
+    cancelAccountReceivable(cancelTargetId);
+    setCancelTargetId(null);
   };
 
   return (
@@ -324,11 +304,11 @@ export default function AccountsReceivableView({
         <div>
           <h2
             id="receivable-title"
-            className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight font-sans"
+            className="text-xl font-semibold text-ink dark:text-ink-dark tracking-tight font-sans"
           >
             Contas a Receber
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs font-sans">
+          <p className="text-ink-soft dark:text-ink-soft-dark text-xs font-sans">
             Controle de faturamentos, geração de boletos, fluxos de recebimento
             parcial e baixas no banco.
           </p>
@@ -336,22 +316,14 @@ export default function AccountsReceivableView({
 
         <div className="flex items-center gap-2">
           {hasPermission("accounts-receivable.create") && onNavigate && (
-            <button
-              onClick={onNavigate}
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#091320] hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-sm transition-colors cursor-pointer shadow-xs"
-            >
-              <ArrowUpRight className="h-4 w-4" />
+            <Button variant="outline" icon={<ArrowUpRight className="h-4 w-4" />} onClick={onNavigate}>
               Ir para Lançamentos
-            </button>
+            </Button>
           )}
           {hasPermission("accounts-receivable.create") && (
-            <button
-              onClick={() => setIsFormOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#C8102E] hover:bg-[#8F071B] px-4 py-2.5 rounded-sm transition-colors cursor-pointer shadow-xs"
-            >
-              <Plus className="h-4 w-4" />
+            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setIsFormOpen(true)}>
               Nova conta a receber
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -359,47 +331,33 @@ export default function AccountsReceivableView({
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {receivableMetrics.map(([label, value], index) => {
           const visual = AR_METRIC_VISUALS[index];
-          const VisualIcon = visual.icon;
           return (
-            <div
+            <MetricCard
               key={label}
-              className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 p-2.5 flex flex-col gap-2"
-            >
-              <div
-                className={`h-7 w-7 rounded-sm flex items-center justify-center ${visual.tint}`}
-              >
-                <VisualIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-              </div>
-              <div>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase">
-                  {label}
-                </p>
-                <p className="text-xl font-semibold mt-0.5 text-zinc-900 dark:text-zinc-50">
-                  {label === "Recebimento previsto"
-                    ? `R$ ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-                    : value}
-                </p>
-              </div>
-            </div>
+              icon={<visual.icon strokeWidth={2.25} />}
+              label={String(label)}
+              value={
+                label === "Recebimento previsto"
+                  ? `R$ ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                  : String(value)
+              }
+              tone={visual.tone}
+            />
           );
         })}
       </div>
 
       {/* Grid Filtering / Searching */}
-      <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96 font-sans">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400 dark:text-zinc-500" />
-          <input
-            type="text"
-            placeholder="Buscar por Descrição, Cliente ou Número..."
-            className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 hover:bg-zinc-100/50 dark:hover:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 rounded-sm border border-zinc-200 dark:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-[#C8102E] transition-colors"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+      <Card className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <SearchField
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Buscar por Descrição, Cliente ou Número..."
+          containerClassName="w-full md:w-96"
+        />
 
-        <div className="flex items-center gap-2 w-full md:w-auto font-sans">
-          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 px-3 py-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300">
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-1.5 bg-canvas dark:bg-white/5 px-3 py-1.5 rounded-lg border border-line dark:border-line-dark text-xs text-ink dark:text-ink-dark">
             <Filter className="h-3.5 w-3.5" />
             <select
               className="bg-transparent font-medium focus:outline-none cursor-pointer dark:[color-scheme:dark]"
@@ -418,34 +376,40 @@ export default function AccountsReceivableView({
             </select>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Creation Step Form Modal */}
       {isFormOpen && (
-        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans">
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 bg-gradient-to-r from-[#0B2C52] to-[#C8102E] text-white flex items-center justify-between">
+        <div
+          className="fixed inset-0 bg-brand-navy-950/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans"
+          onClick={resetForm}
+        >
+          <div
+            className="bg-surface dark:bg-surface-dark rounded-2xl border border-line dark:border-line-dark shadow-2xl max-w-xl w-full overflow-hidden motion-safe:animate-[modalIn_180ms_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-line dark:border-line-dark bg-brand-navy-900 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold">
                   Lançar Nova Conta a Receber
                 </h3>
-                <p className="text-[10px] text-[#F2D3A0]">
+                <p className="text-[10px] text-brand-gold-300">
                   Dividido em 2 etapas estruturadas de faturamento BPO.
                 </p>
               </div>
               <button
                 onClick={resetForm}
-                className="text-[#F2D3A0] hover:text-white font-semibold text-xs cursor-pointer"
+                className="text-brand-gold-300 hover:text-white font-semibold text-xs cursor-pointer"
               >
                 Fechar
               </button>
             </div>
 
-            <div className="flex bg-[#0B2C52] border-b border-[#0B2C52]/20 px-5 py-3.5 text-xs justify-between font-medium">
+            <div className="flex bg-brand-navy-900 border-b border-brand-navy-900/20 px-5 py-3.5 text-xs justify-between font-medium">
               <span
                 className={`flex items-center gap-1.5 ${formStep >= 1 ? "text-white font-semibold" : "text-white/40"}`}
               >
-                <span className="h-5 w-5 rounded bg-[#C8102E] text-white flex items-center justify-center text-[10px] font-semibold">
+                <span className="h-5 w-5 rounded bg-brand-red-600 text-white flex items-center justify-center text-[10px] font-semibold">
                   1
                 </span>{" "}
                 Cliente & Classificação
@@ -454,7 +418,7 @@ export default function AccountsReceivableView({
                 className={`flex items-center gap-1.5 ${formStep >= 2 ? "text-white font-semibold" : "text-white/40"}`}
               >
                 <span
-                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 2 ? "bg-[#C8102E] text-white" : "bg-[#061425] text-white/40"}`}
+                  className={`h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold ${formStep >= 2 ? "bg-brand-red-600 text-white" : "bg-brand-navy-950 text-white/40"}`}
                 >
                   2
                 </span>{" "}
@@ -470,14 +434,14 @@ export default function AccountsReceivableView({
               {formStep === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-right-5 duration-150">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                       Descrição do Faturamento *
                     </label>
                     <input
                       type="text"
                       required
                       placeholder="Ex: Mensalidade Desenvolvimento de Software Julho"
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                     />
@@ -486,7 +450,7 @@ export default function AccountsReceivableView({
                   <QuickAddSelect
                     label="Cliente / Sacado"
                     required
-                    labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                    labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
                     value={customer}
                     onChange={setCustomer}
                     options={masterOptions("CUSTOMER")}
@@ -497,7 +461,7 @@ export default function AccountsReceivableView({
                     <QuickAddSelect
                       label="Categoria Receita"
                       required
-                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
                       value={category}
                       onChange={setCategory}
                       options={masterOptions("CATEGORY")}
@@ -507,7 +471,7 @@ export default function AccountsReceivableView({
                     <QuickAddSelect
                       label="Centro de Custo"
                       required
-                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
                       value={costCenter}
                       onChange={setCostCenter}
                       options={masterOptions("COST_CENTER")}
@@ -522,37 +486,37 @@ export default function AccountsReceivableView({
                 <div className="space-y-4 animate-in slide-in-from-right-5 duration-150">
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Mês Competência
                       </label>
                       <input
                         type="month"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={competenceMonth}
                         onChange={(e) => setCompetenceMonth(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Data Emissão
                       </label>
                       <input
                         type="date"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={issueDate}
                         onChange={(e) => setIssueDate(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Vencimento *
                       </label>
                       <input
                         type="date"
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={dueDate}
                         onChange={(e) => setDueDate(e.target.value)}
                       />
@@ -561,24 +525,24 @@ export default function AccountsReceivableView({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Valor Principal (R$) *
                       </label>
                       <CurrencyInput
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={amount}
                         onChange={setAmount}
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Cobrar por Qual Banco *
                       </label>
                       <select
                         required
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                         value={bankAccountId}
                         onChange={(e) => setBankAccountId(e.target.value)}
                       >
@@ -594,7 +558,7 @@ export default function AccountsReceivableView({
                   <div className="grid grid-cols-2 gap-4">
                     <QuickAddSelect
                       label="Forma Recebimento"
-                      labelClassName="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block"
+                      labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
                       value={paymentMethod}
                       onChange={setPaymentMethod}
                       options={masterOptions("PAYMENT_METHOD")}
@@ -602,13 +566,13 @@ export default function AccountsReceivableView({
                     />
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                      <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                         Número do Documento / NFe
                       </label>
                       <input
                         type="text"
                         placeholder="Ex: NFe-40291"
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={documentNumber}
                         onChange={(e) => setDocumentNumber(e.target.value)}
                       />
@@ -616,11 +580,11 @@ export default function AccountsReceivableView({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                       Recorrência
                     </label>
                     <select
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm cursor-pointer"
+                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg cursor-pointer"
                       value={recurrence}
                       onChange={(e) => setRecurrence(e.target.value as any)}
                     >
@@ -634,22 +598,22 @@ export default function AccountsReceivableView({
                   </div>
 
                   {recurrence === "Parcelada" && (
-                    <div className="p-3 bg-[#0B2C52]/5 dark:bg-[#123B6B]/20 border border-[#0B2C52]/20 dark:border-[#3E6DA6]/40 rounded-sm space-y-2">
+                    <div className="p-3 bg-brand-navy-900/5 dark:bg-brand-navy-700/20 border border-brand-navy-900/20 dark:border-brand-navy-700/40 rounded-lg space-y-2">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                        <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                           Quantidade de parcelas
                         </label>
                         <input
                           type="number"
                           min={2}
                           step={1}
-                          className="w-full p-2 text-xs bg-white dark:bg-[#091320] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                          className="w-full p-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                           value={installmentCount}
                           onChange={(e) => setInstallmentCount(e.target.value)}
                         />
                       </div>
                       {Number(installmentCount) >= 2 && (
-                        <p className="text-[10px] text-[#0B2C52] dark:text-[#B9CDE6] font-semibold">
+                        <p className="text-[10px] text-brand-navy-900 dark:text-blue-100 font-semibold">
                           {installmentCount}x de aprox.{" "}
                           R${" "}
                           {(Number(amount) / Number(installmentCount)).toLocaleString(
@@ -665,14 +629,14 @@ export default function AccountsReceivableView({
                   )}
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                       Fatura PDF Anexa
                     </label>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         placeholder="Nome do arquivo faturado..."
-                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                        className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                         value={attachmentName}
                         onChange={(e) => setAttachmentName(e.target.value)}
                       />
@@ -681,7 +645,7 @@ export default function AccountsReceivableView({
                         onClick={() =>
                           setAttachmentName("nota_faturamento_alfa.pdf")
                         }
-                        className="text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 p-2 rounded-sm cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
+                        className="text-xs bg-zinc-100 dark:bg-zinc-800 border border-line dark:border-line-dark p-2 rounded-lg cursor-pointer text-zinc-700 dark:text-zinc-200 font-semibold flex items-center gap-1 shrink-0"
                       >
                         <Paperclip className="h-3.5 w-3.5" /> Simular
                       </button>
@@ -689,13 +653,13 @@ export default function AccountsReceivableView({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 block">
+                    <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block">
                       Instruções de Cobrança / Notas
                     </label>
                     <textarea
                       placeholder="Ex: Juros de 2% ao mês após vencimento."
                       rows={2}
-                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm"
+                      className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
@@ -704,12 +668,12 @@ export default function AccountsReceivableView({
               )}
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800 pt-4 mt-6">
+              <div className="flex items-center justify-between border-t border-line dark:border-line-dark pt-4 mt-6">
                 {formStep > 1 ? (
                   <button
                     type="button"
                     onClick={() => setFormStep(1)}
-                    className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-semibold px-4 py-2 rounded-sm cursor-pointer text-zinc-800 dark:text-zinc-200"
+                    className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-semibold px-4 py-2 rounded-lg cursor-pointer text-zinc-800 dark:text-zinc-200"
                   >
                     Voltar Etapa
                   </button>
@@ -721,13 +685,13 @@ export default function AccountsReceivableView({
                   <button
                     type="button"
                     onClick={resetForm}
-                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-medium px-3 py-2 cursor-pointer"
+                    className="text-xs text-ink-soft dark:text-ink-soft-dark hover:text-zinc-950 dark:hover:text-white font-medium px-3 py-2 cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="text-xs font-semibold bg-zinc-950 hover:bg-zinc-850 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 text-white px-4 py-2 rounded-sm shadow-xs cursor-pointer"
+                    className="text-xs font-semibold bg-brand-red-600 hover:bg-brand-red-500 text-white px-4 py-2 rounded-lg shadow-xs cursor-pointer"
                   >
                     {formStep === 2 ? "Lançar Faturamento" : "Próxima Etapa"}
                   </button>
@@ -740,27 +704,33 @@ export default function AccountsReceivableView({
 
       {/* Partial Receipt Pop-up Modal */}
       {receivingId && (
-        <div className="fixed inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans">
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-100">
+        <div
+          className="fixed inset-0 bg-brand-navy-950/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans"
+          onClick={() => setReceivingId(null)}
+        >
+          <div
+            className="bg-surface dark:bg-surface-dark rounded-2xl border border-line dark:border-line-dark shadow-2xl max-w-sm w-full p-6 space-y-4 motion-safe:animate-[modalIn_180ms_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              <h3 className="text-sm font-semibold text-ink dark:text-ink-dark">
                 Registrar Entrada / Baixa Parcial
               </h3>
-              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+              <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-1">
                 Insira o valor creditado no banco para esta conta.
               </p>
             </div>
 
             <form onSubmit={handlePartialReceiptSubmit} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block">
+                <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                   Valor Creditado (R$)
                 </label>
                 <CurrencyInput
                   required
                   autoFocus
                   placeholder="0,00"
-                  className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none"
+                  className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none"
                   value={receivedAmountVal}
                   onChange={setReceivedAmountVal}
                 />
@@ -770,13 +740,13 @@ export default function AccountsReceivableView({
                 <button
                   type="button"
                   onClick={() => setReceivingId(null)}
-                  className="text-zinc-500 dark:text-zinc-400 font-semibold px-3 py-1.5 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
+                  className="text-ink-soft dark:text-ink-soft-dark font-semibold px-3 py-1.5 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-700 font-semibold text-white px-3 py-1.5 rounded-sm cursor-pointer shadow-xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 font-semibold text-white px-3 py-1.5 rounded-lg cursor-pointer shadow-xs"
                 >
                   Confirmar Baixa
                 </button>
@@ -787,36 +757,36 @@ export default function AccountsReceivableView({
       )}
 
       {/* Main Table view of receivables */}
-      <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden">
+      <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-[#091320]/60 border-b border-zinc-200 dark:border-zinc-800">
+              <tr className="bg-zinc-50 dark:bg-surface-dark/60 border-b border-line dark:border-line-dark">
                 <th className="p-4 w-6"></th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                   Descrição Lançamento
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                   Cliente
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                   Vencimento
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-right">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-right">
                   Valor Faturado
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-right">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-right">
                   Valor Creditado
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-center">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-center">
                   Status
                 </th>
-                <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-right">
+                <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider text-right">
                   Ações
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
+            <tbody className="divide-y divide-line dark:divide-line-dark text-xs">
               {filteredReceivables.map((ar) => {
                 const isExpanded = expandedId === ar.id;
                 const outstanding = ar.amount - ar.receivedAmount;
@@ -827,24 +797,24 @@ export default function AccountsReceivableView({
                 return (
                   <React.Fragment key={ar.id}>
                     <tr
-                      className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer ${isExpanded ? "bg-zinc-50/30 dark:bg-zinc-800/30" : ""} ${isOverdue ? "shadow-[inset_3px_0_0_0_#fb7185] dark:shadow-[inset_3px_0_0_0_#f43f5e]" : ""}`}
+                      className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer ${isExpanded ? "bg-zinc-50/30 dark:bg-zinc-800/30" : ""} ${isOverdue ? "shadow-[inset_3px_0_0_0_#C8102E] dark:shadow-[inset_3px_0_0_0_#E20D35]" : ""}`}
                       onClick={() => setExpandedId(isExpanded ? null : ar.id)}
                     >
                       <td className="p-4 text-center">
                         {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                          <ChevronUp className="h-4 w-4 text-ink-soft dark:text-ink-soft-dark" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                          <ChevronDown className="h-4 w-4 text-ink-soft dark:text-ink-soft-dark" />
                         )}
                       </td>
-                      <td className="p-4 font-semibold text-zinc-900 dark:text-zinc-50">
+                      <td className="p-4 font-semibold text-ink dark:text-ink-dark">
                         {ar.description}
                         {ar.installmentCount && (
                           <span className="ml-1.5 text-[9px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/25 px-1.5 py-0.5 rounded align-middle">
                             {ar.installmentNumber}/{ar.installmentCount}
                           </span>
                         )}
-                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-normal font-sans">
+                        <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-normal font-sans">
                           Nº Doc: {ar.documentNumber || "N/A"} | Categoria:{" "}
                           {ar.category}
                         </div>
@@ -869,7 +839,7 @@ export default function AccountsReceivableView({
                           </span>
                         )}
                       </td>
-                      <td className="p-4 text-right font-semibold text-zinc-900 dark:text-zinc-50 font-mono">
+                      <td className="p-4 text-right font-semibold text-ink dark:text-ink-dark font-mono">
                         R${" "}
                         {ar.amount.toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
@@ -882,12 +852,7 @@ export default function AccountsReceivableView({
                         })}
                       </td>
                       <td className="p-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded border ${getStatusBadge(ar.status)}`}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
-                          {ar.status}
-                        </span>
+                        <StatusBadge status={ar.status} />
                       </td>
                       <td
                         className="p-4 text-right font-sans"
@@ -919,7 +884,7 @@ export default function AccountsReceivableView({
                             hasPermission("accounts-receivable.cancel") && (
                               <button
                                 onClick={() => handleCancel(ar.id)}
-                                className="text-[10px] bg-zinc-50 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 font-semibold px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer"
+                                className="text-[10px] bg-zinc-50 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 font-semibold px-2 py-1 rounded border border-line dark:border-line-dark cursor-pointer"
                                 title="Cancelar Lançamento"
                               >
                                 <Ban className="h-3.5 w-3.5" />
@@ -934,18 +899,18 @@ export default function AccountsReceivableView({
                       <tr>
                         <td
                           colSpan={8}
-                          className="p-4 bg-zinc-50/50 dark:bg-[#091320]/40 border-t border-b border-zinc-100 dark:border-zinc-800"
+                          className="p-4 bg-zinc-50/50 dark:bg-surface-dark/40 border-t border-b border-line dark:border-line-dark"
                         >
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-zinc-600 dark:text-zinc-300 font-sans">
                             {/* Value details */}
                             <div className="space-y-2">
-                              <h4 className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
-                                <span className="h-5 w-5 rounded bg-[#0B2C52]/5 text-[#0B2C52] dark:bg-[#123B6B]/25 dark:text-[#9DB8D9] flex items-center justify-center shrink-0">
+                              <h4 className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider flex items-center gap-1.5">
+                                <span className="h-5 w-5 rounded bg-brand-navy-900/5 text-brand-navy-900 dark:bg-brand-navy-700/25 dark:text-blue-200 flex items-center justify-center shrink-0">
                                   <DollarSign className="h-3 w-3" strokeWidth={2.25} />
                                 </span>
                                 Lançamento de Caixa
                               </h4>
-                              <div className="space-y-1 bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200/60 dark:border-zinc-800 font-mono">
+                              <div className="space-y-1 bg-surface dark:bg-surface-dark p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-800 font-mono">
                                 <div className="flex justify-between">
                                   <span>Total Faturado:</span>
                                   <span>
@@ -972,7 +937,7 @@ export default function AccountsReceivableView({
                                     }}
                                   />
                                 </div>
-                                <div className="flex justify-between font-semibold text-zinc-900 dark:text-zinc-50 border-t border-zinc-100 dark:border-zinc-800 pt-1 text-sm">
+                                <div className="flex justify-between font-semibold text-ink dark:text-ink-dark border-t border-line dark:border-line-dark pt-1 text-sm">
                                   <span>Saldo Restante:</span>
                                   <span>
                                     R${" "}
@@ -986,15 +951,15 @@ export default function AccountsReceivableView({
 
                             {/* Faturamento options */}
                             <div className="space-y-2">
-                              <h4 className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <h4 className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider flex items-center gap-1.5">
                                 <span className="h-5 w-5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
                                   <Clock className="h-3 w-3" strokeWidth={2.25} />
                                 </span>
                                 Classificação Operacional
                               </h4>
-                              <div className="space-y-1.5 bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200/60 dark:border-zinc-800">
+                              <div className="space-y-1.5 bg-surface dark:bg-surface-dark p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-800">
                                 <div>
-                                  <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                  <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                     Forma Recebimento
                                   </span>
                                   <span className="font-bold text-zinc-800">
@@ -1002,7 +967,7 @@ export default function AccountsReceivableView({
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                  <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                     Centro de Custo
                                   </span>
                                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -1010,7 +975,7 @@ export default function AccountsReceivableView({
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                  <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                     Compensar na Conta
                                   </span>
                                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -1021,7 +986,7 @@ export default function AccountsReceivableView({
                                 </div>
                                 {ar.installmentCount && (
                                   <div>
-                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                    <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                       Parcela
                                     </span>
                                     <span className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -1034,15 +999,15 @@ export default function AccountsReceivableView({
 
                             {/* Documents and audit trail */}
                             <div className="space-y-2">
-                              <h4 className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <h4 className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider flex items-center gap-1.5">
                                 <span className="h-5 w-5 rounded bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300 flex items-center justify-center shrink-0">
                                   <Paperclip className="h-3 w-3" strokeWidth={2.25} />
                                 </span>
                                 Faturas e Conciliação
                               </h4>
-                              <div className="space-y-2 bg-white dark:bg-[#091320] p-3 rounded-sm border border-zinc-200/60 dark:border-zinc-800 font-sans">
+                              <div className="space-y-2 bg-surface dark:bg-surface-dark p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-800 font-sans">
                                 <div>
-                                  <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                  <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                     Fatura / Nota Fiscal
                                   </span>
                                   {ar.attachmentName ? (
@@ -1054,14 +1019,14 @@ export default function AccountsReceivableView({
                                           "Visualizando Nota Fiscal via link seguro criptografado...",
                                         );
                                       }}
-                                      className="font-semibold text-zinc-900 dark:text-zinc-100 hover:underline flex items-center gap-1 mt-0.5"
+                                      className="font-semibold text-ink dark:text-ink-dark hover:underline flex items-center gap-1 mt-0.5"
                                     >
-                                      <Paperclip className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
+                                      <Paperclip className="h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark shrink-0" />
                                       {ar.attachmentName}{" "}
-                                      <ExternalLink className="h-3 w-3 text-zinc-400 dark:text-zinc-500" />
+                                      <ExternalLink className="h-3 w-3 text-ink-soft dark:text-ink-soft-dark" />
                                     </a>
                                   ) : (
-                                    <span className="text-zinc-400 dark:text-zinc-500 italic">
+                                    <span className="text-ink-soft dark:text-ink-soft-dark italic">
                                       Nota Fiscal não anexada
                                     </span>
                                   )}
@@ -1069,7 +1034,7 @@ export default function AccountsReceivableView({
 
                                 {ar.status === "Recebido" && (
                                   <div>
-                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium block text-[9px] uppercase">
+                                    <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                       Comprovante de Entrada
                                     </span>
                                     <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
@@ -1082,7 +1047,7 @@ export default function AccountsReceivableView({
                                   </div>
                                 )}
 
-                                <div className="border-t border-zinc-100 dark:border-zinc-800 pt-1.5 text-[10px] text-zinc-400 dark:text-zinc-500 font-mono leading-tight">
+                                <div className="border-t border-line dark:border-line-dark pt-1.5 text-[10px] text-ink-soft dark:text-ink-soft-dark font-mono leading-tight">
                                   Recebível UUID: {ar.id}
                                   <br />
                                   Competência: {ar.competenceMonth}
@@ -1100,7 +1065,7 @@ export default function AccountsReceivableView({
                 <tr>
                   <td
                     colSpan={8}
-                    className="p-8 text-center text-zinc-400 dark:text-zinc-500 italic"
+                    className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic"
                   >
                     Nenhuma conta a receber correspondente à busca.
                   </td>
@@ -1110,6 +1075,16 @@ export default function AccountsReceivableView({
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={cancelTargetId !== null}
+        onClose={() => setCancelTargetId(null)}
+        onConfirm={confirmCancel}
+        title="Cancelar este recebível?"
+        description="O registro histórico será preservado para auditoria."
+        confirmLabel="Cancelar recebível"
+        cancelLabel="Voltar"
+      />
     </div>
   );
 }

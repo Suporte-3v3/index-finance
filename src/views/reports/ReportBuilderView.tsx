@@ -32,6 +32,7 @@ import {
   Legend,
 } from "recharts";
 import { useBPOState } from "../../hooks/useBPOState";
+import { Button, IconButton, Card, SectionLabel } from "../../components/ui";
 import {
   CashFlowReportGrouping,
   CashFlowReportView,
@@ -55,8 +56,9 @@ import {
   computeReportSections,
 } from "../../services/reportComputations";
 import { ReportSectionData, downloadReportFile } from "../../services/reportFiles";
+import { ChartDefs, ChartTooltip, CHART_SHADOW } from "../../components/charts";
 
-const PALETTE = ["#0B2C52", "#C8102E", "#3E6DA6", "#10B981", "#D97706", "#7C3AED"];
+const PALETTE = ["#0B2C52", "#C8102E", "#E7B967", "#15996F", "#174E83", "#8F071B"];
 
 const AP_STATUSES = [
   "Rascunho", "Pendente", "Aguardando aprovação", "A vencer", "Aprovada",
@@ -73,8 +75,8 @@ const DATE_BASIS_LABEL: Record<ReportDateBasis, string> = {
   competence: "Competência",
 };
 
-const LABEL_CLASS = "text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase block";
-const INPUT_CLASS = "w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-[#0B2C52] dark:[color-scheme:dark]";
+const LABEL_CLASS = "text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block";
+const INPUT_CLASS = "w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-navy-900 dark:[color-scheme:dark]";
 
 function FilterSelect({
   label,
@@ -109,16 +111,16 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
     return (
       <div className="space-y-2">
         {showTitle && section.title && (
-          <h4 className="text-[10px] font-semibold uppercase text-zinc-500 dark:text-zinc-400">{section.title}</h4>
+          <h4 className="text-[10px] font-semibold uppercase text-ink-soft dark:text-ink-soft-dark">{section.title}</h4>
         )}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {section.items.map((item, index) => (
             <div
               key={index}
-              className="rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 p-2.5"
+              className="rounded-lg border border-line dark:border-line-dark bg-zinc-50 dark:bg-zinc-800/40 p-2.5"
             >
-              <div className="text-[9px] uppercase text-zinc-400 dark:text-zinc-500">{item.label}</div>
-              <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 truncate" title={item.value}>
+              <div className="text-[9px] uppercase text-ink-soft dark:text-ink-soft-dark">{item.label}</div>
+              <div className="text-xs font-semibold text-ink dark:text-ink-dark truncate" title={item.value}>
                 {item.value}
               </div>
             </div>
@@ -132,14 +134,14 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
     return (
       <div className="space-y-2">
         {showTitle && (
-          <h4 className="text-[10px] font-semibold uppercase text-zinc-500 dark:text-zinc-400">{section.title}</h4>
+          <h4 className="text-[10px] font-semibold uppercase text-ink-soft dark:text-ink-soft-dark">{section.title}</h4>
         )}
-        <div className="overflow-x-auto rounded-sm border border-zinc-200 dark:border-zinc-800">
+        <div className="overflow-x-auto rounded-lg border border-line dark:border-line-dark">
           <table className="w-full text-left text-[11px] border-collapse">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800">
+              <tr className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-line dark:border-line-dark">
                 {section.columns.map((column) => (
-                  <th key={column} className="p-2 text-zinc-500 dark:text-zinc-400 font-semibold uppercase whitespace-nowrap">
+                  <th key={column} className="p-2 text-ink-soft dark:text-ink-soft-dark font-semibold uppercase whitespace-nowrap">
                     {column}
                   </th>
                 ))}
@@ -157,7 +159,7 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
               ))}
               {section.rows.length === 0 && (
                 <tr>
-                  <td colSpan={section.columns.length} className="p-4 text-center text-zinc-400 dark:text-zinc-500 italic">
+                  <td colSpan={section.columns.length} className="p-4 text-center text-ink-soft dark:text-ink-soft-dark italic">
                     Nenhum registro no período.
                   </td>
                 </tr>
@@ -165,7 +167,7 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
             </tbody>
           </table>
           {section.rows.length > 30 && (
-            <div className="px-2 py-1.5 text-[10px] text-zinc-400 dark:text-zinc-500 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="px-2 py-1.5 text-[10px] text-ink-soft dark:text-ink-soft-dark border-t border-line dark:border-line-dark">
               Exibindo 30 de {section.rows.length} registros na prévia. O arquivo exportado traz a lista completa.
             </div>
           )}
@@ -186,10 +188,10 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
   return (
     <div className="space-y-2">
       {showTitle && (
-        <h4 className="text-[10px] font-semibold uppercase text-zinc-500 dark:text-zinc-400">{section.title}</h4>
+        <h4 className="text-[10px] font-semibold uppercase text-ink-soft dark:text-ink-soft-dark">{section.title}</h4>
       )}
       {data.length === 0 ? (
-        <p className="text-[11px] text-zinc-400 dark:text-zinc-500 italic p-4 text-center border border-zinc-200 dark:border-zinc-800 rounded-sm">
+        <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark italic p-4 text-center border border-line dark:border-line-dark rounded-lg">
           Nenhum registro no período.
         </p>
       ) : (
@@ -197,22 +199,38 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
           <ResponsiveContainer width="100%" height="100%">
             {section.chartType === "pie" ? (
               <PieChart>
-                <Pie data={data} dataKey={seriesKeys[0]} nameKey="name" outerRadius={80} label>
+                <ChartDefs />
+                <Pie
+                  data={data}
+                  dataKey={seriesKeys[0]}
+                  nameKey="name"
+                  outerRadius={80}
+                  paddingAngle={2}
+                  filter={CHART_SHADOW}
+                  label
+                >
                   {data.map((_, index) => (
                     <Cell key={index} fill={PALETTE[index % PALETTE.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip content={<ChartTooltip />} />
               </PieChart>
             ) : (
               <BarChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-zinc-200 dark:text-zinc-800" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
-                {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 10 }} />}
+                <ChartDefs />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-line dark:text-line-dark" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }} content={<ChartTooltip />} />
+                {seriesKeys.length > 1 && <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10 }} />}
                 {seriesKeys.map((key, index) => (
-                  <Bar key={key} dataKey={key} fill={PALETTE[index % PALETTE.length]} radius={[3, 3, 0, 0]} />
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    fill={PALETTE[index % PALETTE.length]}
+                    filter={CHART_SHADOW}
+                    radius={[4, 4, 0, 0]}
+                  />
                 ))}
               </BarChart>
             )}
@@ -464,25 +482,21 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     <div className="space-y-4 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button
+          <IconButton
+            icon={<ArrowLeft className="h-4 w-4" />}
+            label="Voltar para a Central de Relatórios"
+            variant="solid"
             onClick={onClose}
-            className="p-2 rounded-sm border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-            title="Voltar para a Central de Relatórios"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+          />
           <div>
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight">{modelType}</h2>
-            <p className="text-zinc-500 dark:text-zinc-400 text-[11px]">Monte o conteúdo, os filtros e a apresentação deste relatório.</p>
+            <h2 className="text-lg font-bold text-ink dark:text-ink-dark tracking-tight">{modelType}</h2>
+            <p className="text-ink-soft dark:text-ink-soft-dark text-[11px]">Monte o conteúdo, os filtros e a apresentação deste relatório.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSaveTemplate}
-            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-100 bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-3 py-2 rounded-sm transition-colors cursor-pointer"
-          >
-            <Save className="h-3.5 w-3.5" /> Salvar como modelo
-          </button>
+          <Button variant="outline" icon={<Save className="h-3.5 w-3.5" />} onClick={handleSaveTemplate}>
+            Salvar como modelo
+          </Button>
           <select
             value={format}
             onChange={(e) => setFormat(e.target.value as ReportExportFormat)}
@@ -491,29 +505,29 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
             <option value="PDF">PDF</option>
             <option value="EXCEL">Excel</option>
           </select>
-          <button
+          <Button
+            icon={<Play className="h-3.5 w-3.5 fill-white" />}
             onClick={handleGenerate}
             disabled={!hasPermission("reports.generate")}
-            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#C8102E] hover:bg-[#8F071B] disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400 px-3.5 py-2 rounded-sm transition-colors cursor-pointer"
           >
-            <Play className="h-3.5 w-3.5 fill-white" /> Gerar relatório
-          </button>
+            Gerar relatório
+          </Button>
         </div>
       </div>
 
       {message && (
-        <div className="rounded-sm border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/25 px-4 py-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/25 px-4 py-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
           {message}
         </div>
       )}
       {error && (
-        <div role="alert" className="rounded-sm border border-red-200 bg-red-50 dark:bg-red-500/10 dark:border-red-500/25 px-4 py-3 text-xs font-semibold text-red-700 dark:text-red-300">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-500/10 dark:border-red-500/25 px-4 py-3 text-xs font-semibold text-red-700 dark:text-red-300">
           {error}
         </div>
       )}
 
       {/* Cabeçalho: nome, período e filtros */}
-      <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 space-y-3">
+      <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="md:col-span-1 space-y-1">
             <label className={LABEL_CLASS}>Nome do relatório</label>
@@ -613,16 +627,16 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
 
       {/* Corpo: construtor por blocos ou estrutura fixa da DRE */}
       {modelType === "DRE Gerencial" ? (
-        <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4">
+        <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs p-4">
           <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
             <div className="space-y-3">
-              <h3 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Estrutura</h3>
-              <div className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed border border-zinc-200 dark:border-zinc-800 rounded-sm p-3 space-y-1 font-mono bg-zinc-50 dark:bg-zinc-800/40">
+              <SectionLabel>Estrutura</SectionLabel>
+              <div className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed border border-line dark:border-line-dark rounded-lg p-3 space-y-1 font-mono bg-zinc-50 dark:bg-zinc-800/40">
                 <div>Receita Bruta</div>
                 <div>(-) Despesas por Categoria</div>
-                <div className="font-semibold border-t border-zinc-200 dark:border-zinc-700 pt-1 mt-1">(=) Resultado Líquido</div>
+                <div className="font-semibold border-t border-line dark:border-line-dark pt-1 mt-1">(=) Resultado Líquido</div>
               </div>
-              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+              <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark leading-relaxed">
                 Estrutura simplificada — sem plano de contas configurável nesta versão.
               </p>
               <label className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
@@ -655,32 +669,32 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-4">
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 space-y-2 lg:max-h-[70vh] lg:overflow-y-auto">
-            <h3 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Blocos disponíveis</h3>
+          <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs p-4 space-y-2 lg:max-h-[70vh] lg:overflow-y-auto">
+            <SectionLabel>Blocos disponíveis</SectionLabel>
             <div className="space-y-1.5">
               {availableBlocks.map((block) => (
                 <button
                   key={block.key}
                   onClick={() => addBlock(block.key)}
-                  className="w-full text-left p-2.5 rounded-sm border border-zinc-200 dark:border-zinc-800 hover:border-[#0B2C52] dark:hover:border-[#3E6DA6] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                  className="w-full text-left p-2.5 rounded-lg border border-line dark:border-line-dark hover:border-brand-navy-900 dark:hover:border-brand-navy-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{block.label}</span>
                     <Plus className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                   </div>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 leading-relaxed">{block.description}</p>
+                  <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-0.5 leading-relaxed">{block.description}</p>
                 </button>
               ))}
               {availableBlocks.length === 0 && (
-                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 italic p-2">Todos os blocos já foram adicionados.</p>
+                <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark italic p-2">Todos os blocos já foram adicionados.</p>
               )}
             </div>
           </div>
 
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 space-y-3 lg:max-h-[70vh] lg:overflow-y-auto">
-            <h3 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Estrutura do relatório</h3>
+          <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs p-4 space-y-3 lg:max-h-[70vh] lg:overflow-y-auto">
+            <SectionLabel>Estrutura do relatório</SectionLabel>
             {blocks.length === 0 && (
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 italic border border-dashed border-zinc-300 dark:border-zinc-700 rounded-sm p-6 text-center">
+              <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark italic border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center">
                 Adicione blocos à esquerda para montar o relatório.
               </p>
             )}
@@ -698,10 +712,10 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                     setDragId(null);
                   }}
                   onClick={() => setSelectedBlockId(block.instanceId)}
-                  className={`rounded-sm border p-3 space-y-2 cursor-pointer transition-colors ${
+                  className={`rounded-lg border p-3 space-y-2 cursor-pointer transition-colors ${
                     selectedBlockId === block.instanceId
-                      ? "border-[#0B2C52] dark:border-[#3E6DA6] bg-[#0B2C52]/5 dark:bg-[#3E6DA6]/10"
-                      : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+                      ? "border-brand-navy-900 dark:border-brand-navy-700 bg-brand-navy-900/5 dark:bg-brand-navy-700/10"
+                      : "border-line dark:border-line-dark hover:border-zinc-300 dark:hover:border-zinc-700"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -718,7 +732,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                           moveBlock(block.instanceId, "up");
                         }}
                         disabled={index === 0}
-                        className="p-1 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        className="p-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                         title="Mover para cima"
                       >
                         <ChevronUp className="h-3.5 w-3.5" />
@@ -729,7 +743,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                           moveBlock(block.instanceId, "down");
                         }}
                         disabled={index === blocks.length - 1}
-                        className="p-1 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        className="p-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                         title="Mover para baixo"
                       >
                         <ChevronDown className="h-3.5 w-3.5" />
@@ -739,7 +753,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                           e.stopPropagation();
                           removeBlock(block.instanceId);
                         }}
-                        className="p-1 rounded-sm hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 cursor-pointer"
                         title="Remover bloco"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -752,10 +766,10 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
             })}
           </div>
 
-          <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 space-y-3 lg:max-h-[70vh] lg:overflow-y-auto">
-            <h3 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Configurações do bloco</h3>
+          <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs p-4 space-y-3 lg:max-h-[70vh] lg:overflow-y-auto">
+            <SectionLabel>Configurações do bloco</SectionLabel>
             {!selectedBlock || !selectedDefinition ? (
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 italic">Selecione um bloco na estrutura para configurá-lo.</p>
+              <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark italic">Selecione um bloco na estrutura para configurá-lo.</p>
             ) : (
               <div className="space-y-3">
                 <div className="space-y-1">
@@ -849,31 +863,26 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
 
       {/* Destino do relatório */}
       {generatedReport && (
-        <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 space-y-3">
-          <h3 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">O que deseja fazer com "{generatedReport.fileName}"?</h3>
+        <Card className="space-y-3">
+          <h3 className="text-xs font-bold uppercase text-ink-soft dark:text-ink-soft-dark">O que deseja fazer com "{generatedReport.fileName}"?</h3>
           <div className="flex flex-wrap gap-2">
             {generatedReport.format === "PDF" && (
-              <button
+              <Button
+                variant="outline"
+                icon={<Eye className="h-3.5 w-3.5" />}
                 onClick={() =>
                   window.open(`data:${generatedReport.mimeType};base64,${generatedReport.fileContent}`, "_blank")
                 }
-                className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-100 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-2 rounded-sm transition-colors cursor-pointer"
               >
-                <Eye className="h-3.5 w-3.5" /> Visualizar
-              </button>
+                Visualizar
+              </Button>
             )}
-            <button
-              onClick={() => downloadReportFile(generatedReport)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-100 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-2 rounded-sm transition-colors cursor-pointer"
-            >
-              <Download className="h-3.5 w-3.5" /> Baixar {generatedReport.format === "EXCEL" ? "Excel" : "PDF"}
-            </button>
-            <button
-              onClick={handleSaveToDocumentCenter}
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-100 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-2 rounded-sm transition-colors cursor-pointer"
-            >
-              <FolderOutput className="h-3.5 w-3.5" /> Salvar na Central de Documentos
-            </button>
+            <Button variant="outline" icon={<Download className="h-3.5 w-3.5" />} onClick={() => downloadReportFile(generatedReport)}>
+              Baixar {generatedReport.format === "EXCEL" ? "Excel" : "PDF"}
+            </Button>
+            <Button variant="outline" icon={<FolderOutput className="h-3.5 w-3.5" />} onClick={handleSaveToDocumentCenter}>
+              Salvar na Central de Documentos
+            </Button>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
@@ -887,15 +896,11 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                 ))}
               </select>
             </div>
-            <button
-              onClick={handleSend}
-              disabled={!recipientId}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#0B2C52] hover:bg-[#0B2C52]/90 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400 px-3.5 py-2 rounded-sm transition-colors cursor-pointer"
-            >
-              <Send className="h-3.5 w-3.5" /> Enviar
-            </button>
+            <Button variant="secondary" icon={<Send className="h-3.5 w-3.5" />} onClick={handleSend} disabled={!recipientId}>
+              Enviar
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

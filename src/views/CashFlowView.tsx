@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { downloadReportFile } from "../services/reportFiles";
+import { Button, IconButton, Card, MetricCard } from "../components/ui";
 import {
   BarChart3,
   TableProperties,
@@ -34,6 +35,10 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { ChartDefs, ChartTooltip, CHART_GRADIENT, CHART_SHADOW, CHART_LINE_SHADOW } from "../components/charts";
+
+const formatCurrency = (value: number) =>
+  `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 export default function CashFlowView() {
   const {
@@ -350,11 +355,11 @@ export default function CashFlowView() {
         <div>
           <h2
             id="cashflow-title"
-            className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight font-sans"
+            className="text-xl font-semibold text-ink dark:text-ink-dark tracking-tight font-sans"
           >
             Fluxo de Caixa Operacional
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs font-sans">
+          <p className="text-ink-soft dark:text-ink-soft-dark text-xs font-sans">
             Visão integrada das movimentações financeiras executadas e previsões
             futuras de caixa.
           </p>
@@ -362,44 +367,40 @@ export default function CashFlowView() {
 
         <div className="flex items-center gap-2">
           {/* View Toggle */}
-          <div className="flex bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-sm border border-zinc-200 dark:border-zinc-700">
-            <button
+          <div className="flex bg-canvas dark:bg-white/5 p-1 rounded-lg border border-line dark:border-line-dark">
+            <IconButton
+              icon={<BarChart3 className="h-4 w-4" />}
+              label="Visualização em gráfico"
+              variant={viewMode === "chart" ? "solid" : "ghost"}
+              size="sm"
               onClick={() => setViewMode("chart")}
-              className={`p-1.5 rounded-sm cursor-pointer transition-colors ${viewMode === "chart" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              title="Visualização em Gráfico"
-            >
-              <BarChart3 className="h-4 w-4" />
-            </button>
-            <button
+            />
+            <IconButton
+              icon={<TableProperties className="h-4 w-4" />}
+              label="Visualização em tabela"
+              variant={viewMode === "table" ? "solid" : "ghost"}
+              size="sm"
               onClick={() => setViewMode("table")}
-              className={`p-1.5 rounded-sm cursor-pointer transition-colors ${viewMode === "table" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-xs" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
-              title="Tabela de Fluxos"
-            >
-              <TableProperties className="h-4 w-4" />
-            </button>
+            />
           </div>
 
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-950 dark:text-zinc-100 bg-white dark:bg-[#091320] border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-3 py-2 rounded-sm transition-colors cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
+          <Button variant="outline" icon={<Download className="h-4 w-4" />} onClick={handleExport}>
             Exportar
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Multi-Filter Bar */}
-      <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      <Card className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
         {/* Account selection */}
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">
+          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block">
             Conta Bancária
           </label>
           <div className="relative">
-            <Building2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+            <Building2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark" />
             <select
-              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
+              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
               value={selectedAccount}
               onChange={(e) => setSelectedAccount(e.target.value)}
             >
@@ -415,13 +416,13 @@ export default function CashFlowView() {
 
         {/* Category selection */}
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">
+          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block">
             Categoria
           </label>
           <div className="relative">
-            <Layers className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+            <Layers className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark" />
             <select
-              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
+              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
             >
@@ -437,13 +438,13 @@ export default function CashFlowView() {
 
         {/* Cost center selection */}
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">
+          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block">
             Centro de Custo
           </label>
           <div className="relative">
-            <Briefcase className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+            <Briefcase className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark" />
             <select
-              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
+              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
               value={selectedCostCenter}
               onChange={(e) => setSelectedCostCenter(e.target.value)}
             >
@@ -458,13 +459,13 @@ export default function CashFlowView() {
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">
+          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block">
             Período
           </label>
           <select
             value={periodRange}
             onChange={(event) => setPeriodRange(event.target.value as typeof periodRange)}
-            className="w-full px-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm dark:[color-scheme:dark]"
+            className="w-full px-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg dark:[color-scheme:dark]"
           >
             <option value="7">7 dias</option>
             <option value="15">15 dias</option>
@@ -479,13 +480,13 @@ export default function CashFlowView() {
                 type="date"
                 value={customStart}
                 onChange={(e) => setCustomStart(e.target.value)}
-                className="w-1/2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 rounded-sm px-1 text-[9px] dark:[color-scheme:dark]"
+                className="w-1/2 border border-line dark:border-line-dark bg-white dark:bg-zinc-800/70 text-ink dark:text-ink-dark rounded-lg px-1 text-[9px] dark:[color-scheme:dark]"
               />
               <input
                 type="date"
                 value={customEnd}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                className="w-1/2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 rounded-sm px-1 text-[9px] dark:[color-scheme:dark]"
+                className="w-1/2 border border-line dark:border-line-dark bg-white dark:bg-zinc-800/70 text-ink dark:text-ink-dark rounded-lg px-1 text-[9px] dark:[color-scheme:dark]"
               />
             </div>
           )}
@@ -493,13 +494,13 @@ export default function CashFlowView() {
 
         {/* Temporal Grouping (available when viewing table) */}
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">
+          <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider block">
             Agrupamento
           </label>
           <div className="relative">
-            <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+            <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-soft dark:text-ink-soft-dark" />
             <select
-              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
+              className="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 cursor-pointer dark:[color-scheme:dark]"
               value={periodType}
               onChange={(e) => setPeriodType(e.target.value as any)}
             >
@@ -508,45 +509,55 @@ export default function CashFlowView() {
             </select>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Aggregate Overview for the chosen filters */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        <Metric label="Saldo atual" value={initialCash} tone="zinc" icon={Wallet} />
-        <Metric
+        <MetricCard
+          icon={<Wallet strokeWidth={2.25} />}
+          label="Saldo atual"
+          value={formatCurrency(initialCash)}
+          tone="neutral"
+        />
+        <MetricCard
+          icon={<ArrowUpRight strokeWidth={2.25} />}
           label="Entradas previstas"
-          value={incomingProjected}
-          tone="emerald"
-          icon={ArrowUpRight}
+          value={formatCurrency(incomingProjected)}
+          tone="green"
         />
-        <Metric
+        <MetricCard
+          icon={<ArrowDownRight strokeWidth={2.25} />}
           label="Saídas previstas"
-          value={outgoingProjected}
-          tone="rose"
-          icon={ArrowDownRight}
+          value={formatCurrency(outgoingProjected)}
+          tone="red"
         />
-        <Metric label="Saldo projetado" value={projectedBalance} tone="blue" icon={TrendingUp} />
-        <Metric
+        <MetricCard
+          icon={<TrendingUp strokeWidth={2.25} />}
+          label="Saldo projetado"
+          value={formatCurrency(projectedBalance)}
+          tone="navy"
+        />
+        <MetricCard
+          icon={<ArrowUpRight strokeWidth={2.25} />}
           label="Entradas realizadas"
-          value={incomingRealized}
-          tone="emerald"
-          icon={ArrowUpRight}
+          value={formatCurrency(incomingRealized)}
+          tone="green"
         />
-        <Metric
+        <MetricCard
+          icon={<ArrowDownRight strokeWidth={2.25} />}
           label="Saídas realizadas"
-          value={outgoingRealized}
-          tone="rose"
-          icon={ArrowDownRight}
+          value={formatCurrency(outgoingRealized)}
+          tone="red"
         />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/25 p-4 rounded-sm flex items-center justify-between">
+        <div className="bg-brand-green-50 dark:bg-brand-green-600/10 border border-brand-green-600/20 dark:border-brand-green-600/25 p-4 rounded-xl flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
+            <span className="text-[10px] text-brand-green-600 dark:text-emerald-300 font-semibold uppercase tracking-wider">
               Entradas do Período
             </span>
-            <span className="text-lg font-semibold text-emerald-800 dark:text-emerald-300 block">
+            <span className="text-lg font-bold text-brand-green-600 dark:text-emerald-300 block">
               R${" "}
               {cashFlowTimeline
                 .reduce(
@@ -558,19 +569,19 @@ export default function CashFlowView() {
                 )
                 .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium block">
+            <span className="text-[9px] text-brand-green-600/80 dark:text-emerald-400 font-medium block">
               Total faturado + previsões
             </span>
           </div>
-          <ArrowUpRight className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <ArrowUpRight className="h-6 w-6 text-brand-green-600 dark:text-emerald-400 shrink-0" />
         </div>
 
-        <div className="bg-rose-50/50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/25 p-4 rounded-sm flex items-center justify-between">
+        <div className="bg-brand-red-50 dark:bg-brand-red-600/10 border border-brand-red-600/20 dark:border-brand-red-600/25 p-4 rounded-xl flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-rose-700 dark:text-rose-300 font-semibold uppercase tracking-wider">
+            <span className="text-[10px] text-brand-red-600 dark:text-red-300 font-semibold uppercase tracking-wider">
               Saídas do Período
             </span>
-            <span className="text-lg font-semibold text-rose-800 dark:text-rose-300 block">
+            <span className="text-lg font-bold text-brand-red-600 dark:text-red-300 block">
               R${" "}
               {cashFlowTimeline
                 .reduce(
@@ -580,19 +591,19 @@ export default function CashFlowView() {
                 )
                 .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-[9px] text-rose-600 dark:text-rose-400 font-medium block">
+            <span className="text-[9px] text-brand-red-600/80 dark:text-red-400 font-medium block">
               Total liquidado + agendamentos
             </span>
           </div>
-          <ArrowDownRight className="h-6 w-6 text-rose-600 dark:text-rose-400 shrink-0" />
+          <ArrowDownRight className="h-6 w-6 text-brand-red-600 dark:text-red-400 shrink-0" />
         </div>
 
-        <div className="bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 p-4 rounded-sm flex items-center justify-between">
+        <div className="bg-brand-blue-50 dark:bg-brand-navy-700/10 border border-line dark:border-line-dark p-4 rounded-xl flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-semibold uppercase tracking-wider">
+            <span className="text-[10px] text-brand-navy-900 dark:text-ink-soft-dark font-semibold uppercase tracking-wider">
               Saldo Final Previsto
             </span>
-            <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 block">
+            <span className="text-lg font-bold text-ink dark:text-ink-dark block">
               R${" "}
               {(
                 cashFlowTimeline[cashFlowTimeline.length - 1]?.[
@@ -600,28 +611,28 @@ export default function CashFlowView() {
                 ] || initialCash
               ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-medium block">
+            <span className="text-[9px] text-ink-soft dark:text-ink-soft-dark font-medium block">
               Projeção estimada de fechamento
             </span>
           </div>
-          <TrendingUp className="h-6 w-6 text-zinc-600 dark:text-zinc-400 shrink-0" />
+          <TrendingUp className="h-6 w-6 text-brand-navy-900 dark:text-ink-soft-dark shrink-0" />
         </div>
       </div>
 
       {/* Main Mode Output */}
       {viewMode === "chart" ? (
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
+        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+            <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
               Simulação do Fluxo de Caixa no Período
             </h3>
-            <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-medium px-2 py-0.5 rounded">
+            <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-ink-soft dark:text-ink-soft-dark font-medium px-2 py-0.5 rounded">
               Filtros Aplicados
             </span>
           </div>
 
           {cashFlowTimeline.length === 0 ? (
-            <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+            <div className="py-12 text-center text-ink-soft dark:text-ink-soft-dark text-xs italic border border-line dark:border-line-dark border-dashed rounded-lg">
               Sem movimentações financeiras correspondentes para o filtro atual.
             </div>
           ) : (
@@ -631,50 +642,60 @@ export default function CashFlowView() {
                   data={cashFlowTimeline}
                   margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                  <ChartDefs />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E7E9EF" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <YAxis
                     tickFormatter={(val) =>
                       `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
                     }
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
-                    formatter={(val: any) => [
-                      `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-                    ]}
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      color: "#fff",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      border: "none",
-                    }}
+                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
+                    content={<ChartTooltip />}
                   />
                   <Legend
+                    iconType="circle"
+                    iconSize={8}
                     wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
                   />
                   <Bar
                     dataKey="Entradas Realizadas"
                     stackId="a"
-                    fill="#10b981"
+                    fill={CHART_GRADIENT.green}
+                    radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="Entradas Previstas"
                     stackId="a"
-                    fill="#a7f3d0"
+                    fill={CHART_GRADIENT.greenLight}
+                    filter={CHART_SHADOW}
+                    radius={[4, 4, 0, 0]}
                   />
-                  <Bar dataKey="Saídas Realizadas" stackId="b" fill="#f43f5e" />
-                  <Bar dataKey="Saídas Previstas" stackId="b" fill="#fecdd3" />
+                  <Bar dataKey="Saídas Realizadas" stackId="b" fill={CHART_GRADIENT.red} radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="Saídas Previstas"
+                    stackId="b"
+                    fill={CHART_GRADIENT.redLight}
+                    filter={CHART_SHADOW}
+                    radius={[4, 4, 0, 0]}
+                  />
                   <Line
                     type="monotone"
                     dataKey="Saldo Acumulado"
-                    stroke="#09090b"
-                    strokeWidth={2}
+                    stroke="#0B2C52"
+                    strokeWidth={2.5}
                     dot={false}
+                    filter={CHART_LINE_SHADOW}
+                    activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -682,12 +703,12 @@ export default function CashFlowView() {
           )}
         </div>
       ) : (
-        <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden">
+        <div className="bg-surface dark:bg-surface-dark rounded-lg border border-line dark:border-line-dark shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-zinc-50 dark:bg-[#091320]/60 border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="p-4 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <tr className="bg-zinc-50 dark:bg-surface-dark/60 border-b border-line dark:border-line-dark">
+                  <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                     Período / Data
                   </th>
                   <th className="p-4 text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider text-right">
@@ -707,7 +728,7 @@ export default function CashFlowView() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
+              <tbody className="divide-y divide-line dark:divide-line-dark text-xs">
                 {tableRows.map((row, idx) => {
                   const totalIn = row.inRealized + row.inProjected;
                   const totalOut = row.outRealized + row.outProjected;
@@ -718,7 +739,7 @@ export default function CashFlowView() {
                       key={row.period || idx}
                       className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors font-mono"
                     >
-                      <td className="p-4 font-sans font-semibold text-zinc-900 dark:text-zinc-50">
+                      <td className="p-4 font-sans font-semibold text-ink dark:text-ink-dark">
                         {periodType === "monthly"
                           ? new Date(row.period + "-02").toLocaleDateString(
                               "pt-BR",
@@ -769,7 +790,7 @@ export default function CashFlowView() {
                   <tr>
                     <td
                       colSpan={6}
-                      className="p-8 text-center text-zinc-400 dark:text-zinc-500 italic"
+                      className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic"
                     >
                       Nenhum fluxo registrado para os filtros especificados.
                     </td>
@@ -782,18 +803,18 @@ export default function CashFlowView() {
       )}
 
       {/* Gráficos complementares */}
-      <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
+      <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
         <div>
-          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Saldo Realizado x Saldo com Previsto
           </h3>
-          <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+          <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
             Compara o saldo já confirmado (recebido/pago) com o saldo somando
             também os lançamentos ainda previstos no período.
           </p>
         </div>
         {cashFlowTimeline.length === 0 ? (
-          <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+          <div className="py-10 text-center text-ink-soft dark:text-ink-soft-dark text-xs italic border border-line dark:border-line-dark border-dashed rounded-lg">
             Sem movimentações financeiras correspondentes para o filtro atual.
           </div>
         ) : (
@@ -803,41 +824,44 @@ export default function CashFlowView() {
                 data={cashFlowTimeline}
                 margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#71717a" }} />
+                <ChartDefs />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E7E9EF" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "#6F7687" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
                 <YAxis
                   tickFormatter={(val) =>
                     `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
                   }
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: "#6F7687" }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <Tooltip
-                  formatter={(val: any) => [
-                    `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-                  ]}
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    color: "#fff",
-                    borderRadius: "8px",
-                    fontSize: "11px",
-                    border: "none",
-                  }}
+                  cursor={{ stroke: "#0B2C52", strokeOpacity: 0.15, strokeWidth: 1.5 }}
+                  content={<ChartTooltip />}
                 />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
                 <Line
                   type="monotone"
                   dataKey="Saldo Realizado"
-                  stroke="#09090b"
-                  strokeWidth={2}
+                  stroke="#0B2C52"
+                  strokeWidth={2.5}
                   dot={false}
+                  filter={CHART_LINE_SHADOW}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
                 />
                 <Line
                   type="monotone"
                   dataKey="Saldo Acumulado"
-                  stroke="#0B2C52"
+                  stroke="#174E83"
                   strokeWidth={2}
                   strokeDasharray="5 4"
                   dot={false}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -846,12 +870,12 @@ export default function CashFlowView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
-          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+          <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Entradas por Categoria
           </h3>
           {entradasPorCategoria.length === 0 ? (
-            <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+            <div className="py-10 text-center text-ink-soft dark:text-ink-soft-dark text-xs italic border border-line dark:border-line-dark border-dashed rounded-lg">
               Sem entradas para o filtro atual.
             </div>
           ) : (
@@ -865,9 +889,10 @@ export default function CashFlowView() {
                   layout="vertical"
                   margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
                 >
+                  <ChartDefs />
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="#f4f4f5"
+                    stroke="#E7E9EF"
                     horizontal={false}
                   />
                   <XAxis
@@ -875,39 +900,35 @@ export default function CashFlowView() {
                     tickFormatter={(val) =>
                       `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
                     }
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <YAxis
                     type="category"
                     dataKey="category"
                     width={130}
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
-                    formatter={(val: any) => [
-                      `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-                    ]}
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      color: "#fff",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      border: "none",
-                    }}
+                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
+                    content={<ChartTooltip />}
                   />
-                  <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey="value" fill={CHART_GRADIENT.green} filter={CHART_SHADOW} radius={[0, 6, 6, 0]} barSize={16} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
         </div>
 
-        <div className="bg-white dark:bg-[#091320] p-5 rounded-sm border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
-          <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider">
+        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+          <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Saídas por Categoria
           </h3>
           {saidasPorCategoria.length === 0 ? (
-            <div className="py-10 text-center text-zinc-400 dark:text-zinc-500 text-xs italic border border-zinc-100 dark:border-zinc-800 border-dashed rounded-sm">
+            <div className="py-10 text-center text-ink-soft dark:text-ink-soft-dark text-xs italic border border-line dark:border-line-dark border-dashed rounded-lg">
               Sem saídas para o filtro atual.
             </div>
           ) : (
@@ -921,9 +942,10 @@ export default function CashFlowView() {
                   layout="vertical"
                   margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
                 >
+                  <ChartDefs />
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="#f4f4f5"
+                    stroke="#E7E9EF"
                     horizontal={false}
                   />
                   <XAxis
@@ -931,75 +953,28 @@ export default function CashFlowView() {
                     tickFormatter={(val) =>
                       `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
                     }
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <YAxis
                     type="category"
                     dataKey="category"
                     width={130}
-                    tick={{ fontSize: 10, fill: "#71717a" }}
+                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
-                    formatter={(val: any) => [
-                      `R$ ${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-                    ]}
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      color: "#fff",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      border: "none",
-                    }}
+                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
+                    content={<ChartTooltip />}
                   />
-                  <Bar dataKey="value" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey="value" fill={CHART_GRADIENT.red} filter={CHART_SHADOW} radius={[0, 6, 6, 0]} barSize={16} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: number;
-  tone: "zinc" | "emerald" | "rose" | "blue";
-  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-}) {
-  const colors = {
-    zinc: "text-zinc-800 dark:text-zinc-200",
-    emerald: "text-emerald-700 dark:text-emerald-400",
-    rose: "text-rose-700 dark:text-rose-400",
-    blue: "text-blue-700 dark:text-blue-400",
-  };
-  const chipTones = {
-    zinc: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-    emerald:
-      "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
-    rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
-    blue: "bg-[#0B2C52]/5 text-[#0B2C52] dark:bg-[#123B6B]/25 dark:text-[#9DB8D9]",
-  };
-  return (
-    <div className="bg-white dark:bg-[#091320] rounded-sm border border-zinc-200 dark:border-zinc-800 p-2.5 flex flex-col gap-2">
-      <div
-        className={`h-7 w-7 rounded-sm flex items-center justify-center ${chipTones[tone]}`}
-      >
-        <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
-      </div>
-      <div>
-        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase">
-          {label}
-        </p>
-        <p className={`text-base font-semibold mt-0.5 ${colors[tone]}`}>
-          R$ {value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-        </p>
       </div>
     </div>
   );

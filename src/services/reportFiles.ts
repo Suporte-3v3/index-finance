@@ -110,22 +110,84 @@ const sectionToLines = (section: ReportSectionData): string[] => {
   return lines;
 };
 
+// Layout de página (pt): A4 paisagem-like já usado (842x595), com cabeçalho
+// (marca + título + empresa/período/filtros) e rodapé (marca + paginação)
+// repetidos em toda página, como pedido para relatórios padronizados.
+const PAGE_WIDTH = 842;
+const MARGIN_X = 36;
+const BODY_TOP = 560;
+const BODY_LINE_HEIGHT = 11;
+const FOOTER_LINE_Y = 34;
+const FOOTER_RULE_Y = 42;
+
+type PdfOp =
+  | { kind: "text"; text: string; x: number; y: number; font: "F1" | "F2"; size: number }
+  | { kind: "rule"; y: number };
+
+const opsToStream = (ops: PdfOp[]) =>
+  ops
+    .map((op) =>
+      op.kind === "rule"
+        ? `${MARGIN_X} ${op.y} m ${PAGE_WIDTH - MARGIN_X} ${op.y} l S`
+        : `BT /${op.font} ${op.size} Tf 1 0 0 1 ${op.x} ${op.y} Tm (${escapePdfText(op.text)}) Tj ET`,
+    )
+    .join("\n");
+
+const buildHeader = (doc: ReportDocumentData) => {
+  const ops: PdfOp[] = [];
+  let y = BODY_TOP;
+  ops.push({ kind: "text", text: "IDEX FINANCE — CENTRAL DE RELATÓRIOS", x: MARGIN_X, y, font: "F2", size: 8 });
+  y -= 18;
+  ops.push({ kind: "text", text: doc.title, x: MARGIN_X, y, font: "F2", size: 14 });
+  y -= 16;
+  ops.push({ kind: "text", text: `Empresa: ${doc.companyName}`, x: MARGIN_X, y, font: "F1", size: 8 });
+  y -= 11;
+  if (doc.filters) {
+    wrapLine(`Período/Filtros: ${doc.filters}`, 130).forEach((line) => {
+      ops.push({ kind: "text", text: line, x: MARGIN_X, y, font: "F1", size: 8 });
+      y -= 10;
+    });
+  }
+  ops.push({
+    kind: "text",
+    text: `Emitido em ${new Date(doc.generatedAt).toLocaleString("pt-BR")} por ${doc.generatedBy}`,
+    x: MARGIN_X,
+    y,
+    font: "F1",
+    size: 8,
+  });
+  y -= 10;
+  ops.push({ kind: "rule", y });
+  y -= 16;
+  return { ops, bodyStartY: y };
+};
+
+const buildFooter = (pageNumber: number, totalPages: number): PdfOp[] => [
+  { kind: "rule", y: FOOTER_RULE_Y },
+  { kind: "text", text: "Idex Finance — Gestão que move resultados", x: MARGIN_X, y: FOOTER_LINE_Y, font: "F1", size: 7 },
+  {
+    kind: "text",
+    text: `Página ${pageNumber} de ${totalPages}`,
+    x: PAGE_WIDTH - MARGIN_X - 70,
+    y: FOOTER_LINE_Y,
+    font: "F1",
+    size: 7,
+  },
+];
+
 const createPdf = (doc: ReportDocumentData) => {
-  const lines = [
-    doc.title,
-    `Empresa: ${doc.companyName}`,
-    `Filtros: ${doc.filters}`,
-    `Gerado em: ${new Date(doc.generatedAt).toLocaleString("pt-BR")} por ${doc.generatedBy}`,
-    "",
-    ...doc.sections.flatMap((section) => [...sectionToLines(section), ""]),
-  ];
+  const bodyLines = doc.sections.flatMap((section) => [...sectionToLines(section), ""]);
+  const { bodyStartY } = buildHeader(doc);
+  const linesPerPage = Math.max(10, Math.floor((bodyStartY - FOOTER_RULE_Y - 10) / BODY_LINE_HEIGHT));
 
   const pages: string[][] = [];
-  for (let index = 0; index < lines.length; index += 46) {
-    pages.push(lines.slice(index, index + 46));
+  for (let index = 0; index < bodyLines.length; index += linesPerPage) {
+    pages.push(bodyLines.slice(index, index + linesPerPage));
   }
+  if (pages.length === 0) pages.push([]);
 
-  const fontObjectId = 3 + pages.length * 2;
+  const fontRegularId = 3 + pages.length * 2;
+  const fontBoldId = fontRegularId + 1;
   const objects: string[] = [];
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objects[2] = `<< /Type /Pages /Kids [${pages
@@ -135,38 +197,44 @@ const createPdf = (doc: ReportDocumentData) => {
   pages.forEach((pageLines, index) => {
     const pageId = 3 + index * 2;
     const contentId = pageId + 1;
-    const stream = [
-      "BT",
-      "/F1 8 Tf",
-      "36 560 Td",
-      "11 TL",
-      ...pageLines.map((line, lineIndex) =>
-        `${lineIndex === 0 ? "" : "T* "}(${escapePdfText(line)}) Tj`,
-      ),
-      "ET",
-    ].join("\n");
+    const { ops: headerOps, bodyStartY: startY } = buildHeader(doc);
+    const bodyOps: PdfOp[] = pageLines.map((line, lineIndex) => ({
+      kind: "text",
+      text: line,
+      x: MARGIN_X,
+      y: startY - lineIndex * BODY_LINE_HEIGHT,
+      font: "F1",
+      size: 8,
+    }));
+    const stream = opsToStream([
+      ...headerOps,
+      ...bodyOps,
+      ...buildFooter(index + 1, pages.length),
+    ]);
     objects[pageId] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] ` +
-      `/Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+      `/Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`;
     objects[contentId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
-  objects[fontObjectId] =
+  objects[fontRegularId] =
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+  objects[fontBoldId] =
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>";
 
   let pdf = "%PDF-1.4\n";
   const offsets: number[] = [0];
-  for (let id = 1; id <= fontObjectId; id += 1) {
+  for (let id = 1; id <= fontBoldId; id += 1) {
     offsets[id] = pdf.length;
     pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
   }
   const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${fontObjectId + 1}\n`;
+  pdf += `xref\n0 ${fontBoldId + 1}\n`;
   pdf += "0000000000 65535 f \n";
-  for (let id = 1; id <= fontObjectId; id += 1) {
+  for (let id = 1; id <= fontBoldId; id += 1) {
     pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
   }
   pdf +=
-    `trailer\n<< /Size ${fontObjectId + 1} /Root 1 0 R >>\n` +
+    `trailer\n<< /Size ${fontBoldId + 1} /Root 1 0 R >>\n` +
     `startxref\n${xrefOffset}\n%%EOF`;
   return pdf;
 };
@@ -188,10 +256,11 @@ const createExcel = (doc: ReportDocumentData) => {
   const usedSheetNames = new Set<string>();
 
   const summaryRows: ReportCell[][] = [
+    ["IDEX FINANCE — CENTRAL DE RELATÓRIOS"],
     [doc.title],
     ["Empresa", doc.companyName],
-    ["Filtros", doc.filters],
-    ["Gerado em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
+    ["Período/Filtros", doc.filters],
+    ["Emitido em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
     ["Gerado por", doc.generatedBy],
   ];
   doc.sections
