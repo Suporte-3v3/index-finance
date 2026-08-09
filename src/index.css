@@ -72,6 +72,49 @@ html.dark #root {
   background-color: #061425;
 }
 
+/* Cartões de gráficos inspirados em dashboards executivos: superfície limpa,
+   cantos amplos, profundidade e uma luz institucional muito discreta. */
+.idex-chart-card {
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(11, 44, 82, 0.08) !important;
+  border-radius: 1rem !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(231, 185, 103, 0.09), transparent 34%),
+    #ffffff !important;
+  box-shadow:
+    0 22px 48px rgba(6, 20, 37, 0.11),
+    0 5px 16px rgba(23, 78, 131, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .idex-chart-card {
+  border-color: rgba(157, 184, 217, 0.12) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(231, 185, 103, 0.08), transparent 34%),
+    #0b1626 !important;
+  box-shadow:
+    0 24px 52px rgba(0, 0, 0, 0.3),
+    0 6px 18px rgba(6, 20, 37, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.idex-chart-card .recharts-cartesian-grid line {
+  stroke: rgba(111, 118, 135, 0.14) !important;
+}
+
+html.dark .idex-chart-card .recharts-cartesian-grid line {
+  stroke: rgba(157, 184, 217, 0.12) !important;
+}
+
+.idex-chart-card .recharts-legend-item-text {
+  color: #6f7687 !important;
+}
+
+html.dark .idex-chart-card .recharts-legend-item-text {
+  color: #9db8d9 !important;
+}
+
 /* Superfícies principais (legado): separação suave sobre o fundo da aplicação
    para telas que ainda não migraram para o componente <Card /> do design system.
    Mantido para não regredir a aparência das telas fora do escopo desta fase;

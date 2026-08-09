@@ -3,15 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { getCompanyClientModules } from "../config/clientModules";
 import {
   Card,
   SectionLabel,
   MetricCard,
-  PeriodSelector,
-  StatusBadge,
   Badge,
   Tooltip as InfoTooltip,
   Button,
@@ -24,17 +22,16 @@ import {
   AlertCircle,
   Clock,
   TrendingUp,
-  ShieldCheck,
   Sparkles,
-  RefreshCw,
-  ChevronRight,
   Plus,
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -42,12 +39,28 @@ import {
   Legend,
 } from "recharts";
 import { ChartDefs, ChartTooltip, CHART_GRADIENT, CHART_SHADOW, CHART_LINE_SHADOW } from "../components/charts";
+import FinancialCalendar, {
+  FinancialCalendarEvent,
+} from "../components/FinancialCalendar";
+
+const formatCompactCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 
 export default function DashboardView({
   onNavigate,
 }: {
   onNavigate: (
-    view: "payable" | "approvals" | "audit-logs" | "documents-received",
+    view:
+      | "payable"
+      | "receivable"
+      | "approvals"
+      | "audit-logs"
+      | "documents-received",
   ) => void;
 }) {
   const {
@@ -56,13 +69,10 @@ export default function DashboardView({
     accountsPayable,
     accountsReceivable,
     approvals,
-    auditLogs,
     isApprovalVisibleToCurrentUser,
     currentUser,
     hasPermission,
   } = useBPOState();
-
-  const [timeframe, setTimeframe] = useState<"7" | "15" | "30" | "90">("30");
 
   if (!activeCompany) {
     return (
@@ -91,14 +101,53 @@ export default function DashboardView({
       apv.companyId === activeCompany.id &&
       isApprovalVisibleToCurrentUser(apv),
   );
-  const companyLogs = auditLogs.filter(
-    (log) => log.companyId === activeCompany.id,
-  );
   const enabledClientModules = getCompanyClientModules(activeCompany);
   const canOpenPayables = hasPermission("accounts-payable.view");
+  const canOpenReceivables = hasPermission("accounts-receivable.view");
   const canOpenApprovals =
     currentUser.role !== "CLIENT" || enabledClientModules.includes("approvals");
-  const canOpenAuditLogs = currentUser.role === "BPO_ADMIN";
+
+  const calendarEvents: FinancialCalendarEvent[] = [
+    ...companyPayables
+      .filter((payable) => payable.status !== "Cancelada")
+      .map((payable) => ({
+        id: payable.id,
+        date: payable.dueDate,
+        type: "payable" as const,
+        title: payable.description,
+        subtitle: payable.supplier,
+        amount: payable.finalAmount,
+        status: payable.status,
+        actionable: canOpenPayables,
+      })),
+    ...companyReceivables
+      .filter((receivable) => receivable.status !== "Cancelado")
+      .map((receivable) => ({
+        id: receivable.id,
+        date: receivable.dueDate,
+        type: "receivable" as const,
+        title: receivable.description,
+        subtitle: receivable.customer,
+        amount:
+          receivable.status === "Recebido"
+            ? receivable.receivedAmount
+            : Math.max(receivable.amount - receivable.receivedAmount, 0),
+        status: receivable.status,
+        actionable: canOpenReceivables,
+      })),
+    ...companyApprovals
+      .filter((approval) => approval.status === "Pendente")
+      .map((approval) => ({
+        id: approval.id,
+        date: approval.dueDateApproval || approval.dueDate,
+        type: "approval" as const,
+        title: approval.description,
+        subtitle: `Solicitado por ${approval.requesterName}`,
+        amount: approval.amount,
+        status: approval.status,
+        actionable: canOpenApprovals,
+      })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
 
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const daysBetween = (fromStr: string, toStr: string) =>
@@ -111,19 +160,7 @@ export default function DashboardView({
   // 1. Current Balance
   const totalBalance = companyAccounts.reduce((sum, ba) => sum + ba.balance, 0);
 
-  // 2. Entries (Income) realizadas — todo o histórico de recebimentos
-  const totalEntries = companyReceivables
-    .filter((ar) =>
-      ["Recebido", "Parcialmente recebido"].includes(ar.status),
-    )
-    .reduce((sum, ar) => sum + ar.receivedAmount, 0);
-
-  // 3. Exits (Expenses) realizadas
-  const totalExits = companyPayables
-    .filter((ap) => ap.status === "Paga")
-    .reduce((sum, ap) => sum + ap.finalAmount, 0);
-
-  // 4. Overdue Accounts
+  // Contas vencidas
   const totalOverduePayables = companyPayables
     .filter((ap) => ap.status === "Vencida")
     .reduce((sum, ap) => sum + ap.finalAmount, 0);
@@ -180,67 +217,42 @@ export default function DashboardView({
       ? ((totalBalance - balance30DaysAgo) / Math.abs(balance30DaysAgo)) * 100
       : null;
 
-  // Chart Data Assembly — fluxo de caixa diário real (recebimentos e pagamentos
-  // efetivamente registrados), acumulado a partir do saldo atual das contas.
-  const getChartData = () => {
-    const dataPointsCount = parseInt(timeframe);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startStr = iso(
-      new Date(new Date(today).setDate(today.getDate() - dataPointsCount)),
-    );
-    const todayStr = iso(today);
+  // Visão executiva dos últimos seis meses, baseada somente em liquidações
+  // registradas. É mais estável e comparável que a antiga série diária.
+  const monthlyMovementData = Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date();
+    monthDate.setDate(1);
+    monthDate.setMonth(monthDate.getMonth() - (5 - index));
+    const key = iso(monthDate).slice(0, 7);
 
-    const byDay: Record<string, { entradas: number; saidas: number }> = {};
-    companyReceivables.forEach((ar) => {
-      if (!["Recebido", "Parcialmente recebido"].includes(ar.status)) return;
-      const date = ar.receiptDate;
-      if (!date || date < startStr || date > todayStr) return;
-      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
-      byDay[date].entradas += ar.receivedAmount;
-    });
-    companyPayables.forEach((ap) => {
-      if (ap.status !== "Paga") return;
-      const date = ap.paymentDate;
-      if (!date || date < startStr || date > todayStr) return;
-      byDay[date] = byDay[date] || { entradas: 0, saidas: 0 };
-      byDay[date].saidas += ap.finalAmount;
-    });
+    const receipts = companyReceivables
+      .filter(
+        (receivable) =>
+          receivable.receiptDate?.startsWith(key) &&
+          ["Recebido", "Parcialmente recebido"].includes(receivable.status),
+      )
+      .reduce((sum, receivable) => sum + receivable.receivedAmount, 0);
+    const payments = companyPayables
+      .filter(
+        (payable) =>
+          payable.paymentDate?.startsWith(key) && payable.status === "Paga",
+      )
+      .reduce((sum, payable) => sum + payable.finalAmount, 0);
 
-    const totalInWindow = Object.values(byDay).reduce(
-      (sum, d) => sum + d.entradas,
-      0,
-    );
-    const totalOutWindow = Object.values(byDay).reduce(
-      (sum, d) => sum + d.saidas,
-      0,
-    );
-    // Saldo no início da janela, para a série terminar exatamente no saldo atual real.
-    let runningBalance = totalBalance - totalInWindow + totalOutWindow;
+    return {
+      name: monthDate
+        .toLocaleDateString("pt-BR", { month: "short" })
+        .replace(".", ""),
+      Recebimentos: receipts,
+      Pagamentos: payments,
+    };
+  });
 
-    const data = [];
-    for (let i = dataPointsCount; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const key = iso(d);
-      const dayEntradas = byDay[key]?.entradas || 0;
-      const daySaidas = byDay[key]?.saidas || 0;
-      runningBalance = runningBalance + dayEntradas - daySaidas;
-
-      data.push({
-        name: d.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-        }),
-        Entradas: dayEntradas,
-        Saídas: daySaidas,
-        Saldo: runningBalance,
-      });
-    }
-    return data;
-  };
-
-  const chartData = getChartData();
+  const financialCompositionData = [
+    { name: "A receber", value: outstandingReceivables, color: "#15996F" },
+    { name: "A pagar", value: outstandingPayables, color: "#C8102E" },
+  ];
+  const totalOpenCommitments = outstandingReceivables + outstandingPayables;
 
   // Margem Bruta = (Faturamento - Custo de Mercadorias/Serviços) / Faturamento,
   // apurada por competência (mês atual x mês anterior) para permitir comparação real.
@@ -380,10 +392,6 @@ export default function DashboardView({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <PeriodSelector
-              value={timeframe}
-              onChange={(value) => value !== "custom" && setTimeframe(value)}
-            />
             {canCreateLaunch && (
               <Button
                 icon={<Plus className="h-4 w-4" />}
@@ -397,9 +405,10 @@ export default function DashboardView({
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           id="kpi-card-balance"
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
           icon={<DollarSign strokeWidth={2.25} />}
           label="Saldo Disponível"
           value={`R$ ${totalBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -418,6 +427,7 @@ export default function DashboardView({
 
         <MetricCard
           id="kpi-card-projected"
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
           icon={<TrendingUp strokeWidth={2.25} />}
           label="Saldo Projetado (30 dias)"
           value={`R$ ${forecastedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -426,42 +436,9 @@ export default function DashboardView({
           tooltip={`Fórmula: Saldo Atual + Receber Pendente (R$ ${outstandingReceivables.toLocaleString("pt-BR")}) - Pagar Pendente (R$ ${outstandingPayables.toLocaleString("pt-BR")})`}
         />
 
-        <Card id="kpi-card-flows" className="space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-brand-blue-50 text-brand-navy-900 dark:bg-brand-navy-700/20 dark:text-brand-navy-700/90">
-              <RefreshCw className="h-4.5 w-4.5" strokeWidth={2.25} />
-            </div>
-          </div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft dark:text-ink-soft-dark">
-            Movimentações Realizadas
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark block font-semibold uppercase">
-                Entradas
-              </span>
-              <span className="text-sm font-bold text-brand-green-600 dark:text-emerald-400 flex items-center">
-                <ArrowUpRight className="h-3.5 w-3.5 mr-0.5" />
-                R$ {totalEntries.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
-              </span>
-            </div>
-            <div>
-              <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark block font-semibold uppercase">
-                Saídas
-              </span>
-              <span className="text-sm font-bold text-brand-red-600 dark:text-red-400 flex items-center">
-                <ArrowDownRight className="h-3.5 w-3.5 mr-0.5" />
-                R$ {totalExits.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
-              </span>
-            </div>
-          </div>
-          <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
-            Dados consolidados do mês de referência.
-          </p>
-        </Card>
-
         <MetricCard
           id="kpi-card-overdue"
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
           icon={<AlertCircle strokeWidth={2.25} />}
           label="Contas Vencidas (Pagar)"
           value={`R$ ${totalOverduePayables.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -472,6 +449,7 @@ export default function DashboardView({
 
         <MetricCard
           id="kpi-card-approvals"
+          className="shadow-[0_14px_32px_rgba(6,20,37,0.09)]"
           icon={<Clock strokeWidth={2.25} />}
           label="Aprovações Pendentes"
           value={`${pendingApprovalsCount} ${pendingApprovalsCount === 1 ? "pendência" : "pendências"}`}
@@ -480,100 +458,151 @@ export default function DashboardView({
           helpText={canOpenApprovals ? "Acessar Central de Aprovações →" : undefined}
         />
 
-        <MetricCard
-          id="kpi-card-bpo-status"
-          icon={<ShieldCheck strokeWidth={2.25} />}
-          label="Segurança e Auditoria"
-          value="Logs Ativos"
-          tone="neutral"
-          onClick={canOpenAuditLogs ? () => onNavigate("audit-logs") : undefined}
-          helpText={
-            canOpenAuditLogs
-              ? "Consultar Logs de Auditoria →"
-              : `Último acesso: ${companyLogs[0] ? new Date(companyLogs[0].timestamp).toLocaleTimeString() : "Agora"}`
-          }
-        />
       </div>
 
-      {/* Main Charts Area & Action Lists */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Cash Flow Graphic */}
-        <Card className="lg:col-span-2 space-y-4 shadow-md hover:shadow-lg transition-shadow">
-          <div>
-            <h3 className="text-sm font-bold text-ink dark:text-ink-dark uppercase tracking-wide">
-              Evolução do Fluxo de Caixa
-            </h3>
-            <p className="text-xs text-ink-soft dark:text-ink-soft-dark">
-              Entradas, saídas e projeção de saldo diário acumulado no período selecionado acima.
-            </p>
+      {/* Dashboard executivo: gráficos à esquerda e agenda compacta à direita. */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(220px,0.72fr)_minmax(0,1.45fr)]">
+            <Card className="idex-chart-card space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink dark:text-ink-dark">
+                  Composição financeira
+                </h3>
+                <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                  Compromissos atualmente em aberto.
+                </p>
+              </div>
+
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <ChartDefs />
+                    <Pie
+                      data={financialCompositionData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={53}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={8}
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth={3}
+                      filter={CHART_SHADOW}
+                    >
+                      {financialCompositionData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                    <text
+                      x="50%"
+                      y="46%"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-ink text-[9px] font-bold dark:fill-ink-dark"
+                    >
+                      EM ABERTO
+                    </text>
+                    <text
+                      x="50%"
+                      y="57%"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-brand-navy-900 text-[12px] font-black dark:fill-brand-gold-300"
+                    >
+                      {formatCompactCurrency(totalOpenCommitments)}
+                    </text>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 dark:border-line-dark">
+                {financialCompositionData.map((item) => (
+                  <div key={item.name} className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-[9px] font-semibold text-ink-soft dark:text-ink-soft-dark">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.name}
+                    </span>
+                    <span className="block truncate text-xs font-bold text-ink dark:text-ink-dark">
+                      {formatCompactCurrency(item.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="idex-chart-card space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-ink dark:text-ink-dark">
+                    Movimentação realizada
+                  </h3>
+                  <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                    Recebimentos e pagamentos liquidados nos últimos 6 meses.
+                  </p>
+                </div>
+                <Badge tone="neutral">6 meses</Badge>
+              </div>
+
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={monthlyMovementData}
+                    margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
+                  >
+                    <ChartDefs />
+                    <CartesianGrid strokeDasharray="4 4" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 10, fill: "#6F7687" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tickFormatter={(value) => formatCompactCurrency(value)}
+                      tick={{ fontSize: 9, fill: "#6F7687" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={58}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "#174E83", strokeOpacity: 0.15 }}
+                      content={<ChartTooltip />}
+                    />
+                    <Legend
+                      iconType="circle"
+                      iconSize={7}
+                      wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Recebimentos"
+                      stroke="#174E83"
+                      strokeWidth={2.5}
+                      fill={CHART_GRADIENT.areaNavy}
+                      filter={CHART_LINE_SHADOW}
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#174E83", stroke: "#fff", strokeWidth: 2 }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Pagamentos"
+                      stroke="#E7B967"
+                      strokeWidth={2.5}
+                      fill={CHART_GRADIENT.areaGold}
+                      filter={CHART_LINE_SHADOW}
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#E7B967", stroke: "#fff", strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
           </div>
 
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={chartData}
-                margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
-              >
-                <ChartDefs />
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="currentColor"
-                  className="text-line dark:text-line-dark"
-                />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: "#6F7687" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={(val) =>
-                    `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                  }
-                  tick={{ fontSize: 10, fill: "#6F7687" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
-                  content={<ChartTooltip />}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
-                />
-                <Bar
-                  dataKey="Entradas"
-                  fill={CHART_GRADIENT.green}
-                  filter={CHART_SHADOW}
-                  radius={[6, 6, 0, 0]}
-                  barSize={16}
-                />
-                <Bar
-                  dataKey="Saídas"
-                  fill={CHART_GRADIENT.red}
-                  filter={CHART_SHADOW}
-                  radius={[6, 6, 0, 0]}
-                  barSize={16}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Saldo"
-                  stroke="#0B2C52"
-                  strokeWidth={2.5}
-                  dot={false}
-                  filter={CHART_LINE_SHADOW}
-                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Interactive Indicator Box */}
-        <Card className="flex flex-col justify-between">
+          {/* Interactive Indicator Box */}
+          <Card className="idex-chart-card flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-line dark:border-line-dark pb-3">
               <h3 className="text-sm font-bold text-ink dark:text-ink-dark uppercase tracking-wide">
@@ -738,82 +767,24 @@ export default function DashboardView({
               regulada.
             </span>
           </div>
-        </Card>
+          </Card>
+        </div>
+
+        <FinancialCalendar
+          key={activeCompany.id}
+          events={calendarEvents}
+          onEventClick={(event) => {
+            if (event.type === "payable" && canOpenPayables) {
+              onNavigate("payable");
+            } else if (event.type === "receivable" && canOpenReceivables) {
+              onNavigate("receivable");
+            } else if (event.type === "approval" && canOpenApprovals) {
+              onNavigate("approvals");
+            }
+          }}
+        />
       </div>
 
-      {/* Two Columns: Recent logs and Upcoming accounts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Next Vencimentos list */}
-        <Card className="space-y-4">
-          <div className="flex items-center justify-between border-b border-line dark:border-line-dark pb-3">
-            <div>
-              <h3 className="text-sm font-bold text-ink dark:text-ink-dark uppercase tracking-wide">
-                Próximos Vencimentos
-              </h3>
-              <p className="text-xs text-ink-soft dark:text-ink-soft-dark">
-                Contas que vencem nos próximos dias.
-              </p>
-            </div>
-            {canOpenPayables && (
-              <button
-                onClick={() => onNavigate("payable")}
-                className="text-xs font-bold text-ink dark:text-ink-dark hover:underline flex items-center gap-0.5 cursor-pointer shrink-0"
-              >
-                Ver Tudo <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-2.5">
-            {companyPayables
-              .filter((ap) => ap.status !== "Paga" && ap.status !== "Cancelada")
-              .slice(0, 4)
-              .map((ap) => {
-                const isOverdue = new Date(ap.dueDate) < new Date();
-                return (
-                  <div
-                    key={ap.id}
-                    className="flex items-center justify-between gap-3 p-3 bg-canvas dark:bg-white/5 rounded-lg border border-line/60 dark:border-line-dark hover:bg-canvas/70 dark:hover:bg-white/[0.07] transition-colors"
-                  >
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${isOverdue ? "bg-brand-red-600" : "bg-brand-gold-600"}`}
-                        />
-                        <span className="text-xs font-semibold text-ink dark:text-ink-dark truncate max-w-37.5">
-                          {ap.description}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark block font-medium truncate">
-                        Favorecido: {ap.supplier} | Vencimento:{" "}
-                        {new Date(ap.dueDate).toLocaleDateString("pt-BR")}
-                      </span>
-                    </div>
-                    <div className="text-right space-y-1 shrink-0">
-                      <span className="text-xs font-bold text-ink dark:text-ink-dark block">
-                        R${" "}
-                        {ap.finalAmount.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                      <StatusBadge status={ap.status} />
-                    </div>
-                  </div>
-                );
-              })}
-            {companyPayables.filter(
-              (ap) => ap.status !== "Paga" && ap.status !== "Cancelada",
-            ).length === 0 && (
-              <p className="text-center text-xs text-ink-soft dark:text-ink-soft-dark py-6">
-                Nenhum vencimento pendente.
-              </p>
-            )}
-          </div>
-        </Card>
-
-        {/* Segunda coluna reservada para métricas de módulos futuros. */}
-        <div aria-hidden="true" />
-      </div>
     </div>
   );
 }

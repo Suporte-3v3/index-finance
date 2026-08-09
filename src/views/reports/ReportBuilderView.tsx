@@ -195,7 +195,7 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
           Nenhum registro no período.
         </p>
       ) : (
-        <div className="h-56">
+        <div className="idex-chart-card h-56 border p-3">
           <ResponsiveContainer width="100%" height="100%">
             {section.chartType === "pie" ? (
               <PieChart>

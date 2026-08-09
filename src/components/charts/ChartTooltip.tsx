@@ -34,7 +34,7 @@ export default function ChartTooltip({
   if (!active || !payload || payload.length === 0) return null;
 
   return (
-    <div className="min-w-40 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark shadow-lg px-3.5 py-2.5 text-xs">
+    <div className="min-w-40 rounded-xl border border-line/80 bg-surface/95 px-3.5 py-2.5 text-xs shadow-[0_18px_40px_rgba(6,20,37,0.2)] backdrop-blur-md dark:border-line-dark dark:bg-surface-dark/95">
       {label !== undefined && (
         <p className="mb-1.5 border-b border-line dark:border-line-dark pb-1.5 font-bold text-ink dark:text-ink-dark">
           {label}

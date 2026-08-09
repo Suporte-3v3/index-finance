@@ -14,6 +14,10 @@ export const CHART_GRADIENT = {
   green: "url(#chartGradientGreen)",
   greenLight: "url(#chartGradientGreenLight)",
   gold: "url(#chartGradientGold)",
+  areaNavy: "url(#chartAreaNavy)",
+  areaGold: "url(#chartAreaGold)",
+  areaGreen: "url(#chartAreaGreen)",
+  areaRed: "url(#chartAreaRed)",
 } as const;
 
 export const CHART_SHADOW = "url(#chartDropShadow)";
@@ -46,13 +50,30 @@ export default function ChartDefs() {
         <stop offset="0%" stopColor="#EFC988" stopOpacity={1} />
         <stop offset="100%" stopColor="#E7B967" stopOpacity={0.88} />
       </linearGradient>
+      <linearGradient id="chartAreaNavy" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#174E83" stopOpacity={0.38} />
+        <stop offset="100%" stopColor="#174E83" stopOpacity={0.015} />
+      </linearGradient>
+      <linearGradient id="chartAreaGold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#E7B967" stopOpacity={0.44} />
+        <stop offset="100%" stopColor="#E7B967" stopOpacity={0.02} />
+      </linearGradient>
+      <linearGradient id="chartAreaGreen" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#15996F" stopOpacity={0.38} />
+        <stop offset="100%" stopColor="#15996F" stopOpacity={0.015} />
+      </linearGradient>
+      <linearGradient id="chartAreaRed" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#C8102E" stopOpacity={0.34} />
+        <stop offset="100%" stopColor="#C8102E" stopOpacity={0.015} />
+      </linearGradient>
       {/* Sombra suave para barras/áreas/fatias de pizza */}
       <filter id="chartDropShadow" x="-40%" y="-40%" width="180%" height="220%">
-        <feDropShadow dx="0" dy="3" stdDeviation="3.5" floodColor="#0B2C52" floodOpacity="0.16" />
+        <feDropShadow dx="0" dy="7" stdDeviation="5" floodColor="#061425" floodOpacity="0.28" />
+        <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#174E83" floodOpacity="0.18" />
       </filter>
       {/* Sombra mais leve, ajustada para traços finos de linha */}
       <filter id="chartLineShadow" x="-20%" y="-60%" width="140%" height="260%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#0B2C52" floodOpacity="0.25" />
+        <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#061425" floodOpacity="0.32" />
       </filter>
     </defs>
   );

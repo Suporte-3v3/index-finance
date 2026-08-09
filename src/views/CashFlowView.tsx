@@ -25,10 +25,11 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  ComposedChart,
-  BarChart,
-  Bar,
-  Line,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -39,6 +40,33 @@ import { ChartDefs, ChartTooltip, CHART_GRADIENT, CHART_SHADOW, CHART_LINE_SHADO
 
 const formatCurrency = (value: number) =>
   `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+
+const formatCompactCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+
+const INCOME_CATEGORY_COLORS = [
+  "#15996F",
+  "#1FB683",
+  "#174E83",
+  "#4A90D9",
+  "#E7B967",
+  "#9DB8D9",
+  "#0B2C52",
+];
+const EXPENSE_CATEGORY_COLORS = [
+  "#C8102E",
+  "#E20D35",
+  "#E7B967",
+  "#174E83",
+  "#8F071B",
+  "#F0929F",
+  "#0B2C52",
+];
 
 export default function CashFlowView() {
   const {
@@ -259,6 +287,14 @@ export default function CashFlowView() {
     payables.filter(matchesExtraFilters),
     (ap) => ap.finalAmount,
     (ap) => ap.category,
+  );
+  const totalEntradasPorCategoria = entradasPorCategoria.reduce(
+    (sum, item) => sum + item.value,
+    0,
+  );
+  const totalSaidasPorCategoria = saidasPorCategoria.reduce(
+    (sum, item) => sum + item.value,
+    0,
   );
 
   // Aggregate monthly flows for table presentation
@@ -621,11 +657,16 @@ export default function CashFlowView() {
 
       {/* Main Mode Output */}
       {viewMode === "chart" ? (
-        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+        <div className="idex-chart-card space-y-4 border p-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
-              Simulação do Fluxo de Caixa no Período
-            </h3>
+            <div>
+              <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
+                Entradas x Saídas no Período
+              </h3>
+              <p className="mt-0.5 text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                Visão consolidada de valores realizados e previstos em cada data.
+              </p>
+            </div>
             <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-ink-soft dark:text-ink-soft-dark font-medium px-2 py-0.5 rounded">
               Filtros Aplicados
             </span>
@@ -638,7 +679,7 @@ export default function CashFlowView() {
           ) : (
             <div className="h-96 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
+                <AreaChart
                   data={cashFlowTimeline}
                   margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
                 >
@@ -659,7 +700,7 @@ export default function CashFlowView() {
                     tickLine={false}
                   />
                   <Tooltip
-                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
+                    cursor={{ stroke: "#174E83", strokeOpacity: 0.15 }}
                     content={<ChartTooltip />}
                   />
                   <Legend
@@ -667,37 +708,29 @@ export default function CashFlowView() {
                     iconSize={8}
                     wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
                   />
-                  <Bar
-                    dataKey="Entradas Realizadas"
-                    stackId="a"
-                    fill={CHART_GRADIENT.green}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="Entradas Previstas"
-                    stackId="a"
-                    fill={CHART_GRADIENT.greenLight}
-                    filter={CHART_SHADOW}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar dataKey="Saídas Realizadas" stackId="b" fill={CHART_GRADIENT.red} radius={[4, 4, 0, 0]} />
-                  <Bar
-                    dataKey="Saídas Previstas"
-                    stackId="b"
-                    fill={CHART_GRADIENT.redLight}
-                    filter={CHART_SHADOW}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Line
+                  <Area
                     type="monotone"
-                    dataKey="Saldo Acumulado"
-                    stroke="#0B2C52"
+                    dataKey="totalIn"
+                    name="Entradas"
+                    stroke="#15996F"
                     strokeWidth={2.5}
+                    fill={CHART_GRADIENT.areaGreen}
                     dot={false}
                     filter={CHART_LINE_SHADOW}
-                    activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 5, fill: "#15996F", strokeWidth: 2, stroke: "#fff" }}
                   />
-                </ComposedChart>
+                  <Area
+                    type="monotone"
+                    dataKey="totalOut"
+                    name="Saídas"
+                    stroke="#C8102E"
+                    strokeWidth={2.5}
+                    fill={CHART_GRADIENT.areaRed}
+                    dot={false}
+                    filter={CHART_LINE_SHADOW}
+                    activeDot={{ r: 5, fill: "#C8102E", strokeWidth: 2, stroke: "#fff" }}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -803,7 +836,7 @@ export default function CashFlowView() {
       )}
 
       {/* Gráficos complementares */}
-      <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+      <div className="idex-chart-card space-y-4 border p-5">
         <div>
           <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Saldo Realizado x Saldo com Previsto
@@ -820,7 +853,7 @@ export default function CashFlowView() {
         ) : (
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
+              <AreaChart
                 data={cashFlowTimeline}
                 margin={{ top: 10, right: 10, bottom: 0, left: 10 }}
               >
@@ -845,32 +878,35 @@ export default function CashFlowView() {
                   content={<ChartTooltip />}
                 />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
-                <Line
+                <Area
                   type="monotone"
                   dataKey="Saldo Realizado"
                   stroke="#0B2C52"
                   strokeWidth={2.5}
+                  fill={CHART_GRADIENT.areaNavy}
                   dot={false}
                   filter={CHART_LINE_SHADOW}
-                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
+                  activeDot={{ r: 5, fill: "#0B2C52", strokeWidth: 2, stroke: "#fff" }}
                 />
-                <Line
+                <Area
                   type="monotone"
                   dataKey="Saldo Acumulado"
-                  stroke="#174E83"
+                  name="Saldo com previsto"
+                  stroke="#E7B967"
                   strokeWidth={2}
-                  strokeDasharray="5 4"
+                  fill={CHART_GRADIENT.areaGold}
                   dot={false}
-                  activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
+                  filter={CHART_LINE_SHADOW}
+                  activeDot={{ r: 5, fill: "#E7B967", strokeWidth: 2, stroke: "#fff" }}
                 />
-              </ComposedChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+        <div className="idex-chart-card space-y-4 border p-5">
           <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Entradas por Categoria
           </h3>
@@ -879,51 +915,61 @@ export default function CashFlowView() {
               Sem entradas para o filtro atual.
             </div>
           ) : (
-            <div
-              className="w-full"
-              style={{ height: Math.max(entradasPorCategoria.length * 34, 90) }}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={entradasPorCategoria}
-                  layout="vertical"
-                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
-                >
-                  <ChartDefs />
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#E7E9EF"
-                    horizontal={false}
-                  />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(val) =>
-                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                    }
-                    tick={{ fontSize: 10, fill: "#6F7687" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="category"
-                    width={130}
-                    tick={{ fontSize: 10, fill: "#6F7687" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
-                    content={<ChartTooltip />}
-                  />
-                  <Bar dataKey="value" fill={CHART_GRADIENT.green} filter={CHART_SHADOW} radius={[0, 6, 6, 0]} barSize={16} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="grid items-center gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <ChartDefs />
+                    <Pie
+                      data={entradasPorCategoria}
+                      dataKey="value"
+                      nameKey="category"
+                      innerRadius={48}
+                      outerRadius={70}
+                      paddingAngle={3}
+                      cornerRadius={6}
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth={2}
+                      filter={CHART_SHADOW}
+                    >
+                      {entradasPorCategoria.map((item, index) => (
+                        <Cell
+                          key={item.category}
+                          fill={INCOME_CATEGORY_COLORS[index % INCOME_CATEGORY_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                    <text x="50%" y="46%" textAnchor="middle" className="fill-ink-soft text-[8px] font-bold dark:fill-ink-soft-dark">
+                      TOTAL
+                    </text>
+                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-green-600 text-[11px] font-black">
+                      {formatCompactCurrency(totalEntradasPorCategoria)}
+                    </text>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-2">
+                {entradasPorCategoria.map((item, index) => (
+                  <div key={item.category} className="flex items-center justify-between gap-3 text-[10px]">
+                    <span className="flex min-w-0 items-center gap-1.5 text-ink-soft dark:text-ink-soft-dark">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: INCOME_CATEGORY_COLORS[index % INCOME_CATEGORY_COLORS.length] }}
+                      />
+                      <span className="truncate">{item.category}</span>
+                    </span>
+                    <span className="shrink-0 font-bold text-ink dark:text-ink-dark">
+                      {formatCompactCurrency(item.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="bg-surface dark:bg-surface-dark p-5 rounded-lg border border-line dark:border-line-dark shadow-md hover:shadow-lg transition-shadow space-y-4">
+        <div className="idex-chart-card space-y-4 border p-5">
           <h3 className="text-xs font-semibold text-ink dark:text-ink-dark uppercase tracking-wider">
             Saídas por Categoria
           </h3>
@@ -932,46 +978,56 @@ export default function CashFlowView() {
               Sem saídas para o filtro atual.
             </div>
           ) : (
-            <div
-              className="w-full"
-              style={{ height: Math.max(saidasPorCategoria.length * 34, 90) }}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={saidasPorCategoria}
-                  layout="vertical"
-                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
-                >
-                  <ChartDefs />
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#E7E9EF"
-                    horizontal={false}
-                  />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(val) =>
-                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                    }
-                    tick={{ fontSize: 10, fill: "#6F7687" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="category"
-                    width={130}
-                    tick={{ fontSize: 10, fill: "#6F7687" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#0B2C52", fillOpacity: 0.045 }}
-                    content={<ChartTooltip />}
-                  />
-                  <Bar dataKey="value" fill={CHART_GRADIENT.red} filter={CHART_SHADOW} radius={[0, 6, 6, 0]} barSize={16} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="grid items-center gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <ChartDefs />
+                    <Pie
+                      data={saidasPorCategoria}
+                      dataKey="value"
+                      nameKey="category"
+                      innerRadius={48}
+                      outerRadius={70}
+                      paddingAngle={3}
+                      cornerRadius={6}
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth={2}
+                      filter={CHART_SHADOW}
+                    >
+                      {saidasPorCategoria.map((item, index) => (
+                        <Cell
+                          key={item.category}
+                          fill={EXPENSE_CATEGORY_COLORS[index % EXPENSE_CATEGORY_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                    <text x="50%" y="46%" textAnchor="middle" className="fill-ink-soft text-[8px] font-bold dark:fill-ink-soft-dark">
+                      TOTAL
+                    </text>
+                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-red-600 text-[11px] font-black">
+                      {formatCompactCurrency(totalSaidasPorCategoria)}
+                    </text>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-2">
+                {saidasPorCategoria.map((item, index) => (
+                  <div key={item.category} className="flex items-center justify-between gap-3 text-[10px]">
+                    <span className="flex min-w-0 items-center gap-1.5 text-ink-soft dark:text-ink-soft-dark">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: EXPENSE_CATEGORY_COLORS[index % EXPENSE_CATEGORY_COLORS.length] }}
+                      />
+                      <span className="truncate">{item.category}</span>
+                    </span>
+                    <span className="shrink-0 font-bold text-ink dark:text-ink-dark">
+                      {formatCompactCurrency(item.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
