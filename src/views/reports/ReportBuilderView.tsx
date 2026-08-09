@@ -285,9 +285,13 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
   const [drePercent, setDrePercent] = useState(Boolean(template?.dreOptions?.showPercent));
   const [dreDetailed, setDreDetailed] = useState(template?.dreOptions?.detailed ?? true);
   const [dreCostCenter, setDreCostCenter] = useState(template?.dreOptions?.costCenter || "");
-  const [dreComment, setDreComment] = useState(template?.dreOptions?.comment || "");
+  const [notes, setNotes] = useState(template?.notes || template?.dreOptions?.comment || "");
 
   const [format, setFormat] = useState<ReportExportFormat>("PDF");
+  const [orientation, setOrientation] = useState<"auto" | "portrait" | "landscape">(
+    template?.orientation || "auto",
+  );
+  const [isGenerating, setIsGenerating] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState(template?.id);
   const [generatedReport, setGeneratedReport] = useState<ReportRecord | null>(null);
   const [recipientId, setRecipientId] = useState("");
@@ -328,7 +332,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     showPercent: drePercent,
     detailed: dreDetailed,
     costCenter: dreCostCenter || undefined,
-    comment: dreComment || undefined,
+    comment: notes || undefined,
   };
 
   const dataSource = {
@@ -397,7 +401,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
   const selectedBlock = blocks.find((block) => block.instanceId === selectedBlockId) || null;
   const selectedDefinition = selectedBlock ? getBlockDefinition(modelType, selectedBlock.blockKey) : undefined;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setError("");
     setMessage("");
     setGeneratedReport(null);
@@ -413,22 +417,37 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
       setError("Adicione ao menos um bloco à estrutura do relatório.");
       return;
     }
-    const report = generateBuiltReport({
-      modelType,
-      name: name.trim() || modelType,
-      blocks,
-      filters,
-      dreOptions: modelType === "DRE Gerencial" ? dreOptions : undefined,
-      format,
-      templateId: savedTemplateId,
-      templateName: savedTemplateId ? name.trim() : undefined,
-    });
-    if (!report) {
-      setError("Não foi possível gerar o relatório.");
-      return;
+    setIsGenerating(true);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    try {
+      const report = generateBuiltReport({
+        modelType,
+        name: name.trim() || modelType,
+        blocks,
+        filters,
+        dreOptions: modelType === "DRE Gerencial" ? dreOptions : undefined,
+        notes: notes || undefined,
+        orientation,
+        format,
+        templateId: savedTemplateId,
+        templateName: savedTemplateId ? name.trim() : undefined,
+      });
+      if (!report) {
+        setError("Não foi possível gerar o relatório.");
+        return;
+      }
+      setGeneratedReport(report);
+      const downloaded = downloadReportFile(report);
+      setMessage(
+        downloaded
+          ? `${report.fileName} foi gerado, baixado e registrado no histórico.`
+          : `${report.fileName} foi gerado e está disponível no histórico. Use o botão Baixar para salvar o arquivo.`,
+      );
+    } catch {
+      setError("Ocorreu um erro ao montar o arquivo. Nenhum relatório foi registrado como concluído.");
+    } finally {
+      setIsGenerating(false);
     }
-    setGeneratedReport(report);
-    setMessage(`${report.fileName} foi gerado e já está disponível no histórico.`);
   };
 
   const handleSaveTemplate = () => {
@@ -452,6 +471,8 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
       blocks,
       filters: templateFilters,
       dreOptions: modelType === "DRE Gerencial" ? dreOptions : undefined,
+      notes: notes || undefined,
+      orientation,
     });
     if (!saved) {
       setError("Não foi possível salvar o modelo.");
@@ -505,12 +526,24 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
             <option value="PDF">PDF</option>
             <option value="EXCEL">Excel</option>
           </select>
+          <select
+            value={orientation}
+            onChange={(e) => setOrientation(e.target.value as "auto" | "portrait" | "landscape")}
+            aria-label="Orientação do PDF"
+            disabled={format !== "PDF"}
+            className={`${INPUT_CLASS} w-auto`}
+          >
+            <option value="auto">Orientação automática</option>
+            <option value="portrait">Retrato</option>
+            <option value="landscape">Paisagem</option>
+          </select>
           <Button
             icon={<Play className="h-3.5 w-3.5 fill-white" />}
             onClick={handleGenerate}
             disabled={!hasPermission("reports.generate")}
+            loading={isGenerating}
           >
-            Gerar relatório
+            {isGenerating ? "Gerando relatório..." : "Gerar relatório"}
           </Button>
         </div>
       </div>
@@ -623,6 +656,16 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
             )}
           </>
         )}
+        <div className="space-y-1">
+          <label className={LABEL_CLASS}>Observações do responsável financeiro</label>
+          <textarea
+            className={INPUT_CLASS}
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Comentário opcional para quem for ler o relatório..."
+          />
+        </div>
       </div>
 
       {/* Corpo: construtor por blocos ou estrutura fixa da DRE */}
@@ -649,16 +692,6 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
                 <input type="checkbox" checked={dreDetailed} onChange={(e) => setDreDetailed(e.target.checked)} /> Detalhar despesas por categoria
               </label>
               <FilterSelect label="Centro de custo" value={dreCostCenter} onChange={setDreCostCenter} options={masterOptions("COST_CENTER")} />
-              <div className="space-y-1">
-                <label className={LABEL_CLASS}>Comentário</label>
-                <textarea
-                  className={INPUT_CLASS}
-                  rows={3}
-                  value={dreComment}
-                  onChange={(e) => setDreComment(e.target.value)}
-                  placeholder="Observação opcional para quem for ler o relatório..."
-                />
-              </div>
             </div>
             <div className="space-y-4">
               {previewSections.map((section, index) => (

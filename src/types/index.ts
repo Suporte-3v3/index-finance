@@ -501,6 +501,8 @@ export interface ReportTemplate {
   // geração).
   filters: Omit<ReportFilters, "startDate" | "endDate">;
   dreOptions?: DreReportOptions;
+  notes?: string;
+  orientation?: "auto" | "portrait" | "landscape";
   favorite: boolean;
   archived: boolean;
   createdAt: string;
