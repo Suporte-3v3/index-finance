@@ -138,6 +138,62 @@ enum NotificationType {
   ALERT
 }
 
+enum BakeryShiftStatus {
+  OPEN
+  AWAITING_CLOSE
+  CLOSED
+  REOPENED
+  CANCELED
+}
+
+enum BakeryExpenseSource {
+  CAIXA
+  BOLSA
+}
+
+enum BakeryPixReconciliationStatus {
+  AWAITING
+  RECONCILED
+  DIVERGENT
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+}
+
+enum ReportModelType {
+  PAYABLES
+  RECEIVABLES
+  CASH_FLOW
+  DRE
+}
+
+enum SupportTicketCategory {
+  FINANCIAL
+  DOCUMENTS
+  PAYMENTS
+  RECEIVABLES
+  ACCOUNTING
+  ACCESS
+  OTHER
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_REQUESTER
+  RESOLVED
+  CLOSED
+}
+
 model Tenant {
   id        String       @id @default(uuid()) @db.Uuid
   name      String       @db.VarChar(160)
@@ -192,6 +248,13 @@ model Company {
   reconciliations  Reconciliation[]
   auditLogs        AuditLog[]
   notifications    Notification[]
+  bakeryShifts      BakeryShift[]
+  bakeryExpenses    BakeryExpense[]
+  bakeryWithdrawals BakeryWithdrawal[]
+  bakeryPixSales    BakeryPixSale[]
+  reports           Report[]
+  reportTemplates   ReportTemplate[]
+  supportTickets    SupportTicket[]
 
   @@unique([tenantId, cnpj])
   @@index([tenantId, status])
@@ -231,6 +294,22 @@ model User {
   reconciliations      Reconciliation[]           @relation("ReconciliationCreatedBy")
   auditLogs            AuditLog[]
   notifications        Notification[]
+  bakeryShiftsAsOperator      BakeryShift[]              @relation("BakeryShiftOperator")
+  bakeryShiftsReopened        BakeryShift[]              @relation("BakeryShiftReopenedBy")
+  bakeryCloseSnapshotsChanged BakeryShiftCloseSnapshot[]
+  bakeryExpensesCreated       BakeryExpense[]            @relation("BakeryExpenseCreatedBy")
+  bakeryExpensesCanceled      BakeryExpense[]            @relation("BakeryExpenseCanceledBy")
+  bakeryWithdrawalsCreated    BakeryWithdrawal[]         @relation("BakeryWithdrawalCreatedBy")
+  bakeryWithdrawalsCanceled   BakeryWithdrawal[]         @relation("BakeryWithdrawalCanceledBy")
+  bakeryPixSalesCreated       BakeryPixSale[]            @relation("BakeryPixSaleCreatedBy")
+  bakeryPixSalesReconciled    BakeryPixSale[]            @relation("BakeryPixSaleReconciledBy")
+  bakeryPixSalesCanceled      BakeryPixSale[]            @relation("BakeryPixSaleCanceledBy")
+  reportsGenerated            Report[]                   @relation("ReportGeneratedBy")
+  reportsReceived             Report[]                   @relation("ReportRecipient")
+  reportTemplatesCreated      ReportTemplate[]
+  supportTicketsRequested     SupportTicket[]            @relation("SupportTicketRequester")
+  supportTicketsAssigned      SupportTicket[]            @relation("SupportTicketAssignedTo")
+  supportMessages             SupportMessage[]           @relation("SupportMessageAuthor")
 
   @@index([status])
   @@map("users")
@@ -376,6 +455,8 @@ model BankAccount {
   receivables        AccountReceivable[]
   statementEntries   BankStatementEntry[]
   reconciliations    Reconciliation[]
+  bakeryCardMachineEntries BakeryCardMachineEntry[]
+  bakeryPixSales           BakeryPixSale[]
 
   @@unique([companyId, agency, accountNumber])
   @@index([companyId, active])
@@ -395,6 +476,7 @@ model MasterDataOption {
   company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   parent   MasterDataOption?  @relation("MasterDataHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children MasterDataOption[] @relation("MasterDataHierarchy")
+  bakeryShifts BakeryShift[]
 
   @@unique([companyId, type, name])
   @@index([companyId, type, active])
@@ -717,4 +799,271 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([companyId, createdAt])
   @@map("notifications")
+}
+
+model BakeryShift {
+  id                           String            @id @default(uuid()) @db.Uuid
+  companyId                    String            @map("company_id") @db.Uuid
+  registerId                   String            @map("register_id") @db.Uuid
+  registerName                 String            @map("register_name") @db.VarChar(160)
+  shiftLabel                   String            @map("shift_label") @db.VarChar(80)
+  operatorId                   String            @map("operator_id") @db.Uuid
+  operatorName                 String            @map("operator_name") @db.VarChar(160)
+  status                       BakeryShiftStatus @default(OPEN)
+  openedAt                     DateTime          @default(now()) @map("opened_at") @db.Timestamptz(3)
+  initialBalance                Decimal          @map("initial_balance") @db.Decimal(18, 2)
+  openNote                      String?          @map("open_note") @db.Text
+  initialBalanceJustification   String?          @map("initial_balance_justification") @db.Text
+  previousShiftFinalBalance     Decimal?         @map("previous_shift_final_balance") @db.Decimal(18, 2)
+  closedAt                      DateTime?        @map("closed_at") @db.Timestamptz(3)
+  finalBalanceCounted           Decimal?         @map("final_balance_counted") @db.Decimal(18, 2)
+  closeNote                     String?          @map("close_note") @db.Text
+  estimatedCashRevenue          Decimal?         @map("estimated_cash_revenue") @db.Decimal(18, 2)
+  pixRevenueTotal                Decimal?        @map("pix_revenue_total") @db.Decimal(18, 2)
+  cardMachineTotal                Decimal?       @map("card_machine_total") @db.Decimal(18, 2)
+  totalRevenue                    Decimal?       @map("total_revenue") @db.Decimal(18, 2)
+  reopenedAt                      DateTime?      @map("reopened_at") @db.Timestamptz(3)
+  reopenedById                    String?        @map("reopened_by_id") @db.Uuid
+  reopenedByName                  String?        @map("reopened_by_name") @db.VarChar(160)
+  reopenReason                    String?        @map("reopen_reason") @db.Text
+  createdAt                       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company            Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  register           MasterDataOption           @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  operator           User                       @relation("BakeryShiftOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  reopenedBy         User?                      @relation("BakeryShiftReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+  expenses           BakeryExpense[]
+  withdrawals        BakeryWithdrawal[]
+  pixSales           BakeryPixSale[]
+  cardMachineEntries BakeryCardMachineEntry[]
+  closeSnapshots     BakeryShiftCloseSnapshot[]
+
+  @@index([companyId, status])
+  @@index([operatorId, status])
+  @@index([registerId, status])
+  @@map("bakery_shifts")
+}
+
+model BakeryShiftCloseSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  shiftId               String   @map("shift_id") @db.Uuid
+  closedAt              DateTime @map("closed_at") @db.Timestamptz(3)
+  finalBalanceCounted   Decimal  @map("final_balance_counted") @db.Decimal(18, 2)
+  estimatedCashRevenue  Decimal  @map("estimated_cash_revenue") @db.Decimal(18, 2)
+  pixRevenueTotal       Decimal  @map("pix_revenue_total") @db.Decimal(18, 2)
+  cardMachineTotal      Decimal  @map("card_machine_total") @db.Decimal(18, 2)
+  totalRevenue          Decimal  @map("total_revenue") @db.Decimal(18, 2)
+  changedById           String   @map("changed_by_id") @db.Uuid
+  changedByName         String   @map("changed_by_name") @db.VarChar(160)
+  reason                String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  shift              BakeryShift              @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  changedBy          User                     @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  cardMachineEntries BakeryCardMachineEntry[]
+
+  @@index([shiftId, createdAt])
+  @@map("bakery_shift_close_snapshots")
+}
+
+model BakeryCardMachineEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  shiftId         String   @map("shift_id") @db.Uuid
+  closeSnapshotId String?  @map("close_snapshot_id") @db.Uuid
+  bankAccountId   String   @map("bank_account_id") @db.Uuid
+  bankAccountName String   @map("bank_account_name") @db.VarChar(160)
+  amount          Decimal  @db.Decimal(18, 2)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  shift         BakeryShift               @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  closeSnapshot BakeryShiftCloseSnapshot? @relation(fields: [closeSnapshotId], references: [id], onDelete: SetNull)
+  bankAccount   BankAccount               @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId, closeSnapshotId])
+  @@map("bakery_card_machine_entries")
+}
+
+model BakeryExpense {
+  id                 String              @id @default(uuid()) @db.Uuid
+  companyId          String              @map("company_id") @db.Uuid
+  shiftId            String              @map("shift_id") @db.Uuid
+  description        String              @db.VarChar(300)
+  supplier           String?             @db.VarChar(200)
+  amount             Decimal             @db.Decimal(18, 2)
+  source             BakeryExpenseSource
+  category           String?             @db.VarChar(160)
+  note               String?             @db.Text
+  receiptObjectKey   String?             @map("receipt_object_key") @db.VarChar(500)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdById        String              @map("created_by_id") @db.Uuid
+  createdByName      String              @map("created_by_name") @db.VarChar(160)
+  canceled           Boolean             @default(false)
+  canceledAt         DateTime?           @map("canceled_at") @db.Timestamptz(3)
+  canceledById       String?             @map("canceled_by_id") @db.Uuid
+
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  shift     BakeryShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  createdBy User        @relation("BakeryExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  canceledBy User?      @relation("BakeryExpenseCanceledBy", fields: [canceledById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, shiftId])
+  @@index([shiftId, canceled])
+  @@map("bakery_expenses")
+}
+
+model BakeryWithdrawal {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  shiftId          String    @map("shift_id") @db.Uuid
+  amount           Decimal   @db.Decimal(18, 2)
+  note             String?   @db.Text
+  receiptObjectKey String?   @map("receipt_object_key") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdById      String    @map("created_by_id") @db.Uuid
+  createdByName    String    @map("created_by_name") @db.VarChar(160)
+  canceled         Boolean   @default(false)
+  canceledAt       DateTime? @map("canceled_at") @db.Timestamptz(3)
+  canceledById     String?   @map("canceled_by_id") @db.Uuid
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  shift      BakeryShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  createdBy  User        @relation("BakeryWithdrawalCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  canceledBy User?       @relation("BakeryWithdrawalCanceledBy", fields: [canceledById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, shiftId])
+  @@index([shiftId, canceled])
+  @@map("bakery_withdrawals")
+}
+
+model BakeryPixSale {
+  id                   String                         @id @default(uuid()) @db.Uuid
+  companyId            String                         @map("company_id") @db.Uuid
+  shiftId              String                         @map("shift_id") @db.Uuid
+  amount               Decimal                        @db.Decimal(18, 2)
+  bankAccountId        String                         @map("bank_account_id") @db.Uuid
+  bankAccountName      String                         @map("bank_account_name") @db.VarChar(160)
+  customerName         String?                        @map("customer_name") @db.VarChar(200)
+  description          String?                        @db.Text
+  note                 String?                        @db.Text
+  receiptObjectKey     String?                        @map("receipt_object_key") @db.VarChar(500)
+  createdAt            DateTime                       @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdById          String                         @map("created_by_id") @db.Uuid
+  createdByName        String                         @map("created_by_name") @db.VarChar(160)
+  reconciliationStatus BakeryPixReconciliationStatus  @default(AWAITING) @map("reconciliation_status")
+  reconciledAt         DateTime?                      @map("reconciled_at") @db.Timestamptz(3)
+  reconciledById       String?                        @map("reconciled_by_id") @db.Uuid
+  canceled             Boolean                        @default(false)
+  canceledAt           DateTime?                      @map("canceled_at") @db.Timestamptz(3)
+  canceledById         String?                        @map("canceled_by_id") @db.Uuid
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  shift        BakeryShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  createdBy    User        @relation("BakeryPixSaleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reconciledBy User?       @relation("BakeryPixSaleReconciledBy", fields: [reconciledById], references: [id], onDelete: SetNull)
+  canceledBy   User?       @relation("BakeryPixSaleCanceledBy", fields: [canceledById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, shiftId])
+  @@index([shiftId, canceled])
+  @@map("bakery_pix_sales")
+}
+
+model Report {
+  id              String        @id @default(uuid()) @db.Uuid
+  companyId       String        @map("company_id") @db.Uuid
+  name            String        @db.VarChar(200)
+  type            String        @db.VarChar(100)
+  filters         Json
+  generatedAt     DateTime      @default(now()) @map("generated_at") @db.Timestamptz(3)
+  generatedById   String        @map("generated_by_id") @db.Uuid
+  generatedByName String        @map("generated_by_name") @db.VarChar(160)
+  format          ReportFormat?
+  fileName        String?       @map("file_name") @db.VarChar(255)
+  mimeType        String?       @map("mime_type") @db.VarChar(150)
+  objectKey       String?       @map("object_key") @db.VarChar(500)
+  fileSizeBytes   BigInt?       @map("file_size_bytes")
+  templateId      String?       @map("template_id") @db.Uuid
+  templateName    String?       @map("template_name") @db.VarChar(200)
+  recipientId     String?       @map("recipient_id") @db.Uuid
+  recipientName   String?       @map("recipient_name") @db.VarChar(160)
+  recipientRole   UserRole?     @map("recipient_role")
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  generatedBy User            @relation("ReportGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  recipient   User?           @relation("ReportRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+  template    ReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, generatedAt])
+  @@map("reports")
+}
+
+model ReportTemplate {
+  id            String          @id @default(uuid()) @db.Uuid
+  companyId     String          @map("company_id") @db.Uuid
+  name          String          @db.VarChar(200)
+  modelType     ReportModelType @map("model_type")
+  blocks        Json
+  filters       Json
+  dreOptions    Json?           @map("dre_options")
+  notes         String?         @db.Text
+  orientation   String?         @db.VarChar(20)
+  favorite      Boolean         @default(false)
+  archived      Boolean         @default(false)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdById   String          @map("created_by_id") @db.Uuid
+  createdByName String          @map("created_by_name") @db.VarChar(160)
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  reports   Report[]
+
+  @@index([companyId, archived])
+  @@map("report_templates")
+}
+
+model SupportTicket {
+  id             String                 @id @default(uuid()) @db.Uuid
+  protocol       String                 @unique @db.VarChar(40)
+  companyId      String                 @map("company_id") @db.Uuid
+  requesterId    String                 @map("requester_id") @db.Uuid
+  requesterName  String                 @map("requester_name") @db.VarChar(160)
+  requesterRole  UserRole               @map("requester_role")
+  category       SupportTicketCategory
+  subject        String                 @db.VarChar(200)
+  description    String                 @db.Text
+  priority       SupportTicketPriority  @default(NORMAL)
+  status         SupportTicketStatus    @default(OPEN)
+  assignedToId   String?                @map("assigned_to_id") @db.Uuid
+  assignedToName String?                @map("assigned_to_name") @db.VarChar(160)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  company    Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requester  User             @relation("SupportTicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  assignedTo User?            @relation("SupportTicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages   SupportMessage[]
+
+  @@index([companyId, status])
+  @@index([requesterId, status])
+  @@index([assignedToId, status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id          String   @id @default(uuid()) @db.Uuid
+  ticketId    String   @map("ticket_id") @db.Uuid
+  authorId    String   @map("author_id") @db.Uuid
+  authorName  String   @map("author_name") @db.VarChar(160)
+  authorRole  UserRole @map("author_role")
+  content     String   @db.Text
+  attachments Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User          @relation("SupportMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@map("support_messages")
 }

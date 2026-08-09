@@ -334,18 +334,21 @@ function OpenShiftScreen({
       );
       return;
     }
-    const result = bakery.openShift({
-      registerId: register.id,
-      registerName: register.name,
-      shiftLabel: effectiveLabel.trim(),
-      initialBalance,
-      openNote: note || undefined,
-      initialBalanceJustification: differsFromSuggestion
-        ? justification.trim()
-        : undefined,
-    });
-    if (!result.success) setFormError(result.error || "Não foi possível abrir o caixa.");
-    else onSuccess();
+    bakery
+      .openShift({
+        registerId: register.id,
+        registerName: register.name,
+        shiftLabel: effectiveLabel.trim(),
+        initialBalance,
+        openNote: note || undefined,
+        initialBalanceJustification: differsFromSuggestion
+          ? justification.trim()
+          : undefined,
+      })
+      .then((result) => {
+        if (!result.success) setFormError(result.error || "Não foi possível abrir o caixa.");
+        else onSuccess();
+      });
   };
 
   return (
@@ -477,18 +480,21 @@ function NewExpenseScreen({
     setFormError("");
     if (!description.trim()) return setFormError("Informe a descrição.");
     if (!(amount > 0)) return setFormError("Informe um valor válido.");
-    const result = bakery.addExpense({
-      shiftId,
-      description: description.trim(),
-      supplier: supplier.trim() || undefined,
-      amount,
-      source,
-      category: category.trim() || undefined,
-      note: note.trim() || undefined,
-      receiptUrl,
-    });
-    if (!result.success) setFormError(result.error || "Não foi possível salvar.");
-    else onSuccess();
+    bakery
+      .addExpense({
+        shiftId,
+        description: description.trim(),
+        supplier: supplier.trim() || undefined,
+        amount,
+        source,
+        category: category.trim() || undefined,
+        note: note.trim() || undefined,
+        receiptUrl,
+      })
+      .then((result) => {
+        if (!result.success) setFormError(result.error || "Não foi possível salvar.");
+        else onSuccess();
+      });
   };
 
   return (
@@ -590,14 +596,17 @@ function NewWithdrawalScreen({
   const submit = () => {
     setFormError("");
     if (!(amount > 0)) return setFormError("Informe um valor válido.");
-    const result = bakery.addWithdrawal({
-      shiftId,
-      amount,
-      note: note.trim() || undefined,
-      receiptUrl,
-    });
-    if (!result.success) setFormError(result.error || "Não foi possível salvar.");
-    else onSuccess();
+    bakery
+      .addWithdrawal({
+        shiftId,
+        amount,
+        note: note.trim() || undefined,
+        receiptUrl,
+      })
+      .then((result) => {
+        if (!result.success) setFormError(result.error || "Não foi possível salvar.");
+        else onSuccess();
+      });
   };
 
   return (
@@ -662,17 +671,20 @@ function NewPixScreen({
     if (!(amount > 0)) return setFormError("Informe um valor válido.");
     const bank = pixBanks.find((item) => item.id === bankAccountId);
     if (!bank) return setFormError("Selecione o banco que recebeu o PIX.");
-    const result = bakery.addPixSale({
-      shiftId,
-      amount,
-      bankAccountId: bank.id,
-      bankAccountName: bank.bankName,
-      customerName: customerName.trim() || undefined,
-      description: description.trim() || undefined,
-      receiptUrl,
-    });
-    if (!result.success) setFormError(result.error || "Não foi possível salvar.");
-    else onSuccess();
+    bakery
+      .addPixSale({
+        shiftId,
+        amount,
+        bankAccountId: bank.id,
+        bankAccountName: bank.bankName,
+        customerName: customerName.trim() || undefined,
+        description: description.trim() || undefined,
+        receiptUrl,
+      })
+      .then((result) => {
+        if (!result.success) setFormError(result.error || "Não foi possível salvar.");
+        else onSuccess();
+      });
   };
 
   return (
@@ -943,14 +955,17 @@ function CloseSummaryScreen({
     }, {});
 
   const confirm = () => {
-    const result = bakery.closeShift({
-      shiftId: shift.id,
-      finalBalanceCounted: pendingClose.finalBalance,
-      closeNote: pendingClose.note || undefined,
-      cardMachineEntries: pendingClose.cardMachineEntries,
-    });
-    if (!result.success) onError(result.error || "Não foi possível fechar o turno.");
-    else onConfirmed();
+    bakery
+      .closeShift({
+        shiftId: shift.id,
+        finalBalanceCounted: pendingClose.finalBalance,
+        closeNote: pendingClose.note || undefined,
+        cardMachineEntries: pendingClose.cardMachineEntries,
+      })
+      .then((result) => {
+        if (!result.success) onError(result.error || "Não foi possível fechar o turno.");
+        else onConfirmed();
+      });
   };
 
   return (

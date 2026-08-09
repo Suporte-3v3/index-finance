@@ -167,15 +167,18 @@ export default function AdminDashboard() {
   const confirmReopen = () => {
     if (!reopenTarget) return;
     setReopenError("");
-    const result = bakery.reopenShift({
-      shiftId: reopenTarget.id,
-      reason: reopenReason,
-    });
-    if (!result.success) setReopenError(result.error || "Não foi possível reabrir.");
-    else {
-      setReopenTarget(null);
-      setReopenReason("");
-    }
+    bakery
+      .reopenShift({
+        shiftId: reopenTarget.id,
+        reason: reopenReason,
+      })
+      .then((result) => {
+        if (!result.success) setReopenError(result.error || "Não foi possível reabrir.");
+        else {
+          setReopenTarget(null);
+          setReopenReason("");
+        }
+      });
   };
 
   const cards: { icon: React.ReactNode; tone: MetricTone; label: string; value: string }[] = [

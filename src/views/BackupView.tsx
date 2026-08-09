@@ -5,7 +5,6 @@
 
 import React, { useRef, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
-import { useBakeryCashState } from "../hooks/useBakeryCashState";
 import { Button, Card } from "../components/ui";
 import {
   AlertTriangle,
@@ -19,6 +18,8 @@ import {
   Upload,
 } from "lucide-react";
 
+// Auditoria, notificações, relatórios, chamados de suporte e o caixa da
+// padaria já são 100% Postgres — não fazem mais parte deste backup local.
 const BACKUP_KEYS = [
   "tenants",
   "companies",
@@ -29,15 +30,7 @@ const BACKUP_KEYS = [
   "accountsReceivable",
   "approvals",
   "documents",
-  "auditLogs",
-  "notifications",
-  "reports",
   "statementItems",
-  "supportTickets",
-  "bakeryShifts",
-  "bakeryExpenses",
-  "bakeryWithdrawals",
-  "bakeryPixSales",
   "activeCompanyId",
 ] as const;
 
@@ -51,14 +44,6 @@ const ARRAY_BACKUP_KEYS = [
   "accountsReceivable",
   "approvals",
   "documents",
-  "auditLogs",
-  "notifications",
-  "reports",
-  "supportTickets",
-  "bakeryShifts",
-  "bakeryExpenses",
-  "bakeryWithdrawals",
-  "bakeryPixSales",
 ] as const;
 
 interface EmbeddedBackupFile {
@@ -253,15 +238,10 @@ export default function BackupView() {
     accountsReceivable,
     approvals,
     documents,
-    auditLogs,
-    notifications,
-    reports,
     statementItems,
-    supportTickets,
     currentUser,
     activeCompany,
   } = useBPOState();
-  const { shifts, expenses, withdrawals, pixSales } = useBakeryCashState();
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedBackup, setSelectedBackup] = useState<BackupFile | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
@@ -293,15 +273,7 @@ export default function BackupView() {
     accountsReceivable,
     approvals,
     documents,
-    auditLogs,
-    notifications,
-    reports,
     statementItems,
-    supportTickets,
-    bakeryShifts: shifts,
-    bakeryExpenses: expenses,
-    bakeryWithdrawals: withdrawals,
-    bakeryPixSales: pixSales,
     activeCompanyId: activeCompany?.id || companies[0]?.id || "",
   });
 
@@ -473,7 +445,9 @@ export default function BackupView() {
         </div>
         <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed mt-1">
           Exporte e restaure dados operacionais, cadastros auxiliares e os
-          arquivos originais enviados.
+          arquivos originais enviados. Auditoria, notificações, relatórios,
+          chamados de suporte e o caixa da padaria já ficam salvos direto no
+          banco de dados e não fazem parte deste backup.
         </p>
       </div>
 

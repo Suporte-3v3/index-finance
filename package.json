@@ -27,6 +27,8 @@
     "company:check": "tsx scripts/check-companies.ts",
     "financial-setup:check": "tsx scripts/check-financial-setup.ts",
     "financial-entries:check": "tsx scripts/check-financial-entries.ts",
+    "documents:check": "tsx scripts/check-documents.ts",
+    "reconciliation:check": "tsx scripts/check-reconciliation.ts",
     "users:check": "tsx scripts/check-users.ts"
   },
   "dependencies": {

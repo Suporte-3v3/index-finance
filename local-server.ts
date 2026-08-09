@@ -57,12 +57,72 @@ import {
   updateReceivable,
 } from './backend/financial-entries.js';
 import {
+  DocumentRecordApiError,
+  createDocument as createDocumentRecord,
+  decideDocumentApproval,
+  deleteDocument as deleteDocumentRecord,
+  listDocuments as listDocumentRecords,
+  submitDocumentApproval,
+  updateDocument as updateDocumentRecord,
+} from './backend/document-records.js';
+import {
+  ReconciliationApiError,
+  autoReconcileStatementEntries,
+  ignoreStatementEntry,
+  importStatementEntries,
+  listStatementEntries,
+  reconcileStatementEntry,
+} from './backend/reconciliation.js';
+import {
   analyzeDocument,
   createDocumentUploadSession,
   DocumentAssistantError,
   getGeminiModel,
   hasConfiguredGeminiKey,
 } from './backend/document-assistant.js';
+import { AuditLogApiError, listAuditLogs } from './backend/audit-logs.js';
+import {
+  NotificationApiError,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from './backend/notifications.js';
+import {
+  BakeryCashApiError,
+  addExpense as addBakeryExpense,
+  addPixSale as addBakeryPixSale,
+  addWithdrawal as addBakeryWithdrawal,
+  cancelExpense as cancelBakeryExpense,
+  cancelPendingClose as cancelBakeryPendingClose,
+  cancelPixSale as cancelBakeryPixSale,
+  cancelShift as cancelBakeryShift,
+  cancelWithdrawal as cancelBakeryWithdrawal,
+  closeShift as closeBakeryShift,
+  listBakeryCash,
+  markAwaitingClose as markBakeryAwaitingClose,
+  openShift as openBakeryShift,
+  reopenShift as reopenBakeryShift,
+  setPixReconciliationStatus as setBakeryPixReconciliationStatus,
+} from './backend/bakery-cash.js';
+import {
+  ReportApiError,
+  createReport,
+  createReportTemplate,
+  deleteReport,
+  deleteReportTemplate,
+  duplicateReportTemplate,
+  listReports,
+  listReportTemplates,
+  updateReportTemplate,
+} from './backend/reports.js';
+import {
+  SupportTicketApiError,
+  addSupportMessage,
+  createSupportTicket,
+  deleteSupportTicket,
+  listSupportTickets,
+  updateSupportTicket,
+} from './backend/support-tickets.js';
 
 // `.env.local` is intentionally gitignored and takes precedence over `.env`.
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), quiet: true });
@@ -411,6 +471,359 @@ app.post('/api/payment-approvals/:approvalId/decision', requireAuthentication, r
     response.json(await decidePaymentApproval(response.locals.authProfile, request.params.approvalId, request.body));
   } catch (error) {
     financialEntriesError(response, error, 'Não foi possível decidir a aprovação.');
+  }
+});
+
+const documentRecordError = (
+  response: express.Response,
+  error: unknown,
+  fallback: string,
+) => {
+  const status = error instanceof DocumentRecordApiError ? error.status : 500;
+  if (status === 500) {
+    console.error('Document record operation failed:', error instanceof Error ? error.message : error);
+  }
+  response.status(status).json({
+    error: error instanceof DocumentRecordApiError ? error.message : fallback,
+  });
+};
+
+app.get('/api/document-records', requireAuthentication, requireCompletedPasswordChange, async (_request, response) => {
+  try {
+    response.json(await listDocumentRecords(response.locals.authProfile));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível carregar os documentos.');
+  }
+});
+app.post('/api/document-records', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.status(201).json(await createDocumentRecord(response.locals.authProfile, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível registrar o documento.');
+  }
+});
+app.patch('/api/document-records/:documentId', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await updateDocumentRecord(response.locals.authProfile, request.params.documentId, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível atualizar o documento.');
+  }
+});
+app.delete('/api/document-records/:documentId', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    await deleteDocumentRecord(response.locals.authProfile, request.params.documentId);
+    response.status(204).end();
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível excluir o documento.');
+  }
+});
+app.post('/api/document-records/:documentId/request-approval', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await submitDocumentApproval(response.locals.authProfile, request.params.documentId, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível solicitar a aprovação.');
+  }
+});
+app.post('/api/document-approvals/:approvalId/decision', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await decideDocumentApproval(response.locals.authProfile, request.params.approvalId, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível decidir a aprovação do documento.');
+  }
+});
+
+const reconciliationError = (response: express.Response, error: unknown, fallback: string) => {
+  const status = error instanceof ReconciliationApiError ? error.status : 500;
+  if (status === 500) console.error('Reconciliation operation failed:', error instanceof Error ? error.message : error);
+  response.status(status).json({ error: error instanceof ReconciliationApiError ? error.message : fallback });
+};
+
+app.get('/api/reconciliation', requireAuthentication, requireCompletedPasswordChange, async (_request, response) => {
+  try {
+    response.json(await listStatementEntries(response.locals.authProfile));
+  } catch (error) {
+    reconciliationError(response, error, 'Não foi possível carregar os extratos bancários.');
+  }
+});
+app.post('/api/reconciliation/:bankAccountId/import', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.status(201).json(await importStatementEntries(response.locals.authProfile, request.params.bankAccountId, request.body));
+  } catch (error) {
+    reconciliationError(response, error, 'Não foi possível importar o extrato bancário.');
+  }
+});
+app.post('/api/reconciliation/:bankAccountId/auto', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await autoReconcileStatementEntries(response.locals.authProfile, request.params.bankAccountId));
+  } catch (error) {
+    reconciliationError(response, error, 'Não foi possível executar a conciliação automática.');
+  }
+});
+app.post('/api/reconciliation/:bankAccountId/items/:statementItemId/reconcile', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await reconcileStatementEntry(response.locals.authProfile, request.params.bankAccountId, request.params.statementItemId, request.body));
+  } catch (error) {
+    reconciliationError(response, error, 'Não foi possível conciliar o item.');
+  }
+});
+app.post('/api/reconciliation/:bankAccountId/items/:statementItemId/ignore', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await ignoreStatementEntry(response.locals.authProfile, request.params.bankAccountId, request.params.statementItemId, request.body));
+  } catch (error) {
+    reconciliationError(response, error, 'Não foi possível ignorar o item.');
+  }
+});
+
+app.get('/api/audit-logs', requireAuthentication, requireCompletedPasswordChange, async (_request, response) => {
+  try {
+    response.json(await listAuditLogs(response.locals.authProfile));
+  } catch (error) {
+    const status = error instanceof AuditLogApiError ? error.status : 500;
+    if (status === 500) console.error('Audit log listing failed:', error instanceof Error ? error.message : error);
+    response.status(status).json({ error: error instanceof AuditLogApiError ? error.message : 'Não foi possível carregar a auditoria.' });
+  }
+});
+
+const notificationError = (response: express.Response, error: unknown, fallback: string) => {
+  const status = error instanceof NotificationApiError ? error.status : 500;
+  if (status === 500) console.error('Notification operation failed:', error instanceof Error ? error.message : error);
+  response.status(status).json({ error: error instanceof NotificationApiError ? error.message : fallback });
+};
+app.use('/api/notifications', requireAuthentication, requireCompletedPasswordChange);
+app.get('/api/notifications', async (_request, response) => {
+  try {
+    response.json(await listNotifications(response.locals.authProfile));
+  } catch (error) {
+    notificationError(response, error, 'Não foi possível carregar as notificações.');
+  }
+});
+app.post('/api/notifications/:notificationId/read', async (request, response) => {
+  try {
+    response.json(await markNotificationRead(response.locals.authProfile, request.params.notificationId));
+  } catch (error) {
+    notificationError(response, error, 'Não foi possível marcar a notificação como lida.');
+  }
+});
+app.post('/api/notifications/read-all', async (_request, response) => {
+  try {
+    response.json(await markAllNotificationsRead(response.locals.authProfile));
+  } catch (error) {
+    notificationError(response, error, 'Não foi possível marcar as notificações como lidas.');
+  }
+});
+
+const bakeryCashError = (response: express.Response, error: unknown, fallback: string) => {
+  const status = error instanceof BakeryCashApiError ? error.status : 500;
+  if (status === 500) console.error('Bakery cash operation failed:', error instanceof Error ? error.message : error);
+  response.status(status).json({ error: error instanceof BakeryCashApiError ? error.message : fallback });
+};
+app.use('/api/bakery-cash', requireAuthentication, requireCompletedPasswordChange);
+app.get('/api/bakery-cash', async (_request, response) => {
+  try {
+    response.json(await listBakeryCash(response.locals.authProfile));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível carregar o caixa da padaria.');
+  }
+});
+app.post('/api/bakery-cash/shifts', async (request, response) => {
+  try {
+    response.status(201).json(await openBakeryShift(response.locals.authProfile, request.body));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível abrir o turno.');
+  }
+});
+app.post('/api/bakery-cash/shifts/:shiftId/await-close', async (request, response) => {
+  try {
+    response.json(await markBakeryAwaitingClose(response.locals.authProfile, request.params.shiftId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível preparar o fechamento do turno.');
+  }
+});
+app.post('/api/bakery-cash/shifts/:shiftId/cancel-pending-close', async (request, response) => {
+  try {
+    response.json(await cancelBakeryPendingClose(response.locals.authProfile, request.params.shiftId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível voltar o turno para aberto.');
+  }
+});
+app.post('/api/bakery-cash/shifts/:shiftId/close', async (request, response) => {
+  try {
+    response.json(await closeBakeryShift(response.locals.authProfile, { ...request.body, shiftId: request.params.shiftId }));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível fechar o turno.');
+  }
+});
+app.post('/api/bakery-cash/shifts/:shiftId/reopen', async (request, response) => {
+  try {
+    response.json(await reopenBakeryShift(response.locals.authProfile, { ...request.body, shiftId: request.params.shiftId }));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível reabrir o turno.');
+  }
+});
+app.post('/api/bakery-cash/shifts/:shiftId/cancel', async (request, response) => {
+  try {
+    response.json(await cancelBakeryShift(response.locals.authProfile, request.params.shiftId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível cancelar o turno.');
+  }
+});
+app.post('/api/bakery-cash/expenses', async (request, response) => {
+  try {
+    response.status(201).json(await addBakeryExpense(response.locals.authProfile, request.body));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível lançar a despesa.');
+  }
+});
+app.post('/api/bakery-cash/expenses/:expenseId/cancel', async (request, response) => {
+  try {
+    response.json(await cancelBakeryExpense(response.locals.authProfile, request.params.expenseId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível cancelar a despesa.');
+  }
+});
+app.post('/api/bakery-cash/withdrawals', async (request, response) => {
+  try {
+    response.status(201).json(await addBakeryWithdrawal(response.locals.authProfile, request.body));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível lançar a sangria.');
+  }
+});
+app.post('/api/bakery-cash/withdrawals/:withdrawalId/cancel', async (request, response) => {
+  try {
+    response.json(await cancelBakeryWithdrawal(response.locals.authProfile, request.params.withdrawalId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível cancelar a sangria.');
+  }
+});
+app.post('/api/bakery-cash/pix-sales', async (request, response) => {
+  try {
+    response.status(201).json(await addBakeryPixSale(response.locals.authProfile, request.body));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível lançar a venda no PIX.');
+  }
+});
+app.post('/api/bakery-cash/pix-sales/:pixSaleId/cancel', async (request, response) => {
+  try {
+    response.json(await cancelBakeryPixSale(response.locals.authProfile, request.params.pixSaleId));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível cancelar a venda no PIX.');
+  }
+});
+app.post('/api/bakery-cash/pix-sales/:pixSaleId/reconciliation', async (request, response) => {
+  try {
+    response.json(await setBakeryPixReconciliationStatus(response.locals.authProfile, request.params.pixSaleId, request.body?.status));
+  } catch (error) {
+    bakeryCashError(response, error, 'Não foi possível atualizar a conciliação da venda.');
+  }
+});
+
+const reportError = (response: express.Response, error: unknown, fallback: string) => {
+  const status = error instanceof ReportApiError ? error.status : 500;
+  if (status === 500) console.error('Report operation failed:', error instanceof Error ? error.message : error);
+  response.status(status).json({ error: error instanceof ReportApiError ? error.message : fallback });
+};
+app.use('/api/reports', requireAuthentication, requireCompletedPasswordChange);
+app.get('/api/reports', async (_request, response) => {
+  try {
+    response.json(await listReports(response.locals.authProfile));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível carregar os relatórios.');
+  }
+});
+app.post('/api/reports', async (request, response) => {
+  try {
+    response.status(201).json(await createReport(response.locals.authProfile, request.body));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível salvar o relatório.');
+  }
+});
+app.delete('/api/reports/:reportId', async (request, response) => {
+  try {
+    await deleteReport(response.locals.authProfile, request.params.reportId);
+    response.status(204).end();
+  } catch (error) {
+    reportError(response, error, 'Não foi possível excluir o relatório.');
+  }
+});
+
+app.use('/api/report-templates', requireAuthentication, requireCompletedPasswordChange);
+app.get('/api/report-templates', async (_request, response) => {
+  try {
+    response.json(await listReportTemplates(response.locals.authProfile));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível carregar os modelos de relatório.');
+  }
+});
+app.post('/api/report-templates', async (request, response) => {
+  try {
+    response.status(201).json(await createReportTemplate(response.locals.authProfile, request.body));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível salvar o modelo de relatório.');
+  }
+});
+app.patch('/api/report-templates/:templateId', async (request, response) => {
+  try {
+    response.json(await updateReportTemplate(response.locals.authProfile, request.params.templateId, request.body));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível atualizar o modelo de relatório.');
+  }
+});
+app.post('/api/report-templates/:templateId/duplicate', async (request, response) => {
+  try {
+    response.status(201).json(await duplicateReportTemplate(response.locals.authProfile, request.params.templateId));
+  } catch (error) {
+    reportError(response, error, 'Não foi possível duplicar o modelo de relatório.');
+  }
+});
+app.delete('/api/report-templates/:templateId', async (request, response) => {
+  try {
+    await deleteReportTemplate(response.locals.authProfile, request.params.templateId);
+    response.status(204).end();
+  } catch (error) {
+    reportError(response, error, 'Não foi possível excluir o modelo de relatório.');
+  }
+});
+
+const supportTicketError = (response: express.Response, error: unknown, fallback: string) => {
+  const status = error instanceof SupportTicketApiError ? error.status : 500;
+  if (status === 500) console.error('Support ticket operation failed:', error instanceof Error ? error.message : error);
+  response.status(status).json({ error: error instanceof SupportTicketApiError ? error.message : fallback });
+};
+app.use('/api/support-tickets', requireAuthentication, requireCompletedPasswordChange);
+app.get('/api/support-tickets', async (_request, response) => {
+  try {
+    response.json(await listSupportTickets(response.locals.authProfile));
+  } catch (error) {
+    supportTicketError(response, error, 'Não foi possível carregar os chamados.');
+  }
+});
+app.post('/api/support-tickets', async (request, response) => {
+  try {
+    response.status(201).json(await createSupportTicket(response.locals.authProfile, request.body));
+  } catch (error) {
+    supportTicketError(response, error, 'Não foi possível abrir o chamado.');
+  }
+});
+app.patch('/api/support-tickets/:ticketId', async (request, response) => {
+  try {
+    response.json(await updateSupportTicket(response.locals.authProfile, request.params.ticketId, request.body));
+  } catch (error) {
+    supportTicketError(response, error, 'Não foi possível atualizar o chamado.');
+  }
+});
+app.delete('/api/support-tickets/:ticketId', async (request, response) => {
+  try {
+    await deleteSupportTicket(response.locals.authProfile, request.params.ticketId);
+    response.status(204).end();
+  } catch (error) {
+    supportTicketError(response, error, 'Não foi possível excluir o chamado.');
+  }
+});
+app.post('/api/support-tickets/:ticketId/messages', async (request, response) => {
+  try {
+    response.status(201).json(await addSupportMessage(response.locals.authProfile, request.params.ticketId, request.body));
+  } catch (error) {
+    supportTicketError(response, error, 'Não foi possível enviar a mensagem.');
   }
 });
 

@@ -47,8 +47,6 @@ import {
   INITIAL_ACCOUNTS_RECEIVABLE,
   INITIAL_APPROVALS,
   INITIAL_DOCUMENTS,
-  INITIAL_AUDIT_LOGS,
-  INITIAL_NOTIFICATIONS,
   BANK_STATEMENTS_TO_IMPORT,
 } from "../services/mockData";
 import {
@@ -113,6 +111,44 @@ import {
   updatePersistedPayable,
   updatePersistedReceivable,
 } from "../services/financialEntries";
+import {
+  createPersistedDocument,
+  decidePersistedDocumentApproval,
+  deletePersistedDocument,
+  fetchDocumentRecords,
+  requestPersistedDocumentApproval,
+  updatePersistedDocument,
+} from "../services/documentRecords";
+import {
+  autoReconcilePersistedStatements,
+  fetchStatementEntries,
+  ignorePersistedStatementItem,
+  importPersistedStatement,
+  reconcilePersistedStatementItem,
+} from "../services/reconciliation";
+import { fetchAuditLogs } from "../services/auditLogs";
+import {
+  fetchNotifications,
+  markAllPersistedNotificationsRead,
+  markPersistedNotificationRead,
+} from "../services/notifications";
+import {
+  createPersistedReport,
+  createPersistedReportTemplate,
+  deletePersistedReport,
+  deletePersistedReportTemplate,
+  duplicatePersistedReportTemplate,
+  fetchReportTemplates,
+  fetchReports,
+  updatePersistedReportTemplate,
+} from "../services/reports";
+import {
+  addPersistedSupportMessage,
+  createPersistedSupportTicket,
+  deletePersistedSupportTicket,
+  fetchSupportTickets,
+  updatePersistedSupportTicket,
+} from "../services/supportTickets";
 
 const PRIMARY_USER_ID = "u-client-admin";
 const USER_STORAGE_VERSION = "professional-users-v2";
@@ -732,39 +768,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       };
     }),
   );
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
-    loadState<AuditLog[]>("auditLogs", INITIAL_AUDIT_LOGS).filter(
-      (log) => !LEGACY_DEMO_USER_IDS.has(log.userId),
-    ),
-  );
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    const raw = loadState("notifications", INITIAL_NOTIFICATIONS);
-    const seen = new Set<string>();
-    const deduped: Notification[] = [];
-    raw.forEach((notif) => {
-      if (!seen.has(notif.id)) {
-        seen.add(notif.id);
-        deduped.push(notif);
-      } else {
-        const newId = `${notif.id}-dup-${Math.random().toString(36).substring(2, 9)}`;
-        seen.add(newId);
-        deduped.push({ ...notif, id: newId });
-      }
-    });
-    return deduped;
-  });
-  const [reports, setReports] = useState<ReportRecord[]>(() =>
-    loadState("reports", []),
-  );
-  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>(
-    () => loadState("reportTemplates", []),
-  );
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [statementItems, setStatementItems] = useState<
     Record<string, BankStatementItem[]>
-  >(() => loadState("statementItems", BANK_STATEMENTS_TO_IMPORT));
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() =>
-    loadState("supportTickets", []),
-  );
+  >({});
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
 
   useEffect(() => {
     const viewOnlyDocumentIds = new Set(
@@ -864,6 +875,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     authenticatedPayables?: AccountPayable[],
     authenticatedReceivables?: AccountReceivable[],
     authenticatedPaymentApprovals?: Approval[],
+    authenticatedDocuments?: Document[],
+    authenticatedDocumentApprovals?: Approval[],
+    authenticatedStatementItems?: Record<string, BankStatementItem[]>,
+    authenticatedAuditLogs?: AuditLog[],
+    authenticatedNotifications?: Notification[],
+    authenticatedReports?: ReportRecord[],
+    authenticatedReportTemplates?: ReportTemplate[],
+    authenticatedSupportTickets?: SupportTicket[],
   ): User => {
     const unscopedUser = toApplicationUser(profile, authenticatedCompanies);
     const allowedCompanyIds = unscopedUser.companies || [];
@@ -882,10 +901,23 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     if (authenticatedMasterData) setMasterData(authenticatedMasterData);
     if (authenticatedPayables) setAccountsPayable(authenticatedPayables);
     if (authenticatedReceivables) setAccountsReceivable(authenticatedReceivables);
+    if (authenticatedDocuments) setDocuments(authenticatedDocuments);
+    if (authenticatedStatementItems) setStatementItems(authenticatedStatementItems);
+    if (authenticatedAuditLogs) setAuditLogs(authenticatedAuditLogs);
+    if (authenticatedNotifications) setNotifications(authenticatedNotifications);
+    if (authenticatedReports) setReports(authenticatedReports);
+    if (authenticatedReportTemplates) setReportTemplates(authenticatedReportTemplates);
+    if (authenticatedSupportTickets) setSupportTickets(authenticatedSupportTickets);
     if (authenticatedPaymentApprovals) {
       setApprovals((current) => [
         ...current.filter((approval) => approval.type !== "PAGAMENTO"),
         ...authenticatedPaymentApprovals,
+      ]);
+    }
+    if (authenticatedDocumentApprovals) {
+      setApprovals((current) => [
+        ...current.filter((approval) => approval.type !== "DOCUMENTO"),
+        ...authenticatedDocumentApprovals,
       ]);
     }
     setAuthProfile(profile);
@@ -914,18 +946,60 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         accountsPayable: [] as AccountPayable[],
         accountsReceivable: [] as AccountReceivable[],
         paymentApprovals: [] as Approval[],
+        documents: [] as Document[],
+        documentApprovals: [] as Approval[],
+        statementItems: {} as Record<string, BankStatementItem[]>,
+        auditLogs: [] as AuditLog[],
+        notifications: [] as Notification[],
+        reports: [] as ReportRecord[],
+        reportTemplates: [] as ReportTemplate[],
+        supportTickets: [] as SupportTicket[],
       };
     }
     const canManageUsers =
       profile.isPlatformAdmin ||
       profile.tenantMemberships.some(({ role }) => role === "BPO_ADMIN");
-    const [workspace, managedUsers, financialSetup, financialEntries] = await Promise.all([
+    const isAuditor =
+      profile.isPlatformAdmin ||
+      profile.tenantMemberships.some(({ role }) => role === "BPO_ADMIN");
+    const [
+      workspace,
+      managedUsers,
+      financialSetup,
+      financialEntries,
+      documentRecords,
+      reconciliation,
+      auditLogs,
+      notifications,
+      reports,
+      reportTemplates,
+      supportTickets,
+    ] = await Promise.all([
       fetchCompanyWorkspace(),
       canManageUsers ? fetchManagedUsers() : Promise.resolve({ users: [] }),
       fetchFinancialSetup(),
       fetchFinancialEntries(),
+      fetchDocumentRecords(),
+      fetchStatementEntries(),
+      isAuditor ? fetchAuditLogs() : Promise.resolve([] as AuditLog[]),
+      fetchNotifications(),
+      fetchReports(),
+      fetchReportTemplates(),
+      fetchSupportTickets(),
     ]);
-    return { ...workspace, users: managedUsers.users, ...financialSetup, ...financialEntries };
+    return {
+      ...workspace,
+      users: managedUsers.users,
+      ...financialSetup,
+      ...financialEntries,
+      ...documentRecords,
+      ...reconciliation,
+      auditLogs,
+      notifications,
+      reports,
+      reportTemplates,
+      supportTickets,
+    };
   };
 
   useEffect(() => {
@@ -948,6 +1022,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
                 workspace.accountsPayable,
                 workspace.accountsReceivable,
                 workspace.paymentApprovals,
+                workspace.documents,
+                workspace.documentApprovals,
+                workspace.statementItems,
+                workspace.auditLogs,
+                workspace.notifications,
+                workspace.reports,
+                workspace.reportTemplates,
+                workspace.supportTickets,
               );
             }
           });
@@ -993,24 +1075,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     );
     localStorage.setItem("bpo_saas_approvals", JSON.stringify(approvals));
     localStorage.setItem("bpo_saas_documents", JSON.stringify(documents));
-    localStorage.setItem("bpo_saas_auditLogs", JSON.stringify(auditLogs));
-    localStorage.setItem(
-      "bpo_saas_notifications",
-      JSON.stringify(notifications),
-    );
-    localStorage.setItem("bpo_saas_reports", JSON.stringify(reports));
-    localStorage.setItem(
-      "bpo_saas_reportTemplates",
-      JSON.stringify(reportTemplates),
-    );
-    localStorage.setItem(
-      "bpo_saas_statementItems",
-      JSON.stringify(statementItems),
-    );
-    localStorage.setItem(
-      "bpo_saas_supportTickets",
-      JSON.stringify(supportTickets),
-    );
     localStorage.setItem(
       "bpo_saas_currentUserId",
       JSON.stringify(currentUserId),
@@ -1029,12 +1093,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     accountsReceivable,
     approvals,
     documents,
-    auditLogs,
-    notifications,
-    reports,
-    reportTemplates,
     statementItems,
-    supportTickets,
     currentUserId,
     activeCompanyId,
   ]);
@@ -1170,6 +1229,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         workspace.accountsPayable,
         workspace.accountsReceivable,
         workspace.paymentApprovals,
+        workspace.documents,
+        workspace.documentApprovals,
+        workspace.statementItems,
+        workspace.auditLogs,
+        workspace.notifications,
+        workspace.reports,
+        workspace.reportTemplates,
+        workspace.supportTickets,
       );
 
       const newLog: AuditLog = {
@@ -1255,6 +1322,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         workspace.accountsPayable,
         workspace.accountsReceivable,
         workspace.paymentApprovals,
+        workspace.documents,
+        workspace.documentApprovals,
+        workspace.statementItems,
+        workspace.auditLogs,
+        workspace.notifications,
+        workspace.reports,
+        workspace.reportTemplates,
+        workspace.supportTickets,
       );
       return { success: true };
     } catch (error) {
@@ -1268,81 +1343,58 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Create an audit log entry helper
+  // The backend now writes the canonical audit trail itself (in the same
+  // transaction as the action being audited). This client-side helper is kept
+  // as a no-op so the many existing call sites don't need to be touched.
   const createAuditLog = (
-    action: string,
-    entityType: string,
-    entityId: string,
-    companyId?: string,
-    prevData?: any,
-    nextData?: any,
-  ) => {
-    const targetCompany = companies.find(
-      (c) => c.id === (companyId || activeCompanyId),
-    );
-    const log: AuditLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      tenantId: targetCompany?.tenantId || activeTenant?.id || "t-1111-1111",
-      companyId: companyId || activeCompanyId,
-      companyName: targetCompany?.tradeName,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      role: currentUser.role,
-      action,
-      entityType,
-      entityId,
-      previousData: prevData ? JSON.stringify(prevData) : undefined,
-      nextData: nextData ? JSON.stringify(nextData) : undefined,
-      timestamp: new Date().toISOString(),
-      ipAddress: "177.34.82.109",
-      userAgent: navigator.userAgent,
-      origin: "BPO Dashboard Core",
-    };
-    setAuditLogs((prev) => [log, ...prev]);
+    _action: string,
+    _entityType: string,
+    _entityId: string,
+    _companyId?: string,
+    _prevData?: any,
+    _nextData?: any,
+  ) => {};
+
+  const refreshNotifications = () => {
+    if (!isAuthenticated) return;
+    void fetchNotifications()
+      .then(setNotifications)
+      .catch((error) =>
+        console.error("Failed to refresh notifications:", error instanceof Error ? error.message : error),
+      );
   };
 
-  // Add Notification helper
+  // Business actions that persist server-side already create their
+  // notification there too; this helper just re-fetches the up-to-date list
+  // instead of fabricating a local-only entry.
   const addNotification = (
-    title: string,
-    message: string,
-    type: Notification["type"],
-    userId?: string,
-    companyId: string = activeCompanyId,
+    _title: string,
+    _message: string,
+    _type: Notification["type"],
+    _userId?: string,
+    _companyId: string = activeCompanyId,
   ) => {
-    const notif: Notification = {
-      id: `not-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      companyId,
-      userId,
-      title,
-      message,
-      type,
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
-    setNotifications((prev) => [notif, ...prev]);
+    refreshNotifications();
   };
 
   const markNotificationRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === id &&
-        (!notification.userId || notification.userId === currentUser.id) &&
-        (!notification.companyId || notification.companyId === activeCompany?.id)
-          ? { ...notification, isRead: true }
-          : notification,
-      ),
-    );
+    void markPersistedNotificationRead(id)
+      .then((updated) =>
+        setNotifications((prev) =>
+          prev.map((notification) => (notification.id === updated.id ? updated : notification)),
+        ),
+      )
+      .catch((error) =>
+        console.error("Failed to mark notification as read:", error instanceof Error ? error.message : error),
+      );
   };
 
   const clearNotifications = () => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        (!notification.userId || notification.userId === currentUser.id) &&
-        (!notification.companyId || notification.companyId === activeCompany?.id)
-          ? { ...notification, isRead: true }
-          : notification,
-      ),
-    );
+    void markAllPersistedNotificationsRead()
+      .then(setNotifications)
+      .catch((error) =>
+        console.error("Failed to mark notifications as read:", error instanceof Error ? error.message : error),
+      );
   };
 
   const addMasterData = (
@@ -1673,6 +1725,29 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         .catch((error) => {
           console.error("Falha ao persistir decisão de aprovação:", error);
         });
+    } else if (
+      persistedTarget?.type === "DOCUMENTO" &&
+      canDecideApproval(persistedTarget)
+    ) {
+      void decidePersistedDocumentApproval(approvalId, decision, comment)
+        .then((result) => {
+          setApprovals((current) =>
+            current.map((approval) =>
+              approval.id === approvalId ? result.approval : approval,
+            ),
+          );
+          setDocuments((current) =>
+            current.map((document) =>
+              document.id === result.document.id ? result.document : document,
+            ),
+          );
+          if (decision === "Aprovada") {
+            launchDocument(result.document.id);
+          }
+        })
+        .catch((error) => {
+          console.error("Falha ao persistir decisão documental:", error);
+        });
     }
 
     setApprovals((prev) => {
@@ -1715,7 +1790,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
               : document,
           ),
         );
-        if (decision === "Aprovada") launchDocument(existing.relatedId);
       } else {
         setAccountsPayable((payables) =>
           payables.map((ap) => {
@@ -1802,7 +1876,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       approvalRecipientId: requestedApprovalRecipientId,
       ...documentData
     } = data;
-    const id = `doc-${Date.now()}`;
     const targetCompanyId =
       data.companyId &&
       (currentUser.role === "BPO_ADMIN" ||
@@ -1829,95 +1902,55 @@ export function BPOProvider({ children }: { children: ReactNode }) {
               user.companies?.includes(targetCompanyId),
           )
         : undefined;
-    const recipient = shareRecipient || approvalRecipient;
-    const newDoc: Document = {
+    void createPersistedDocument({
       ...documentData,
-      id,
       companyId: targetCompanyId,
-      uploadedAt: new Date().toISOString(),
-      uploadedById: currentUser.id,
-      uploadedByName: currentUser.name,
-      recipientId: recipient?.id,
-      recipientName: recipient?.name,
-      recipientRole: recipient?.role as Document["recipientRole"],
-      sharedById: recipient ? currentUser.id : undefined,
-      sharedByName: recipient ? currentUser.name : undefined,
-      sharedByRole: recipient
-        ? (currentUser.role as Document["sharedByRole"])
-        : undefined,
-      sharedAt: recipient ? new Date().toISOString() : undefined,
-      hash: Math.random().toString(16).substr(2, 32),
-      status: shareRecipient
-        ? "Compartilhado"
-        : approvalRecipient
-          ? "Aguardando Aprovação"
-          : "Aguardando Análise",
-      purpose: shareRecipient ? "VIEW_ONLY" : "PROCESSING",
+      recipientId: shareRecipient?.id,
+      approvalRecipientId: approvalRecipient?.id,
       origin: "Documento",
-      signedUrl: data.previewUrl,
-    };
-
-    setDocuments((prev) => [...prev, newDoc]);
-    if (shareRecipient) {
-      createAuditLog(
-        "COMPARTILHAR_DOCUMENTO_VISUALIZACAO",
-        "Document",
-        newDoc.id,
-        targetCompanyId,
-        null,
-        newDoc,
-      );
-      addNotification(
-        "Documento recebido do BPO",
-        `${currentUser.name} compartilhou "${newDoc.name}" somente para visualização.`,
-        "INFO",
-        shareRecipient.id,
-        targetCompanyId,
-      );
-    }
-    if (approvalRecipient) {
-      const approval = createDocumentApproval(newDoc, currentUser.role);
-      setApprovals((prev) => [...prev, approval]);
-      createAuditLog(
-        "ENVIAR_DOCUMENTO_APROVACAO",
-        "Approval",
-        approval.id,
-        targetCompanyId,
-        null,
-        approval,
-      );
-      addNotification(
-        "Documento analisado para aprovação",
-        `${currentUser.name} enviou "${newDoc.name}" para sua aprovação documental.`,
-        "ALERT",
-        approvalRecipient.id,
-        targetCompanyId,
-      );
-    }
-    createAuditLog(
-      "UPLOAD_DOCUMENTO",
-      "Document",
-      id,
-      targetCompanyId,
-      null,
-      newDoc,
-    );
-
-    addNotification(
-      shareRecipient
-        ? "Documento compartilhado"
-        : approvalRecipient
-          ? "Documento enviado para aprovação"
-          : "Documento enviado",
-      shareRecipient
-        ? `O arquivo "${data.name}" foi compartilhado para visualização com ${shareRecipient.name}.`
-        : approvalRecipient
-          ? `O arquivo "${data.name}" foi analisado e enviado para aprovação de ${approvalRecipient.name}.`
-          : `O arquivo "${data.name}" foi incluído com sucesso na categoria ${data.category}.`,
-      "SUCCESS",
-      currentUser.id,
-      targetCompanyId,
-    );
+    })
+      .then((result) => {
+        setDocuments((previous) => [...previous, result.document]);
+        if (result.approval) {
+          setApprovals((previous) => [...previous, result.approval!]);
+        }
+        if (shareRecipient) {
+          addNotification(
+            "Documento recebido do BPO",
+            `${currentUser.name} compartilhou "${result.document.name}" somente para visualização.`,
+            "INFO",
+            shareRecipient.id,
+            targetCompanyId,
+          );
+        }
+        if (approvalRecipient) {
+          addNotification(
+            "Documento analisado para aprovação",
+            `${currentUser.name} enviou "${result.document.name}" para sua aprovação documental.`,
+            "ALERT",
+            approvalRecipient.id,
+            targetCompanyId,
+          );
+        }
+        addNotification(
+          shareRecipient
+            ? "Documento compartilhado"
+            : approvalRecipient
+              ? "Documento enviado para aprovação"
+              : "Documento enviado",
+          shareRecipient
+            ? `O arquivo "${data.name}" foi compartilhado para visualização com ${shareRecipient.name}.`
+            : approvalRecipient
+              ? `O arquivo "${data.name}" foi analisado e enviado para aprovação de ${approvalRecipient.name}.`
+              : `O arquivo "${data.name}" foi incluído com sucesso na categoria ${data.category}.`,
+          "SUCCESS",
+          currentUser.id,
+          targetCompanyId,
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao salvar documento no banco:", error);
+      });
   };
 
   const deleteDocument = (id: string) => {
@@ -1929,62 +1962,53 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     )
       return;
 
-    createAuditLog(
-      "DELETAR_DOCUMENTO",
-      "Document",
-      id,
-      existing.companyId,
-      existing,
-      null,
-    );
-    setApprovals((items) =>
-      items.map((approval) =>
-        approval.relatedId === id && approval.status === "Pendente"
-          ? { ...approval, status: "Cancelada" }
-          : approval,
-      ),
-    );
-    setDocuments((prev) => prev.filter((document) => document.id !== id));
-
-    addNotification(
-      "Documento Removido",
-      "Um documento foi excluído do repositório da empresa.",
-      "INFO",
-      currentUser.id,
-      existing.companyId,
-    );
+    void deletePersistedDocument(id)
+      .then(() => {
+        setApprovals((items) =>
+          items.map((approval) =>
+            approval.relatedId === id && approval.status === "Pendente"
+              ? { ...approval, status: "Cancelada" }
+              : approval,
+          ),
+        );
+        setDocuments((previous) =>
+          previous.filter((document) => document.id !== id),
+        );
+        addNotification(
+          "Documento Removido",
+          "Um documento foi excluído do repositório da empresa.",
+          "INFO",
+          currentUser.id,
+          existing.companyId,
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao remover documento do banco:", error);
+      });
   };
 
   // --- BANK RECONCILIATION ---
   const importStatement = (bankAccountId: string) => {
     if (!hasPermission("reconciliation.execute")) return;
 
-    // Simulate file import by copying items from BANK_STATEMENTS_TO_IMPORT if not already present
     const sourceItems = BANK_STATEMENTS_TO_IMPORT[bankAccountId] || [];
-
-    setStatementItems((prev) => {
-      const current = prev[bankAccountId] || [];
-      const nonDuplicate = sourceItems.filter(
-        (s) => !current.some((c) => c.id === s.id),
-      );
-
-      const updated = [...current, ...nonDuplicate];
-      createAuditLog(
-        "IMPORTAR_EXTRATO",
-        "BankAccount",
-        bankAccountId,
-        activeCompanyId,
-        null,
-        { importedCount: nonDuplicate.length },
-      );
-      return { ...prev, [bankAccountId]: updated };
-    });
-
-    addNotification(
-      "Extrato Importado",
-      "O extrato bancário (OFX) foi importado e está pronto para conciliação.",
-      "SUCCESS",
-    );
+    void importPersistedStatement(bankAccountId, sourceItems)
+      .then((result) => {
+        setStatementItems((previous) => ({
+          ...previous,
+          [bankAccountId]: result.items,
+        }));
+        addNotification(
+          "Extrato Importado",
+          result.importedCount
+            ? `${result.importedCount} item(ns) do extrato foram gravados e estão prontos para conciliação.`
+            : "Nenhum item novo foi encontrado no extrato.",
+          result.importedCount ? "SUCCESS" : "INFO",
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao importar extrato no banco:", error);
+      });
   };
 
   const reconcileItemManually = (
@@ -2045,7 +2069,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       });
     const statementValue = Math.abs(statementItem.amount);
     const statementCents = toCents(statementValue);
-    const today = new Date().toISOString().split("T")[0];
     let expectedValue = 0;
     let isPartial = false;
 
@@ -2080,12 +2103,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           error: `Valor incompatível: o extrato possui ${formatMoney(statementValue)} e a conta a pagar exige ${formatMoney(expectedValue)}. Nenhuma alteração foi realizada.`,
         };
       }
-      payAccountPayable({
-        id: financialRecordId,
-        date: today,
-        bankAccountId,
-        amount: expectedValue,
-      });
     } else {
       const record = accountsReceivable.find(
         (item) => item.id === financialRecordId,
@@ -2121,8 +2138,39 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         };
       }
       isPartial = statementCents < toCents(expectedValue);
-      receiveAccountReceivable(financialRecordId, statementValue, today);
     }
+
+    void reconcilePersistedStatementItem(
+      bankAccountId,
+      statementItemId,
+      financialRecordId,
+      type,
+      notes,
+    )
+      .then((result) => {
+        setStatementItems((previous) => ({
+          ...previous,
+          [bankAccountId]: (previous[bankAccountId] || []).map((item) =>
+            item.id === result.item.id ? result.item : item,
+          ),
+        }));
+        return Promise.all([fetchFinancialEntries(), fetchFinancialSetup()]);
+      })
+      .then(([entries, setup]) => {
+        setAccountsPayable(entries.accountsPayable);
+        setAccountsReceivable(entries.accountsReceivable);
+        setApprovals((current) => [
+          ...current.filter((approval) => approval.type !== "PAGAMENTO"),
+          ...entries.paymentApprovals,
+        ]);
+        setBankAccounts(setup.bankAccounts);
+      })
+      .catch((error) => {
+        console.error("Falha ao conciliar item no banco:", error);
+        void fetchStatementEntries().then(({ statementItems: saved }) =>
+          setStatementItems(saved),
+        );
+      });
 
     setStatementItems((prev) => {
       const items = prev[bankAccountId] || [];
@@ -2171,91 +2219,29 @@ export function BPOProvider({ children }: { children: ReactNode }) {
 
   const autoReconcileBank = (bankAccountId: string) => {
     if (!hasPermission("reconciliation.execute")) return;
-
-    const items = statementItems[bankAccountId] || [];
-    let matchedCount = 0;
-
-    const updatedItems = items.map((item) => {
-      if (item.isReconciled) return item;
-
-      // Try matching accounts payable (negative statement amount)
-      if (item.amount < 0) {
-        const absoluteAmount = Math.abs(item.amount);
-        const match = accountsPayable.find(
-          (ap) =>
-            ap.bankAccountId === bankAccountId &&
-            Math.abs(ap.finalAmount - (ap.paidAmount || 0) - absoluteAmount) < 0.01 &&
-            !["Paga", "Cancelada"].includes(ap.status),
+    void autoReconcilePersistedStatements(bankAccountId)
+      .then((result) => {
+        setStatementItems((previous) => ({
+          ...previous,
+          [bankAccountId]: (previous[bankAccountId] || []).map(
+            (item) => result.items.find((saved) => saved.id === item.id) || item,
+          ),
+        }));
+        addNotification(
+          "Conciliação Automática",
+          `O sistema analisou os lançamentos e conciliou ${result.matchedCount} itens de forma inteligente.`,
+          "SUCCESS",
         );
-
-        if (match) {
-          matchedCount++;
-          // Immediately pay
-          const today = new Date().toISOString().split("T")[0];
-          setTimeout(
-            () =>
-              payAccountPayable({
-                id: match.id,
-                date: today,
-                bankAccountId,
-                amount: absoluteAmount,
-              }),
-            0,
-          );
-          return {
-            ...item,
-            isReconciled: true,
-            reconciliationStatus: "Conciliada" as const,
-            matchedTransactionId: match.id,
-          };
-        }
-      } else {
-        // Try matching accounts receivable (positive statement amount)
-        const match = accountsReceivable.find(
-          (ar) =>
-            ar.bankAccountId === bankAccountId &&
-            Math.abs(ar.amount - ar.receivedAmount - item.amount) < 0.01 &&
-            ar.status !== "Recebido",
-        );
-
-        if (match) {
-          matchedCount++;
-          const today = new Date().toISOString().split("T")[0];
-          setTimeout(
-            () =>
-              receiveAccountReceivable(
-                match.id,
-                match.amount - match.receivedAmount,
-                today,
-              ),
-            0,
-          );
-          return {
-            ...item,
-            isReconciled: true,
-            reconciliationStatus: "Conciliada" as const,
-            matchedTransactionId: match.id,
-          };
-        }
-      }
-
-      return item;
-    });
-
-    setStatementItems((prev) => ({ ...prev, [bankAccountId]: updatedItems }));
-    createAuditLog(
-      "AUTO_CONCILIACAO",
-      "BankAccount",
-      bankAccountId,
-      activeCompanyId,
-      null,
-      { matchedCount },
-    );
-    addNotification(
-      "Conciliação Automática",
-      `O sistema analisou os lançamentos e conciliou ${matchedCount} itens de forma inteligente.`,
-      "SUCCESS",
-    );
+        return Promise.all([fetchFinancialEntries(), fetchFinancialSetup()]);
+      })
+      .then(([entries, setup]) => {
+        setAccountsPayable(entries.accountsPayable);
+        setAccountsReceivable(entries.accountsReceivable);
+        setBankAccounts(setup.bankAccounts);
+      })
+      .catch((error) => {
+        console.error("Falha na conciliação automática:", error);
+      });
   };
 
   const ignoreStatementItem = (
@@ -2263,37 +2249,84 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     statementItemId: string,
     reason: string,
   ) => {
-    setStatementItems((prev) => {
-      const items = prev[bankAccountId] || [];
-      const updated = items.map((item) => {
-        if (item.id === statementItemId) {
-          return {
-            ...item,
-            isReconciled: true,
-            reconciliationStatus: "Ignorada" as const,
-          };
-        }
-        return item;
+    void ignorePersistedStatementItem(bankAccountId, statementItemId, reason)
+      .then((saved) => {
+        setStatementItems((previous) => ({
+          ...previous,
+          [bankAccountId]: (previous[bankAccountId] || []).map((item) =>
+            item.id === saved.id ? saved : item,
+          ),
+        }));
+        addNotification(
+          "Item de Extrato Ignorado",
+          "Lançamento bancário marcado como ignorado na conciliação.",
+          "INFO",
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao ignorar item do extrato:", error);
       });
-      return { ...prev, [bankAccountId]: updated };
-    });
-
-    createAuditLog(
-      "IGNORAR_ITEM_EXTRATO",
-      "StatementItem",
-      statementItemId,
-      activeCompanyId,
-      null,
-      { reason },
-    );
-    addNotification(
-      "Item de Extrato Ignorado",
-      "Lançamento bancário marcado como ignorado na conciliação.",
-      "INFO",
-    );
   };
 
   // --- REPORT GENERATION ---
+  // Report generation/rendering stays fully client-side (as before); only the
+  // record's metadata is persisted, in the background, to Postgres.
+  const persistReport = (record: ReportRecord) => {
+    const upload = record.fileContent
+      ? fetch("/api/documents/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: record.fileContent,
+            fileName: record.fileName || `${record.name}.pdf`,
+            mimeType: record.mimeType,
+          }),
+        })
+          .then((response) => response.json())
+          .catch(() => ({}))
+      : Promise.resolve<{ url?: string }>({});
+    void upload
+      .then((uploaded: { url?: string }) =>
+        createPersistedReport({
+          companyId: record.companyId,
+          name: record.name,
+          type: record.type,
+          filters: record.filters,
+          format: record.format,
+          fileName: record.fileName,
+          mimeType: record.mimeType,
+          objectKey: uploaded.url,
+          fileSizeBytes: record.fileContent ? Math.floor((record.fileContent.length * 3) / 4) : undefined,
+          templateId: record.templateId,
+          templateName: record.templateName,
+          recipientId: record.recipientId,
+          recipientName: record.recipientName,
+          recipientRole: record.recipientRole,
+        }),
+      )
+      .then((persisted) => {
+        setReports((prev) => prev.map((item) => (item.id === record.id ? { ...item, id: persisted.id } : item)));
+      })
+      .catch((error) => console.error("Failed to persist report:", error instanceof Error ? error.message : error));
+  };
+
+  const persistReportTemplate = (template: ReportTemplate) => {
+    void createPersistedReportTemplate({
+      companyId: template.companyId,
+      name: template.name,
+      modelType: template.modelType,
+      blocks: template.blocks,
+      filters: template.filters,
+      dreOptions: template.dreOptions,
+      notes: template.notes,
+      orientation: template.orientation,
+    })
+      .then((persisted) => {
+        setReportTemplates((prev) => prev.map((item) => (item.id === template.id ? { ...item, id: persisted.id } : item)));
+      })
+      .catch((error) => console.error("Failed to persist report template:", error instanceof Error ? error.message : error));
+  };
+
   const generateReport = (
     name: string,
     type: string,
@@ -2575,16 +2608,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     };
 
     setReports((prev) => [newReport, ...prev]);
-    const { fileContent: _fileContent, ...auditMetadata } = newReport;
-    void _fileContent;
-    createAuditLog(
-      "GERAR_RELATORIO",
-      "Report",
-      id,
-      activeCompanyId,
-      null,
-      { ...auditMetadata, rowCount: rows.length },
-    );
+    persistReport(newReport);
     addNotification(
       "Relatório Pronto",
       `O relatório "${name}" foi gerado em ${options.format} com ${rows.length} registro(s).`,
@@ -2771,16 +2795,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     };
 
     setReports((prev) => [newReport, ...prev]);
-    const { fileContent: _fileContent, ...auditMetadata } = newReport;
-    void _fileContent;
-    createAuditLog(
-      "GERAR_RELATORIO",
-      "Report",
-      id,
-      activeCompanyId,
-      null,
-      auditMetadata,
-    );
+    persistReport(newReport);
     addNotification(
       "Relatório Pronto",
       `O relatório "${name}" foi gerado em ${format === "EXCEL" ? "Excel" : "PDF"}.`,
@@ -2816,6 +2831,15 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           return updated;
         }),
       );
+      void updatePersistedReportTemplate(input.id, {
+        name: input.name,
+        modelType: input.modelType,
+        blocks: input.blocks,
+        filters: input.filters,
+        dreOptions: input.dreOptions,
+        notes: input.notes,
+        orientation: input.orientation,
+      }).catch((error) => console.error("Failed to update report template:", error instanceof Error ? error.message : error));
       return updated;
     }
     const newTemplate: ReportTemplate = {
@@ -2836,14 +2860,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       createdByName: currentUser.name,
     };
     setReportTemplates((prev) => [newTemplate, ...prev]);
-    createAuditLog(
-      "SALVAR_MODELO_RELATORIO",
-      "ReportTemplate",
-      newTemplate.id,
-      activeCompanyId,
-      null,
-      newTemplate,
-    );
+    persistReportTemplate(newTemplate);
     return newTemplate;
   };
 
@@ -2863,6 +2880,11 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       createdByName: currentUser.name,
     };
     setReportTemplates((prev) => [copy, ...prev]);
+    void duplicatePersistedReportTemplate(id)
+      .then((persisted) =>
+        setReportTemplates((prev) => prev.map((item) => (item.id === copy.id ? { ...item, id: persisted.id } : item))),
+      )
+      .catch((error) => console.error("Failed to duplicate report template:", error instanceof Error ? error.message : error));
   };
 
   const archiveReportTemplate = (id: string, archived: boolean) => {
@@ -2873,9 +2895,13 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           : template,
       ),
     );
+    void updatePersistedReportTemplate(id, { archived }).catch((error) =>
+      console.error("Failed to archive report template:", error instanceof Error ? error.message : error),
+    );
   };
 
   const toggleReportTemplateFavorite = (id: string) => {
+    const current = reportTemplates.find((template) => template.id === id);
     setReportTemplates((prev) =>
       prev.map((template) =>
         template.id === id
@@ -2887,10 +2913,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           : template,
       ),
     );
+    if (current) {
+      void updatePersistedReportTemplate(id, { favorite: !current.favorite }).catch((error) =>
+        console.error("Failed to update report template favorite:", error instanceof Error ? error.message : error),
+      );
+    }
   };
 
   const deleteReportTemplate = (id: string) => {
     setReportTemplates((prev) => prev.filter((template) => template.id !== id));
+    void deletePersistedReportTemplate(id).catch((error) =>
+      console.error("Failed to delete report template:", error instanceof Error ? error.message : error),
+    );
   };
 
   // --- ADMINISTRATION: COMPANIES & CLIENTS ---
@@ -3686,6 +3720,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    void updatePersistedDocument(id, {
+      ...safeUpdates,
+      amount: updated.amount,
+    })
+      .then((saved) => {
+        setDocuments((current) =>
+          current.map((item) => (item.id === saved.id ? saved : item)),
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao atualizar documento no banco:", error);
+      });
     setDocuments((current) =>
       current.map((item) => (item.id === id ? updated : item)),
     );
@@ -3747,6 +3793,23 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     }).then((result) => {
       setAccountsPayable((current) => [...current, ...result.payables]);
       if (result.approvals.length) setApprovals((current) => [...current, ...result.approvals]);
+      const launchedAt = new Date().toISOString();
+      void updatePersistedDocument(documentId, {
+        ...updates,
+        status: "Lançado",
+        entryType: document.entryType || "Conta a Pagar",
+        relatedEntityId: result.payables[0].id,
+        launchedById: currentUser.id,
+        launchedAt,
+      })
+        .then((saved) => {
+          setDocuments((current) =>
+            current.map((item) => (item.id === saved.id ? saved : item)),
+          );
+        })
+        .catch((error) => {
+          console.error("Falha ao vincular documento à conta a pagar:", error);
+        });
       setDocuments((current) =>
         current.map((item) =>
           item.id === documentId
@@ -3757,7 +3820,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
                 relatedEntityId: result.payables[0].id,
                 launchedById: currentUser.id,
                 launchedByName: currentUser.name,
-                launchedAt: new Date().toISOString(),
+                launchedAt,
               }
             : item,
         ),
@@ -3794,6 +3857,23 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       responsibleId: currentUser.id,
     }).then((receivables) => {
       setAccountsReceivable((current) => [...current, ...receivables]);
+      const launchedAt = new Date().toISOString();
+      void updatePersistedDocument(documentId, {
+        ...updates,
+        status: "Lançado",
+        entryType: "Conta a Receber",
+        relatedEntityId: receivables[0].id,
+        launchedById: currentUser.id,
+        launchedAt,
+      })
+        .then((saved) => {
+          setDocuments((current) =>
+            current.map((item) => (item.id === saved.id ? saved : item)),
+          );
+        })
+        .catch((error) => {
+          console.error("Falha ao vincular documento à conta a receber:", error);
+        });
       setDocuments((current) =>
         current.map((item) =>
           item.id === documentId
@@ -3804,7 +3884,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
                 relatedEntityId: receivables[0].id,
                 launchedById: currentUser.id,
                 launchedByName: currentUser.name,
-                launchedAt: new Date().toISOString(),
+                launchedAt,
               }
             : item,
         ),
@@ -3856,6 +3936,24 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           entityId: id,
         },
       );
+      const launchedAt = new Date().toISOString();
+      void updatePersistedDocument(id, {
+        ...updates,
+        status: "Lançado",
+        entryType: "Transferência",
+        launchedById: currentUser.id,
+        launchedAt,
+      })
+        .then((saved) => {
+          setDocuments((currentDocuments) =>
+            currentDocuments.map((item) =>
+              item.id === saved.id ? saved : item,
+            ),
+          );
+        })
+        .catch((error) => {
+          console.error("Falha ao persistir transferência do documento:", error);
+        });
       setDocuments((prev) =>
         prev.map((item) =>
           item.id === id
@@ -3865,7 +3963,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
                 status: "Lançado",
                 launchedById: currentUser.id,
                 launchedByName: currentUser.name,
-                launchedAt: new Date().toISOString(),
+                launchedAt,
               }
             : item,
         ),
@@ -3914,69 +4012,32 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       !recipient
     )
       return false;
-    const approval: Approval = {
-      id: `apv-doc-${Date.now()}`,
-      companyId: document.companyId,
-      type: "DOCUMENTO",
-      relatedId: document.id,
-      description: document.description || document.aiSummary || document.name,
-      amount: document.amount || 0,
-      dueDate: document.dueDate || new Date().toISOString().slice(0, 10),
-      requesterId: currentUser.id,
-      requesterName: currentUser.name,
-      requesterRole: currentUser.role,
-      recipientId: recipient.id,
-      recipientName: recipient.name,
-      recipientRole: recipient.role as Approval["recipientRole"],
-      dueDateApproval:
-        document.dueDate || new Date().toISOString().slice(0, 10),
-      status: "Pendente",
-      attachmentUrl: document.signedUrl,
-      attachmentName: document.name,
-      createdAt: new Date().toISOString(),
-      history: [],
-    };
-    setApprovals((prev) => [...prev, approval]);
-    setDocuments((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              ...updates,
-              status: "Aguardando Aprovação",
-              recipientId: recipient.id,
-              recipientName: recipient.name,
-              recipientRole: recipient.role as Document["recipientRole"],
-              sharedById: currentUser.id,
-              sharedByName: currentUser.name,
-              sharedByRole: currentUser.role as Document["sharedByRole"],
-              sharedAt: approval.createdAt,
-            }
-          : item,
-      ),
-    );
-    createAuditLog(
-      "ENVIAR_DOCUMENTO_APROVACAO",
-      "Approval",
-      approval.id,
-      document.companyId,
-      null,
-      approval,
-    );
-    addNotification(
-      "Documento recebido do BPO",
-      `${currentUser.name} enviou "${document.name}" para sua aprovação.`,
-      "ALERT",
-      recipient.id,
-      document.companyId,
-    );
-    addNotification(
-      "Documento enviado para aprovação",
-      `O pré-lançamento de "${document.name}" foi enviado para ${recipient.name}.`,
-      "SUCCESS",
-      currentUser.id,
-      document.companyId,
-    );
+    void requestPersistedDocumentApproval(id, recipient.id, { ...updates })
+      .then((result) => {
+        setApprovals((previous) => [...previous, result.approval]);
+        setDocuments((previous) =>
+          previous.map((item) =>
+            item.id === result.document.id ? result.document : item,
+          ),
+        );
+        addNotification(
+          "Documento recebido do BPO",
+          `${currentUser.name} enviou "${document.name}" para sua aprovação.`,
+          "ALERT",
+          recipient.id,
+          document.companyId,
+        );
+        addNotification(
+          "Documento enviado para aprovação",
+          `O pré-lançamento de "${document.name}" foi enviado para ${recipient.name}.`,
+          "SUCCESS",
+          currentUser.id,
+          document.companyId,
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao solicitar aprovação documental:", error);
+      });
     return true;
   };
 
@@ -4075,6 +4136,15 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    void updatePersistedDocument(id, { status: "Cancelado" })
+      .then((saved) => {
+        setDocuments((current) =>
+          current.map((item) => (item.id === saved.id ? saved : item)),
+        );
+      })
+      .catch((error) => {
+        console.error("Falha ao cancelar documento no banco:", error);
+      });
     setDocuments((current) =>
       current.map((item) =>
         item.id === id ? { ...item, status: "Cancelado" } : item,
@@ -4113,9 +4183,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   ) => {
     if (!["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)) return;
     const now = new Date().toISOString();
-    const documentId = `doc-manual-${Date.now()}`;
-    const document: Document = {
-      id: documentId,
+    const draftDocument: Document = {
+      id: "",
       companyId: activeCompanyId,
       category: data.category || "Outros",
       name: data.name || `Lançamento avulso - ${data.supplier}`,
@@ -4145,6 +4214,10 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       launchedByName: currentUser.name,
       launchedAt: now,
     };
+    void createPersistedDocument({ ...draftDocument })
+      .then(({ document: persistedDocument }) => {
+    const document = persistedDocument;
+    const documentId = persistedDocument.id;
     setDocuments((prev) => [...prev, document]);
     if (document.entryType === "Conta a Receber") {
       persistReceivablesFromDocument(document, documentId, {}, "Lançamento avulso.");
@@ -4189,6 +4262,20 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         null,
         document,
       );
+      void updatePersistedDocument(documentId, {
+        status: "Lançado",
+        entryType: "Transferência",
+        launchedById: currentUser.id,
+        launchedAt: now,
+      })
+        .then((saved) => {
+          setDocuments((current) =>
+            current.map((item) => (item.id === saved.id ? saved : item)),
+          );
+        })
+        .catch((error) => {
+          console.error("Falha ao finalizar lançamento avulso:", error);
+        });
     } else {
       createPayableFromDocument(documentId, document);
     }
@@ -4205,6 +4292,10 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       `O lançamento de "${data.supplier}" entrou diretamente no financeiro.`,
       "SUCCESS",
     );
+      })
+      .catch((error) => {
+        console.error("Falha ao criar lançamento avulso no banco:", error);
+      });
   };
 
   // --- SUPPORT REQUESTS / BPO SERVICE DESK ---
@@ -4235,19 +4326,11 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     };
 
     setSupportTickets((previous) => [ticket, ...previous]);
-    createAuditLog(
-      "ABRIR_REQUERIMENTO_BPO",
-      "SupportTicket",
-      id,
-      activeCompany.id,
-      null,
-      ticket,
-    );
-    addNotification(
-      "Novo requerimento ao BPO",
-      `${protocol} — ${data.subject}`,
-      "INFO",
-    );
+    void createPersistedSupportTicket({ companyId: activeCompany.id, ...data })
+      .then((persisted) =>
+        setSupportTickets((prev) => prev.map((item) => (item.id === id ? persisted : item))),
+      )
+      .catch((error) => console.error("Failed to create support ticket:", error instanceof Error ? error.message : error));
     return id;
   };
 
@@ -4258,45 +4341,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   ) => {
     const message = content.trim();
     if (!message && attachments.length === 0) return;
+    const ticket = supportTickets.find((item) => item.id === ticketId);
+    const isAuthorized =
+      ticket && (currentUser.role === "BPO_ADMIN" || ticket.requesterId === currentUser.id);
+    if (!ticket || !isAuthorized) return;
 
-    setSupportTickets((previous) =>
-      previous.map((ticket) => {
-        const isAuthorized =
-          currentUser.role === "BPO_ADMIN" ||
-          ticket.requesterId === currentUser.id;
-        if (ticket.id !== ticketId || !isAuthorized) return ticket;
-
-        const updated: SupportTicket = {
-          ...ticket,
-          status:
-            currentUser.role === "BPO_ADMIN" && ticket.status === "ABERTO"
-              ? "EM_ATENDIMENTO"
-              : ticket.status,
-          updatedAt: new Date().toISOString(),
-          messages: [
-            ...ticket.messages,
-            {
-              id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              authorId: currentUser.id,
-              authorName: currentUser.name,
-              authorRole: currentUser.role,
-              content: message,
-              attachments,
-              createdAt: new Date().toISOString(),
-            },
-          ],
-        };
-        createAuditLog(
-          "RESPONDER_REQUERIMENTO_BPO",
-          "SupportTicket",
-          ticketId,
-          ticket.companyId,
-          undefined,
-          { message },
-        );
-        return updated;
-      }),
-    );
+    void addPersistedSupportMessage(ticketId, message, attachments)
+      .then(({ ticket: updatedTicket }) =>
+        setSupportTickets((previous) =>
+          previous.map((item) => (item.id === ticketId ? updatedTicket : item)),
+        ),
+      )
+      .catch((error) => console.error("Failed to send support message:", error instanceof Error ? error.message : error));
   };
 
   const updateSupportTicket = (
@@ -4308,35 +4364,13 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     },
   ) => {
     if (currentUser.role !== "BPO_ADMIN") return;
-
-    setSupportTickets((previous) =>
-      previous.map((ticket) => {
-        if (ticket.id !== ticketId) return ticket;
-        const assignee = updates.assignedToId
-          ? users.find(
-              (user) =>
-                user.id === updates.assignedToId &&
-                ["BPO_ADMIN", "BPO_TEAM"].includes(user.role),
-            )
-          : undefined;
-        const updated: SupportTicket = {
-          ...ticket,
-          ...updates,
-          assignedToId: assignee?.id,
-          assignedToName: assignee?.name,
-          updatedAt: new Date().toISOString(),
-        };
-        createAuditLog(
-          "ATUALIZAR_REQUERIMENTO_BPO",
-          "SupportTicket",
-          ticketId,
-          ticket.companyId,
-          ticket,
-          updated,
-        );
-        return updated;
-      }),
-    );
+    void updatePersistedSupportTicket(ticketId, updates)
+      .then((updated) =>
+        setSupportTickets((previous) =>
+          previous.map((item) => (item.id === ticketId ? updated : item)),
+        ),
+      )
+      .catch((error) => console.error("Failed to update support ticket:", error instanceof Error ? error.message : error));
   };
 
   const deleteSupportTicket = (ticketId: string): boolean => {
@@ -4345,26 +4379,11 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     const ticket = supportTickets.find((item) => item.id === ticketId);
     if (!ticket) return false;
 
-    createAuditLog(
-      "EXCLUIR_REQUERIMENTO_BPO",
-      "SupportTicket",
-      ticketId,
-      ticket.companyId,
-      {
-        protocol: ticket.protocol,
-        subject: ticket.subject,
-        requesterId: ticket.requesterId,
-        status: ticket.status,
-        messageCount: ticket.messages.length,
-        attachmentCount: ticket.messages.reduce(
-          (total, message) => total + (message.attachments?.length || 0),
-          0,
-        ),
-      },
-      null,
-    );
     setSupportTickets((previous) =>
       previous.filter((item) => item.id !== ticketId),
+    );
+    void deletePersistedSupportTicket(ticketId).catch((error) =>
+      console.error("Failed to delete support ticket:", error instanceof Error ? error.message : error),
     );
     return true;
   };

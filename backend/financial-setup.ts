@@ -1,5 +1,6 @@
 import { Prisma } from "./generated/prisma/client.js";
 import { getDatabaseClient } from "./database.js";
+import { writeNotification } from "./notifications.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 
@@ -276,6 +277,12 @@ export async function createBankAccount(
         null,
         mapBankAccount(account),
       );
+      await writeNotification(transaction, {
+        companyId: company.id,
+        title: "Conta bancária cadastrada",
+        message: `${account.bankName} foi cadastrada.`,
+        type: "INFO",
+      });
       return mapBankAccount(account);
     });
   } catch (error) {
@@ -333,6 +340,12 @@ export async function updateBankAccount(
         mapBankAccount(existing),
         mapBankAccount(updated),
       );
+      await writeNotification(transaction, {
+        companyId: existing.company.id,
+        title: "Conta bancária atualizada",
+        message: `${updated.bankName} foi atualizada.`,
+        type: "INFO",
+      });
       return mapBankAccount(updated);
     });
   } catch (error) {
@@ -374,6 +387,12 @@ export async function deactivateBankAccount(
       mapBankAccount(existing),
       null,
     );
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Conta bancária desativada",
+      message: `${existing.bankName} foi desativada.`,
+      type: "WARNING",
+    });
   });
 }
 
@@ -460,6 +479,12 @@ export async function adjustBankAccountBalance(
         sourceEntityId: optionalText(body?.meta?.entityId, 160),
       },
     );
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Saldo bancário atualizado",
+      message: `Saldo de ${updated.bankName} ajustado.`,
+      type: "INFO",
+    });
     return mapBankAccount(updated);
   });
 }
@@ -523,6 +548,12 @@ export async function adjustBankAccountBalances(
           sourceEntityId: optionalText(body?.meta?.entityId, 160),
         },
       );
+      await writeNotification(transaction, {
+        companyId: company.id,
+        title: "Saldo bancário atualizado",
+        message: `Saldo de ${updated.bankName} ajustado.`,
+        type: "INFO",
+      });
       updatedAccounts.push(mapBankAccount(updated));
     }
     return updatedAccounts;
@@ -572,6 +603,12 @@ export async function createMasterData(
         inactive ? mapMasterData(inactive) : null,
         mapMasterData(item),
       );
+      await writeNotification(transaction, {
+        companyId: company.id,
+        title: "Cadastro mestre atualizado",
+        message: `${item.name} foi ${inactive ? "reativado" : "criado"} nos cadastros.`,
+        type: "INFO",
+      });
       return mapMasterData(item);
     });
   } catch (error) {
@@ -641,6 +678,12 @@ export async function updateMasterData(
         mapMasterData(existing),
         mapMasterData(updated),
       );
+      await writeNotification(transaction, {
+        companyId: existing.company.id,
+        title: "Cadastro mestre atualizado",
+        message: `${updated.name} foi atualizado.`,
+        type: "INFO",
+      });
       return mapMasterData(updated);
     });
   } catch (error) {
@@ -679,5 +722,11 @@ export async function deactivateMasterData(
       mapMasterData(existing),
       null,
     );
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Cadastro mestre desativado",
+      message: `${existing.name} foi desativado.`,
+      type: "WARNING",
+    });
   });
 }

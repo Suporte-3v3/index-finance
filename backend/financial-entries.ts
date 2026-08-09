@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "./generated/prisma/client.js";
 import { getDatabaseClient } from "./database.js";
+import { writeNotification } from "./notifications.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 
@@ -531,6 +532,12 @@ export async function createPayables(profile: FinancialEntriesProfile, body: any
       });
       payables.push(payable);
       await audit(transaction, profile, company, "CRIAR_CONTA_PAGAR", "AccountPayable", payable.id, null, mapPayable(payable));
+      await writeNotification(transaction, {
+        companyId: company.id,
+        title: "Nova conta a pagar",
+        message: `${payable.description} cadastrada para ${payable.supplierName}.`,
+        type: "INFO",
+      });
       if (needsApproval) {
         const approval = await transaction.approval.create({
           data: {
@@ -591,6 +598,12 @@ export async function updatePayable(profile: FinancialEntriesProfile, payableId:
   return database.$transaction(async (transaction) => {
     const updated = await transaction.accountPayable.update({ where: { id: existing.id }, data, include: payableInclude });
     await audit(transaction, profile, existing.company, "ATUALIZAR_CONTA_PAGAR", "AccountPayable", existing.id, mapPayable(existing), mapPayable(updated));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Conta a pagar atualizada",
+      message: `${updated.description} foi atualizada.`,
+      type: "INFO",
+    });
     return mapPayable(updated);
   });
 }
@@ -616,6 +629,12 @@ export async function cancelPayable(profile: FinancialEntriesProfile, payableId:
       data: { status: "CANCELED" },
     });
     await audit(transaction, profile, existing.company, "CANCELAR_CONTA_PAGAR", "AccountPayable", existing.id, mapPayable(existing), mapPayable(updated));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Conta a pagar cancelada",
+      message: `${updated.description} foi cancelada.`,
+      type: "WARNING",
+    });
     return mapPayable(updated);
   });
 }
@@ -634,6 +653,12 @@ export async function schedulePayable(profile: FinancialEntriesProfile, payableI
   return database.$transaction(async (transaction) => {
     const updated = await transaction.accountPayable.update({ where: { id: existing.id }, data: { status: "SCHEDULED" }, include: payableInclude });
     await audit(transaction, profile, existing.company, "AGENDAR_CONTA_PAGAR", "AccountPayable", existing.id, mapPayable(existing), mapPayable(updated));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Pagamento agendado",
+      message: `${updated.description} foi agendada para pagamento.`,
+      type: "INFO",
+    });
     return mapPayable(updated);
   });
 }
@@ -697,6 +722,12 @@ export async function payPayable(profile: FinancialEntriesProfile, payableId: st
     const updatedBank = await transaction.bankAccount.update({ where: { id: bankAccountId }, data: { balance: { decrement: paidNow } } });
     const updated = await transaction.accountPayable.findUniqueOrThrow({ where: { id }, include: payableInclude });
     await audit(transaction, profile, initial.company, "CONFIRMAR_PAGAMENTO", "AccountPayable", id, mapPayable(payable), mapPayable(updated));
+    await writeNotification(transaction, {
+      companyId: initial.company.id,
+      title: "Pagamento confirmado",
+      message: `Pagamento de ${updated.description} confirmado.`,
+      type: "SUCCESS",
+    });
     return { payable: mapPayable(updated), bankAccount: mapBankAccount(updatedBank) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -746,6 +777,12 @@ export async function createReceivables(profile: FinancialEntriesProfile, body: 
       });
       receivables.push(item);
       await audit(transaction, profile, company, "CRIAR_CONTA_RECEBER", "AccountReceivable", item.id, null, mapReceivable(item));
+      await writeNotification(transaction, {
+        companyId: company.id,
+        title: "Nova conta a receber",
+        message: `${item.description} cadastrada para ${item.customerName}.`,
+        type: "INFO",
+      });
     }
     return receivables.map(mapReceivable);
   });
@@ -783,6 +820,12 @@ export async function updateReceivable(profile: FinancialEntriesProfile, receiva
   return database.$transaction(async (transaction) => {
     const updated = await transaction.accountReceivable.update({ where: { id: existing.id }, data });
     await audit(transaction, profile, existing.company, "ATUALIZAR_CONTA_RECEBER", "AccountReceivable", existing.id, mapReceivable(existing), mapReceivable(updated));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Conta a receber atualizada",
+      message: `${updated.description} foi atualizada.`,
+      type: "INFO",
+    });
     return mapReceivable(updated);
   });
 }
@@ -800,6 +843,12 @@ export async function cancelReceivable(profile: FinancialEntriesProfile, receiva
   return database.$transaction(async (transaction) => {
     const updated = await transaction.accountReceivable.update({ where: { id: existing.id }, data: { status: "CANCELED", canceledAt: new Date() } });
     await audit(transaction, profile, existing.company, "CANCELAR_CONTA_RECEBER", "AccountReceivable", existing.id, mapReceivable(existing), mapReceivable(updated));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      title: "Conta a receber cancelada",
+      message: `${updated.description} foi cancelada.`,
+      type: "WARNING",
+    });
     return mapReceivable(updated);
   });
 }
@@ -848,6 +897,12 @@ export async function receiveReceivable(profile: FinancialEntriesProfile, receiv
     });
     const updatedBank = await transaction.bankAccount.update({ where: { id: bank.id }, data: { balance: { increment: receivedNow } } });
     await audit(transaction, profile, initial.company, "RECEBER_CONTA_RECEBER", "AccountReceivable", id, mapReceivable(receivable), mapReceivable(updated));
+    await writeNotification(transaction, {
+      companyId: initial.company.id,
+      title: "Recebimento confirmado",
+      message: `Recebimento de ${updated.description} confirmado.`,
+      type: "SUCCESS",
+    });
     return { receivable: mapReceivable(updated), bankAccount: mapBankAccount(updatedBank) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -889,6 +944,15 @@ export async function decidePaymentApproval(
     });
     const updatedApproval = await transaction.approval.findUniqueOrThrow({ where: { id: existing.id }, include: approvalInclude });
     await audit(transaction, profile, existing.company, "DECIDIR_APROVACAO_PAGAMENTO", "Approval", existing.id, mapApproval(existing), mapApproval(updatedApproval));
+    await writeNotification(transaction, {
+      companyId: existing.company.id,
+      userId: existing.requesterId,
+      title: "Aprovação de pagamento decidida",
+      message: `A aprovação de ${existing.description} foi ${
+        decision === "APPROVED" ? "aprovada" : decision === "REJECTED" ? "rejeitada" : "marcada para ajuste"
+      }.`,
+      type: decision === "APPROVED" ? "SUCCESS" : decision === "REJECTED" ? "ALERT" : "WARNING",
+    });
     return { approval: mapApproval(updatedApproval), payable: mapPayable(payable) };
   });
 }

@@ -92,10 +92,27 @@ export function getAuth() {
               : false;
           },
           after: async (session) => {
-            await database.user.update({
+            const user = await database.user.update({
               where: { id: session.userId },
               data: { lastLoginAt: new Date() },
+              include: {
+                tenantMemberships: { select: { tenantId: true }, take: 1 },
+              },
             });
+            const tenantId = user.tenantMemberships[0]?.tenantId;
+            if (tenantId) {
+              await database.auditLog.create({
+                data: {
+                  tenantId,
+                  userId: user.id,
+                  action: "LOGIN",
+                  entityType: "User",
+                  entityId: user.id,
+                  ipAddress: session.ipAddress || null,
+                  userAgent: session.userAgent || null,
+                },
+              });
+            }
           },
         },
       },
