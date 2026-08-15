@@ -112,6 +112,10 @@ import {
   updatePersistedReceivable,
 } from "../services/financialEntries";
 import {
+  ImportEntriesResult,
+  submitImportEntries,
+} from "../services/financialEntriesImport";
+import {
   createPersistedDocument,
   decidePersistedDocumentApproval,
   deletePersistedDocument,
@@ -378,6 +382,10 @@ interface BPOContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   cancelAccountReceivable: (id: string) => Promise<{ success: boolean; error?: string }>;
   receiveAccountReceivable: (id: string, amount: number, date: string) => Promise<{ success: boolean; error?: string }>;
+  importFinancialEntries: (
+    companyId: string,
+    entries: unknown[],
+  ) => Promise<{ success: boolean; result?: ImportEntriesResult; error?: string }>;
 
   decideApproval: (
     approvalId: string,
@@ -1696,6 +1704,40 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         return { success: true };
       })
       .catch((error) => ({ success: false, error: error instanceof Error ? error.message : "Não foi possível registrar o recebimento." }));
+  };
+
+  const importFinancialEntries: BPOContextType["importFinancialEntries"] = async (
+    companyId,
+    entries,
+  ) => {
+    if (!hasPermission("accounts-payable.create") && !hasPermission("accounts-receivable.create")) {
+      return { success: false, error: "Você não tem permissão para importar lançamentos." };
+    }
+    try {
+      const result = await submitImportEntries(companyId, entries);
+      const newPayables = result.results.flatMap((item) =>
+        item.success && item.type === "PAGAR" ? [item.payable] : [],
+      );
+      const newReceivables = result.results.flatMap((item) =>
+        item.success && item.type === "RECEBER" ? [item.receivable] : [],
+      );
+      const newDocuments = result.results.flatMap((item) =>
+        item.success && item.document ? [item.document] : [],
+      );
+      if (newPayables.length) setAccountsPayable((current) => [...current, ...newPayables]);
+      if (newReceivables.length) setAccountsReceivable((current) => [...current, ...newReceivables]);
+      if (newDocuments.length) setDocuments((current) => [...current, ...newDocuments]);
+      addNotification(
+        "Importação de Lançamentos",
+        result.failedCount
+          ? `${result.createdCount} lançamento(s) importado(s), ${result.failedCount} com falha.`
+          : `${result.createdCount} lançamento(s) importado(s) com sucesso.`,
+        result.failedCount ? "WARNING" : "SUCCESS",
+      );
+      return { success: true, result };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Não foi possível importar os lançamentos." };
+    }
   };
 
   // --- APPROVALS FLOW ---
@@ -4437,6 +4479,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         updateAccountReceivable,
         cancelAccountReceivable,
         receiveAccountReceivable,
+        importFinancialEntries,
         decideApproval,
         uploadDocument,
         deleteDocument,

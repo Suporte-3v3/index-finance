@@ -49,6 +49,7 @@ import {
   createPayables,
   createReceivables,
   decidePaymentApproval,
+  importFinancialEntries,
   listFinancialEntries,
   payPayable,
   receiveReceivable,
@@ -396,6 +397,13 @@ app.get('/api/financial-entries', async (_request, response) => {
     response.json(await listFinancialEntries(response.locals.authProfile));
   } catch (error) {
     financialEntriesError(response, error, 'Não foi possível carregar os títulos financeiros.');
+  }
+});
+app.post('/api/financial-entries/import', async (request, response) => {
+  try {
+    response.status(201).json(await importFinancialEntries(response.locals.authProfile, request.body));
+  } catch (error) {
+    financialEntriesError(response, error, 'Não foi possível importar os lançamentos.');
   }
 });
 

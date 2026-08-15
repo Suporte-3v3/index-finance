@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "./generated/prisma/client.js";
 import { getDatabaseClient } from "./database.js";
 import { writeNotification } from "./notifications.js";
+import { createDocument, updateDocument } from "./document-records.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 
@@ -955,4 +956,113 @@ export async function decidePaymentApproval(
     });
     return { approval: mapApproval(updatedApproval), payable: mapPayable(payable) };
   });
+}
+
+type MappedPayable = Awaited<ReturnType<typeof createPayables>>["payables"][number];
+type MappedReceivable = Awaited<ReturnType<typeof createReceivables>>[number];
+type MappedDocument = Awaited<ReturnType<typeof updateDocument>>;
+
+export interface ImportEntriesResult {
+  total: number;
+  createdCount: number;
+  failedCount: number;
+  results: Array<
+    | { row: number; success: true; type: "PAGAR"; payable: MappedPayable; document?: MappedDocument }
+    | { row: number; success: true; type: "RECEBER"; receivable: MappedReceivable; document?: MappedDocument }
+    | { row: number; success: false; error: string }
+  >;
+}
+
+// Espelha, em uma única chamada de servidor, o mesmo fluxo de 3 passos que o
+// "Novo lançamento avulso" da tela de Lançamentos faz no browser (documento
+// placeholder -> título financeiro -> documento marcado como "Lançado"), para
+// que cada linha importada apareça normalmente naquela fila/histórico.
+async function registerDocumentForEntry(
+  profile: FinancialEntriesProfile,
+  companyId: string,
+  entry: any,
+  entryType: "Conta a Pagar" | "Conta a Receber",
+  entryId: string,
+): Promise<MappedDocument | undefined> {
+  const partyName = entryType === "Conta a Pagar" ? entry?.supplier : entry?.customer;
+  try {
+    const { document } = await createDocument(profile, {
+      companyId,
+      category: "Outros",
+      name: `Lançamento avulso (importação) - ${partyName || "planilha"}`,
+      description: entry?.description,
+      competenceMonth: entry?.competenceMonth,
+      mimeType: "application/x-manual-entry",
+      fileSize: "Sem anexo",
+      supplier: partyName,
+      dueDate: entry?.dueDate,
+      documentNumber: entry?.documentNumber,
+      amount: entry?.amount,
+      entryType,
+      costCenter: entry?.costCenter,
+      bankAccountId: entry?.bankAccountId,
+      paymentMethod: entry?.paymentMethod,
+      recurrence: entry?.recurrence || "Nenhuma",
+      notes: entry?.notes || "Lançamento importado via planilha.",
+      origin: "Manual",
+    });
+    return await updateDocument(profile, document.id, {
+      status: "Lançado",
+      relatedEntityId: entryId,
+      entryType,
+      launchedById: profile.id,
+      launchedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Falha ao registrar o lançamento importado na fila de Lançamentos:", error instanceof Error ? error.message : error);
+    return undefined;
+  }
+}
+
+export async function importFinancialEntries(
+  profile: FinancialEntriesProfile,
+  body: any,
+): Promise<ImportEntriesResult> {
+  const companyId = uuid(body?.companyId, "Empresa")!;
+  const entries = Array.isArray(body?.entries) ? body.entries : [];
+  if (!entries.length) throw new FinancialEntriesApiError("Nenhum lançamento para importar.");
+  if (entries.length > 500) throw new FinancialEntriesApiError("Limite de 500 lançamentos por importação.");
+
+  const results: ImportEntriesResult["results"] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const row = Number(entry?.row) || index + 1;
+    try {
+      if (entry?.type === "PAGAR") {
+        const { payables } = await createPayables(profile, { ...entry, companyId });
+        const created = payables[0];
+        const document = created
+          ? await registerDocumentForEntry(profile, companyId, entry, "Conta a Pagar", created.id)
+          : undefined;
+        results.push({ row, success: true, type: "PAGAR", payable: created, document });
+      } else if (entry?.type === "RECEBER") {
+        const receivables = await createReceivables(profile, { ...entry, companyId });
+        const created = receivables[0];
+        const document = created
+          ? await registerDocumentForEntry(profile, companyId, entry, "Conta a Receber", created.id)
+          : undefined;
+        results.push({ row, success: true, type: "RECEBER", receivable: created, document });
+      } else {
+        results.push({ row, success: false, error: "Tipo inválido (use A Pagar ou A Receber)." });
+      }
+    } catch (error) {
+      results.push({
+        row,
+        success: false,
+        error: error instanceof FinancialEntriesApiError ? error.message : "Erro inesperado ao importar esta linha.",
+      });
+    }
+  }
+
+  return {
+    total: entries.length,
+    createdCount: results.filter((result) => result.success).length,
+    failedCount: results.filter((result) => !result.success).length,
+    results,
+  };
 }
