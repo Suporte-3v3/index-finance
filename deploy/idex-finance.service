@@ -1,0 +1,19 @@
+[Unit]
+Description=Idex Finance app server
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/index-finance
+EnvironmentFile=/home/ubuntu/index-finance/.env.local
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
