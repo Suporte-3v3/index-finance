@@ -447,6 +447,29 @@ function BPOWorkspaceShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("bpo_saas_sidebar_collapsed") === "true",
   );
+  // Grupos do menu (Visão Geral / Operação Financeira / Gestão) que o usuário recolheu manualmente.
+  const [collapsedNavGroups, setCollapsedNavGroups] = useState<Set<string>>(() => {
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem("bpo_saas_collapsed_nav_groups") || "[]",
+      );
+      return new Set(Array.isArray(stored) ? stored : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleNavGroup = (group: string) => {
+    setCollapsedNavGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      localStorage.setItem(
+        "bpo_saas_collapsed_nav_groups",
+        JSON.stringify([...next]),
+      );
+      return next;
+    });
+  };
   // BPO Admin starts in the global multi-company view; per-company modules only surface once a company is entered.
   const [bpoInCompanyContext, setBpoInCompanyContext] = useState(false);
   const isBpoGlobalMode =
@@ -977,50 +1000,67 @@ function BPOWorkspaceShell({
               const group = NAV_GROUP[item.id] ?? null;
               const showGroupHeader = group !== null && group !== previousNavGroup;
               previousNavGroup = group;
+              const isGroupCollapsed =
+                group !== null && !sidebarCollapsed && collapsedNavGroups.has(group);
+
+              if (isGroupCollapsed && !showGroupHeader) return null;
 
               return (
                 <React.Fragment key={item.id}>
                   {showGroupHeader && (
-                    <span
+                    <button
+                      type="button"
+                      onClick={() => toggleNavGroup(group as string)}
+                      aria-expanded={!isGroupCollapsed}
                       className={cn(
                         sidebarCollapsed ? "md:hidden" : "",
-                        "text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider px-3 block pt-4 pb-1",
+                        "w-full flex items-center justify-between gap-2 px-3 pt-4 pb-1 cursor-pointer group",
                       )}
                     >
-                      {group}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleSwitchView(item.view)}
-                    title={sidebarCollapsed ? item.label : undefined}
-                    className={cn(
-                      "relative w-full flex items-center justify-between px-3",
-                      sidebarCollapsed ? "md:justify-center md:px-2" : "",
-                      "py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer",
-                      isSelected
-                        ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white border-l-4 border-brand-red-600 font-bold"
-                        : "text-ink-soft dark:text-ink-soft-dark hover:bg-canvas dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark",
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className={sidebarCollapsed ? "md:hidden" : ""}>
-                        {item.label}
+                      <span className="text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider group-hover:text-ink dark:group-hover:text-ink-dark">
+                        {group}
                       </span>
-                    </div>
-                    {item.badge && (
-                      <span
+                      <ChevronDown
                         className={cn(
-                          sidebarCollapsed
-                            ? "md:absolute md:translate-x-3 md:-translate-y-3"
-                            : "",
-                          "h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center bg-brand-red-600 text-white",
+                          "h-3 w-3 text-ink-soft dark:text-ink-soft-dark transition-transform",
+                          isGroupCollapsed && "-rotate-90",
                         )}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
+                      />
+                    </button>
+                  )}
+                  {!isGroupCollapsed && (
+                    <button
+                      onClick={() => handleSwitchView(item.view)}
+                      title={sidebarCollapsed ? item.label : undefined}
+                      className={cn(
+                        "relative w-full flex items-center justify-between px-3",
+                        sidebarCollapsed ? "md:justify-center md:px-2" : "",
+                        "py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer",
+                        isSelected
+                          ? "bg-brand-blue-50 dark:bg-brand-navy-700/20 text-brand-navy-900 dark:text-white border-l-4 border-brand-red-600 font-bold"
+                          : "text-ink-soft dark:text-ink-soft-dark hover:bg-canvas dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark",
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className={sidebarCollapsed ? "md:hidden" : ""}>
+                          {item.label}
+                        </span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={cn(
+                            sidebarCollapsed
+                              ? "md:absolute md:translate-x-3 md:-translate-y-3"
+                              : "",
+                            "h-4 min-w-4 px-1 font-black text-[9px] rounded-full flex items-center justify-center bg-brand-red-600 text-white",
+                          )}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 </React.Fragment>
               );
             })}
@@ -1033,15 +1073,27 @@ function BPOWorkspaceShell({
                   "space-y-1",
                 )}
               >
-                <span
+                <button
+                  type="button"
+                  onClick={() => toggleNavGroup("Controle Geral BPO")}
+                  aria-expanded={!collapsedNavGroups.has("Controle Geral BPO")}
                   className={cn(
                     sidebarCollapsed ? "md:hidden" : "",
-                    "text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider px-3 block mb-2",
+                    "w-full flex items-center justify-between gap-2 px-3 mb-2 cursor-pointer group",
                   )}
                 >
-                  Controle Geral BPO
-                </span>
+                  <span className="text-[10px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider group-hover:text-ink dark:group-hover:text-ink-dark">
+                    Controle Geral BPO
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 text-ink-soft dark:text-ink-soft-dark transition-transform",
+                      collapsedNavGroups.has("Controle Geral BPO") && "-rotate-90",
+                    )}
+                  />
+                </button>
                 {adminItems.map((item) => {
+                  if (!sidebarCollapsed && collapsedNavGroups.has("Controle Geral BPO")) return null;
                   const isSelected = activeView === item.view;
                   const Icon = item.icon;
 
