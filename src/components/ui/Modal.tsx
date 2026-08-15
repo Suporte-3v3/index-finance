@@ -39,20 +39,27 @@ export default function Modal({
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Efeito de foco/scroll: deve rodar só na transição de abrir/fechar, nunca
+  // a cada re-render do conteúdo (senão rouba o foco dos campos do form a
+  // cada tecla digitada, já que o pai costuma passar `onClose` inline).
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     dialogRef.current?.focus();
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+      previouslyFocused?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-      previouslyFocused?.focus();
-    };
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
   if (!open) return null;
