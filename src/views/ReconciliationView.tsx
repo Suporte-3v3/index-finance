@@ -21,11 +21,18 @@ import {
   Td,
   Tooltip,
 } from "../components/ui";
-import { parseOfxFile, OfxImportError, type ParsedStatementRow } from "../services/ofxImport";
+import {
+  parseOfxFile,
+  OfxImportError,
+  type ParsedStatementRow,
+  type StatementFieldKey,
+} from "../services/ofxImport";
 import {
   parseStatementExcelFile,
   downloadStatementImportTemplate,
   ReconciliationImportError,
+  toStatementImportPayload,
+  validateStatementRow,
 } from "../services/reconciliationImport";
 import {
   Building2,
@@ -38,8 +45,47 @@ import {
   XCircle,
   AlertTriangle,
   Download,
+  ChevronDown,
+  ChevronUp,
+  Pencil,
   Search,
 } from "lucide-react";
+
+const IMPORT_INPUT_CLASS = "mt-1 w-full rounded-lg border bg-surface px-3 py-2 text-xs text-ink outline-none transition-colors dark:bg-surface-dark dark:text-ink-dark";
+
+function importInputClass(hasError: boolean) {
+  return `${IMPORT_INPUT_CLASS} ${
+    hasError
+      ? "border-brand-red-600 focus:ring-1 focus:ring-brand-red-600 dark:border-red-500"
+      : "border-line focus:ring-1 focus:ring-brand-navy-700 dark:border-line-dark"
+  }`;
+}
+
+function ImportEditableField({
+  label,
+  errors = [],
+  children,
+  className = "",
+}: {
+  label: string;
+  errors?: string[];
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-ink-soft dark:text-ink-soft-dark">
+        {label}
+      </span>
+      {children}
+      {errors.map((message) => (
+        <span key={message} className="mt-1 flex items-start gap-1 text-[10px] font-semibold text-brand-red-600 dark:text-red-400">
+          <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" /> {message}
+        </span>
+      ))}
+    </label>
+  );
+}
 
 export default function ReconciliationView({
   onCreateLaunch,
@@ -76,6 +122,7 @@ export default function ReconciliationView({
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [importParseError, setImportParseError] = useState("");
   const [parsedStatementRows, setParsedStatementRows] = useState<ParsedStatementRow[]>([]);
+  const [editingImportRows, setEditingImportRows] = useState<Set<number>>(new Set());
   const [accountNumberHint, setAccountNumberHint] = useState<string | undefined>(undefined);
 
   if (!activeCompany) return null;
@@ -131,6 +178,7 @@ export default function ReconciliationView({
   const openImportModal = () => {
     setImportParseError("");
     setParsedStatementRows([]);
+    setEditingImportRows(new Set());
     setAccountNumberHint(undefined);
     setIsImportModalOpen(true);
   };
@@ -139,6 +187,7 @@ export default function ReconciliationView({
     setIsImportModalOpen(false);
     setImportParseError("");
     setParsedStatementRows([]);
+    setEditingImportRows(new Set());
     setAccountNumberHint(undefined);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -158,15 +207,18 @@ export default function ReconciliationView({
       if (extension === "ofx" || extension === "qfx") {
         const { rows, accountNumberHint: hint } = await parseOfxFile(file);
         setParsedStatementRows(rows);
+        setEditingImportRows(new Set(rows.filter((row) => row.errors.length > 0).map((row) => row.row)));
         setAccountNumberHint(hint);
       } else if (extension === "xlsx" || extension === "xls") {
         const rows = await parseStatementExcelFile(file);
         setParsedStatementRows(rows);
+        setEditingImportRows(new Set(rows.filter((row) => row.errors.length > 0).map((row) => row.row)));
       } else {
         throw new Error("Formato de arquivo não suportado. Envie um arquivo .ofx, .qfx, .xlsx ou .xls.");
       }
     } catch (error) {
       setParsedStatementRows([]);
+      setEditingImportRows(new Set());
       setImportParseError(
         error instanceof OfxImportError || error instanceof ReconciliationImportError || error instanceof Error
           ? error.message
@@ -179,18 +231,28 @@ export default function ReconciliationView({
   };
 
   const handleConfirmImport = () => {
-    if (!activeAccount || !parsedValidRows.length) return;
-    const entries: BankStatementItem[] = parsedValidRows.map((row) => ({
-      id: row.externalId,
-      date: row.date,
-      description: row.description,
-      amount: row.amount,
-      documentNumber: row.documentNumber,
-      isReconciled: false,
-      reconciliationStatus: "Pendente",
-    }));
+    if (!activeAccount || !parsedValidRows.length || parsedInvalidRows.length > 0) return;
+    const entries: BankStatementItem[] = parsedValidRows.map(toStatementImportPayload);
     importStatement(activeAccount.id, entries);
     closeImportModal();
+  };
+
+  const updateStatementRow = (
+    rowNumber: number,
+    update: (row: ParsedStatementRow) => ParsedStatementRow,
+  ) => {
+    setParsedStatementRows((current) => current.map((row) => (
+      row.row === rowNumber ? validateStatementRow(update(row)) : row
+    )));
+  };
+
+  const toggleImportRowEditor = (rowNumber: number) => {
+    setEditingImportRows((current) => {
+      const next = new Set(current);
+      if (next.has(rowNumber)) next.delete(rowNumber);
+      else next.add(rowNumber);
+      return next;
+    });
   };
 
   const handleAutoReconcile = () => {
@@ -321,7 +383,7 @@ export default function ReconciliationView({
             ? `Envie o extrato de ${activeAccount.bankName} - Ag. ${activeAccount.agency} - C/C: ${activeAccount.accountNumber} em .ofx/.qfx ou .xlsx/.xls.`
             : undefined
         }
-        size="lg"
+        size="xl"
         footer={
           <>
             <Button variant="text" onClick={closeImportModal}>
@@ -329,7 +391,8 @@ export default function ReconciliationView({
             </Button>
             <Button
               icon={<Upload className="h-4 w-4" />}
-              disabled={!parsedValidRows.length}
+              disabled={!parsedValidRows.length || parsedInvalidRows.length > 0}
+              title={parsedInvalidRows.length > 0 ? "Corrija todas as linhas com erro antes de importar." : undefined}
               onClick={handleConfirmImport}
             >
               Importar {parsedValidRows.length} transação(ões)
@@ -384,17 +447,22 @@ export default function ReconciliationView({
 
           {parsedStatementRows.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
-                  {parsedValidRows.length} válida(s)
-                </Badge>
-                {parsedInvalidRows.length > 0 && (
-                  <Badge tone="red" icon={<XCircle className="h-3.5 w-3.5" />}>
-                    {parsedInvalidRows.length} com erro
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-ink-soft dark:text-ink-soft-dark">
+                  Edite os campos destacados. Datas devem usar DD-MM-AAAA e cada linha é revalidada automaticamente.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Badge tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                    {parsedValidRows.length} válida(s)
                   </Badge>
-                )}
+                  {parsedInvalidRows.length > 0 && (
+                    <Badge tone="red" icon={<XCircle className="h-3.5 w-3.5" />}>
+                      {parsedInvalidRows.length} com erro
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div className="max-h-[320px] overflow-y-auto border border-line dark:border-line-dark rounded-lg">
+              <div className="max-h-[460px] overflow-y-auto border border-line dark:border-line-dark rounded-lg">
                 <Table>
                   <TableHead>
                     <Tr>
@@ -403,45 +471,149 @@ export default function ReconciliationView({
                       <Th>Descrição</Th>
                       <Th align="right">Valor</Th>
                       <Th>Nº Doc.</Th>
+                      <Th align="right">Ação</Th>
                     </Tr>
                   </TableHead>
                   <TableBody>
                     {parsedStatementRows.map((row) => {
                       const hasErrors = row.errors.length > 0;
+                      const isEditing = editingImportRows.has(row.row);
+                      const errorsFor = (field: StatementFieldKey) => row.fieldErrors[field] ?? [];
                       return (
-                        <Tr key={`${row.row}-${row.externalId}`}>
-                          <Td>
-                            <Tooltip
-                              content={
-                                hasErrors ? (
-                                  <ul className="space-y-0.5">
-                                    {row.errors.map((message, index) => (
-                                      <li key={index}>{message}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  "Linha pronta para importação."
-                                )
-                              }
-                            >
-                              <span className="inline-flex items-center gap-1.5 cursor-help">
-                                {hasErrors ? (
-                                  <XCircle className="h-4 w-4 text-brand-red-600" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4 text-brand-green-600" />
-                                )}
-                              </span>
-                            </Tooltip>
-                          </Td>
-                          <Td>{row.date || "-"}</Td>
-                          <Td className="max-w-64 truncate">{row.description || "-"}</Td>
-                          <Td align="right">
-                            {Number.isFinite(row.amount)
-                              ? row.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
-                              : "-"}
-                          </Td>
-                          <Td>{row.documentNumber || "-"}</Td>
-                        </Tr>
+                        <React.Fragment key={row.row}>
+                          <Tr className={hasErrors ? "bg-brand-red-50/50 dark:bg-brand-red-600/5" : undefined}>
+                            <Td>
+                              <Tooltip
+                                content={
+                                  hasErrors ? (
+                                    <ul className="space-y-0.5">
+                                      {row.errors.map((message, index) => (
+                                        <li key={index}>{message}</li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    "Linha pronta para importação."
+                                  )
+                                }
+                              >
+                                <span className="inline-flex items-center gap-1.5 cursor-help">
+                                  {hasErrors ? (
+                                    <XCircle className="h-4 w-4 text-brand-red-600" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4 text-brand-green-600" />
+                                  )}
+                                  <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">Linha {row.row}</span>
+                                </span>
+                              </Tooltip>
+                            </Td>
+                            <Td>{row.date || "-"}</Td>
+                            <Td className="max-w-64 truncate">{row.description || "-"}</Td>
+                            <Td align="right">
+                              {Number.isFinite(row.amount)
+                                ? row.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+                                : "-"}
+                            </Td>
+                            <Td>{row.documentNumber || "-"}</Td>
+                            <Td align="right">
+                              <Button
+                                size="sm"
+                                variant={hasErrors ? "secondary" : "outline"}
+                                icon={isEditing ? <ChevronUp className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                                iconRight={!isEditing ? <ChevronDown className="h-3.5 w-3.5" /> : undefined}
+                                onClick={() => toggleImportRowEditor(row.row)}
+                              >
+                                {isEditing ? "Ocultar" : "Editar"}
+                              </Button>
+                            </Td>
+                          </Tr>
+                          {isEditing && (
+                            <Tr className="bg-canvas/70 hover:bg-canvas/70 dark:bg-white/[0.025] dark:hover:bg-white/[0.025]">
+                              <Td colSpan={6} className="p-4 align-top">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-bold text-ink dark:text-ink-dark">Editar linha {row.row}</p>
+                                    <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                                      Use valor negativo para saída e positivo para entrada.
+                                    </p>
+                                  </div>
+                                  {hasErrors ? (
+                                    <Badge tone="red" icon={<XCircle className="h-3.5 w-3.5" />}>
+                                      {row.errors.length} erro(s)
+                                    </Badge>
+                                  ) : (
+                                    <Badge tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                                      Linha válida
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                  <ImportEditableField label="Data (DD-MM-AAAA)" errors={errorsFor("date")}>
+                                    <input
+                                      className={importInputClass(errorsFor("date").length > 0)}
+                                      inputMode="numeric"
+                                      placeholder="01-08-2026"
+                                      value={row.date}
+                                      onChange={(event) => updateStatementRow(row.row, (current) => ({
+                                        ...current,
+                                        date: event.target.value,
+                                      }))}
+                                    />
+                                  </ImportEditableField>
+                                  <ImportEditableField
+                                    label="Descrição"
+                                    errors={errorsFor("description")}
+                                    className="sm:col-span-2"
+                                  >
+                                    <input
+                                      className={importInputClass(errorsFor("description").length > 0)}
+                                      value={row.description}
+                                      onChange={(event) => updateStatementRow(row.row, (current) => ({
+                                        ...current,
+                                        description: event.target.value,
+                                      }))}
+                                    />
+                                  </ImportEditableField>
+                                  <ImportEditableField label="Valor" errors={errorsFor("amount")}>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      className={importInputClass(errorsFor("amount").length > 0)}
+                                      value={Number.isFinite(row.amount) ? row.amount : ""}
+                                      onChange={(event) => updateStatementRow(row.row, (current) => ({
+                                        ...current,
+                                        amount: event.target.value === "" ? Number.NaN : Number(event.target.value),
+                                      }))}
+                                    />
+                                  </ImportEditableField>
+                                  <ImportEditableField label="Nº do documento" errors={errorsFor("documentNumber")}>
+                                    <input
+                                      className={importInputClass(errorsFor("documentNumber").length > 0)}
+                                      value={row.documentNumber ?? ""}
+                                      onChange={(event) => updateStatementRow(row.row, (current) => ({
+                                        ...current,
+                                        documentNumber: event.target.value || undefined,
+                                      }))}
+                                    />
+                                  </ImportEditableField>
+                                  <ImportEditableField
+                                    label="Identificador"
+                                    errors={errorsFor("externalId")}
+                                    className="sm:col-span-2 lg:col-span-3"
+                                  >
+                                    <input
+                                      className={importInputClass(errorsFor("externalId").length > 0)}
+                                      value={row.externalId}
+                                      onChange={(event) => updateStatementRow(row.row, (current) => ({
+                                        ...current,
+                                        externalId: event.target.value,
+                                      }))}
+                                    />
+                                  </ImportEditableField>
+                                </div>
+                              </Td>
+                            </Tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </TableBody>

@@ -3,21 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { ParsedStatementRow } from "./ofxImport";
+import type { ParsedStatementRow, StatementFieldKey } from "./ofxImport";
 
 export class ReconciliationImportError extends Error {}
 
 const HEADER_ROW = [
-  "Data (AAAA-MM-DD)",
+  "Data (DD-MM-AAAA)",
   "Descrição",
   "Valor (negativo = saída, positivo = entrada)",
   "Nº Documento (opcional)",
   "Identificador (opcional)",
 ];
 
-const EXAMPLE_ROWS: (string | number)[][] = [
-  ["2026-08-01", "PIX ENV PAGTO FORNECEDOR (EXEMPLO - apague esta linha)", -1500, "1039", ""],
-  ["2026-08-02", "COBRANCA RECEBIDA CLIENTE (EXEMPLO - apague esta linha)", 4500, "2026042", ""],
+const EXAMPLE_ROWS: (string | number | Date)[][] = [
+  [new Date(2026, 7, 1), "PIX ENV PAGTO FORNECEDOR (EXEMPLO - apague esta linha)", -1500, "1039", ""],
+  [new Date(2026, 7, 2), "COBRANCA RECEBIDA CLIENTE (EXEMPLO - apague esta linha)", 4500, "2026042", ""],
 ];
 
 const INSTRUCTIONS_ROWS: (string | number)[][] = [
@@ -25,7 +25,7 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Preencha uma linha por transação na aba \"Extrato\" e envie o arquivo de volta no sistema."],
   [],
   ["Coluna", "Obrigatório", "Formato / observações"],
-  ["Data (AAAA-MM-DD)", "Sim", "Ex.: 2026-08-01"],
+  ["Data (DD-MM-AAAA)", "Sim", "Ex.: 01-08-2026"],
   ["Descrição", "Sim", "Texto livre, até 500 caracteres"],
   ["Valor (negativo = saída, positivo = entrada)", "Sim", "Número diferente de zero. Use ponto ou vírgula para decimais"],
   ["Nº Documento (opcional)", "Não", "Número do documento/cheque, se houver"],
@@ -35,12 +35,27 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Apague as duas linhas de exemplo antes de enviar o arquivo."],
 ];
 
-async function buildTemplateWorkbookBase64() {
+export async function buildTemplateWorkbookBase64() {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
+  const statementSheet = XLSX.utils.aoa_to_sheet([HEADER_ROW, ...EXAMPLE_ROWS], {
+    cellDates: true,
+    dateNF: "dd-mm-yyyy",
+  });
+  for (const address of ["A2", "A3"]) {
+    if (statementSheet[address]) statementSheet[address].z = "dd-mm-yyyy";
+  }
+  statementSheet["!cols"] = [
+    { wch: 22 },
+    { wch: 58 },
+    { wch: 46 },
+    { wch: 28 },
+    { wch: 34 },
+  ];
+  statementSheet["!autofilter"] = { ref: `A1:E${EXAMPLE_ROWS.length + 1}` };
   XLSX.utils.book_append_sheet(
     workbook,
-    XLSX.utils.aoa_to_sheet([HEADER_ROW, ...EXAMPLE_ROWS]),
+    statementSheet,
     "Extrato",
   );
   XLSX.utils.book_append_sheet(
@@ -72,7 +87,7 @@ export async function downloadStatementImportTemplate(bankAccountLabel: string) 
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function cell(row: string[], index: number) {
+function cell(row: unknown[], index: number) {
   return (row[index] ?? "").toString().trim();
 }
 
@@ -81,6 +96,45 @@ function parseMoney(raw: string) {
   if (!trimmed) return NaN;
   const normalized = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed;
   return Number(normalized);
+}
+
+function formatDateParts(day: number, month: number, year: number) {
+  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${String(year).padStart(4, "0")}`;
+}
+
+function normalizeDateCell(raw: unknown) {
+  if (raw instanceof Date && Number.isFinite(raw.getTime())) {
+    return formatDateParts(raw.getDate(), raw.getMonth() + 1, raw.getFullYear());
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(raw) * 86_400_000);
+    return formatDateParts(date.getUTCDate(), date.getUTCMonth() + 1, date.getUTCFullYear());
+  }
+  return String(raw ?? "").trim();
+}
+
+export function statementDateToIso(value: string) {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
+  if (!match) return null;
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+  return `${yearText}-${monthText}-${dayText}`;
+}
+
+function addFieldError(
+  fieldErrors: Partial<Record<StatementFieldKey, string[]>>,
+  field: StatementFieldKey,
+  message: string,
+) {
+  fieldErrors[field] = [...(fieldErrors[field] ?? []), message];
 }
 
 // Hash não-criptográfico (FNV-1a) usado apenas para gerar um identificador estável
@@ -95,54 +149,82 @@ function stableId(parts: string) {
   return `xlsx-${(hash >>> 0).toString(16)}`;
 }
 
-export function parseStatementRows(sheetRows: string[][]): ParsedStatementRow[] {
+export function validateStatementRow(row: ParsedStatementRow): ParsedStatementRow {
+  const fieldErrors: ParsedStatementRow["fieldErrors"] = {};
+  if (!statementDateToIso(row.date)) {
+    addFieldError(fieldErrors, "date", "Data inválida (use DD-MM-AAAA).");
+  }
+  if (!row.description.trim()) {
+    addFieldError(fieldErrors, "description", "Descrição é obrigatória.");
+  }
+  if (!Number.isFinite(row.amount) || row.amount === 0) {
+    addFieldError(fieldErrors, "amount", "Valor inválido (deve ser diferente de zero).");
+  }
+  if (!row.externalId.trim()) {
+    addFieldError(fieldErrors, "externalId", "Identificador é obrigatório.");
+  }
+  return {
+    ...row,
+    errors: Object.values(fieldErrors).flat(),
+    fieldErrors,
+  };
+}
+
+export function parseStatementRows(sheetRows: unknown[][]): ParsedStatementRow[] {
   const dataRows = sheetRows.slice(1).filter((row) => row.some((value) => String(value ?? "").trim()));
 
   return dataRows.map((row, index) => {
-    const errors: string[] = [];
-
-    const date = cell(row, 0);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.push("Data inválida (use AAAA-MM-DD).");
-
+    const date = normalizeDateCell(row[0]);
     const description = cell(row, 1);
-    if (!description) errors.push("Descrição é obrigatória.");
-
     const amountRaw = cell(row, 2);
     const amount = parseMoney(amountRaw);
-    if (!amountRaw || !Number.isFinite(amount) || amount === 0) {
-      errors.push("Valor inválido (deve ser diferente de zero).");
-    }
-
     const documentNumber = cell(row, 3) || undefined;
     const explicitId = cell(row, 4);
     const externalId = explicitId || stableId(`${date}|${description}|${amountRaw}|${documentNumber ?? ""}`);
 
-    return {
+    return validateStatementRow({
       row: index + 2,
       externalId,
       date,
       description,
       amount,
       documentNumber,
-      errors,
-    };
+      errors: [],
+      fieldErrors: {},
+    });
   });
+}
+
+export function toStatementImportPayload(row: ParsedStatementRow) {
+  const date = statementDateToIso(row.date);
+  if (!date) throw new ReconciliationImportError("Corrija a data inválida antes de importar esta linha.");
+  return {
+    id: row.externalId,
+    date,
+    description: row.description,
+    amount: row.amount,
+    documentNumber: row.documentNumber,
+    isReconciled: false,
+    reconciliationStatus: "Pendente" as const,
+  };
 }
 
 export async function parseStatementExcelFile(file: File): Promise<ParsedStatementRow[]> {
   const XLSX = await import("xlsx");
   let workbook;
   try {
-    workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   } catch {
     throw new ReconciliationImportError("Não foi possível ler o arquivo. Envie um arquivo .xlsx válido.");
   }
   const sheetName = workbook.SheetNames.find((name) => name === "Extrato") ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) throw new ReconciliationImportError('A planilha não contém a aba "Extrato".');
-  const rows = XLSX.utils
-    .sheet_to_json<(string | number | boolean)[]>(sheet, { header: 1, defval: "" })
-    .map((row) => row.map((value) => String(value)));
+  const rows = XLSX.utils.sheet_to_json<(string | number | boolean | Date)[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+  });
   if (!rows.length) throw new ReconciliationImportError("A planilha está vazia.");
   return parseStatementRows(rows);
 }
