@@ -31,7 +31,6 @@ import OperationsCenter from "./views/OperationsCenter";
 import CashFlowView from "./views/CashFlowView";
 import AccountsPayableView from "./views/AccountsPayableView";
 import AccountsReceivableView from "./views/AccountsReceivableView";
-import ImportEntriesView from "./views/ImportEntriesView";
 import ReconciliationView from "./views/ReconciliationView";
 import ApprovalsView from "./views/ApprovalsView";
 import DocumentsView from "./views/DocumentsView";
@@ -82,7 +81,6 @@ import {
   Wallet,
   ClipboardList,
   ReceiptText,
-  Upload,
 } from "lucide-react";
 
 const APP_THEME_STORAGE_KEY = "idex_finance_theme";
@@ -97,7 +95,6 @@ type ViewType =
   | "approvals"
   | "documents"
   | "documents-received"
-  | "import-entries"
   | "master-data"
   | "reports"
   | "clients"
@@ -119,7 +116,6 @@ const NAV_GROUP: Record<string, string> = {
   "cash-flow": "Operação Financeira",
   payable: "Operação Financeira",
   receivable: "Operação Financeira",
-  "import-entries": "Operação Financeira",
   reconciliation: "Operação Financeira",
   "bakery-cash": "Operação Financeira",
   reports: "Gestão",
@@ -629,17 +625,6 @@ function BPOWorkspaceShell({
     ...(["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)
       ? [
           {
-            id: "import-entries",
-            label: "Importar Lançamentos",
-            icon: Upload,
-            view: "import-entries" as const,
-            permission: null,
-          },
-        ]
-      : []),
-    ...(["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)
-      ? [
-          {
             id: "master-data",
             label: "Cadastros",
             icon: Database,
@@ -674,7 +659,6 @@ function BPOWorkspaceShell({
     "dashboard",
     "operations-center",
     "documents-received",
-    "import-entries",
     "approvals",
     "documents",
     "cash-flow",
@@ -774,8 +758,6 @@ function BPOWorkspaceShell({
         return <DocumentsView />;
       case "documents-received":
         return <DocumentsReceivedView />;
-      case "import-entries":
-        return <ImportEntriesView />;
       case "master-data":
         return <MasterDataView />;
       case "reports":

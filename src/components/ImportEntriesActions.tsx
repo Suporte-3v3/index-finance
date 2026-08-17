@@ -10,7 +10,7 @@ import {
   Button,
   Card,
   CardHeader,
-  EmptyState,
+  Modal,
   Table,
   TableHead,
   TableBody,
@@ -19,7 +19,7 @@ import {
   Td,
   Tooltip,
   useToast,
-} from "../components/ui";
+} from "./ui";
 import {
   buildImportTemplateMasterData,
   downloadImportTemplate,
@@ -33,7 +33,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  FileSpreadsheet,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -41,7 +40,7 @@ import {
 const formatBRL = (value: number) =>
   `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
-export default function ImportEntriesView() {
+export default function ImportEntriesActions() {
   const { activeCompany, masterData, bankAccounts, hasPermission, importFinancialEntries } = useBPOState();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,9 +51,11 @@ export default function ImportEntriesView() {
   const [rows, setRows] = useState<ParsedImportRow[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportEntriesResult | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const canCreatePayable = hasPermission("accounts-payable.create");
   const canCreateReceivable = hasPermission("accounts-receivable.create");
+  const canImport = canCreatePayable || canCreateReceivable;
 
   const reference = useMemo(
     () =>
@@ -125,41 +126,45 @@ export default function ImportEntriesView() {
     }
   };
 
-  if (!activeCompany) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={<FileSpreadsheet />}
-          title="Selecione uma empresa"
-          description="Entre em uma empresa cliente para baixar o modelo e importar lançamentos."
-        />
-      </div>
-    );
-  }
+  const closeImport = () => {
+    setIsImportOpen(false);
+    setParseError("");
+    setRows([]);
+    setImportResult(null);
+  };
 
-  if (!canCreatePayable && !canCreateReceivable) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={<AlertCircle />}
-          title="Sem permissão"
-          description="Você não tem permissão para cadastrar contas a pagar ou a receber nesta empresa."
-        />
-      </div>
-    );
-  }
+  if (!activeCompany) return null;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div>
-        <h1 className="text-lg font-bold text-ink dark:text-ink-dark tracking-tight">
-          Importar Lançamentos
-        </h1>
-        <p className="text-xs text-ink-soft dark:text-ink-soft-dark mt-1">
-          Baixe a planilha modelo, preencha uma linha por lançamento (contas a pagar e a
-          receber podem ir juntas) e envie o arquivo de volta para criar tudo de uma vez.
-        </p>
-      </div>
+    <>
+      <Button
+        variant="outline"
+        icon={<Download className="h-4 w-4" />}
+        loading={isDownloading}
+        disabled={!canImport}
+        title={canImport ? "Baixar planilha modelo" : "Sem permissão para importar lançamentos"}
+        onClick={handleDownloadTemplate}
+      >
+        Baixar modelo
+      </Button>
+      <Button
+        variant="secondary"
+        icon={<Upload className="h-4 w-4" />}
+        disabled={!canImport}
+        title={canImport ? "Importar planilha de lançamentos" : "Sem permissão para importar lançamentos"}
+        onClick={() => setIsImportOpen(true)}
+      >
+        Importar planilha
+      </Button>
+
+      <Modal
+        open={isImportOpen}
+        onClose={closeImport}
+        title="Importar lançamentos"
+        description="Use a planilha modelo para importar contas a pagar e a receber de uma só vez."
+        size="xl"
+      >
+        <div className="space-y-5">
 
       <Card>
         <CardHeader
@@ -334,6 +339,8 @@ export default function ImportEntriesView() {
           )}
         </Card>
       )}
-    </div>
+        </div>
+      </Modal>
+    </>
   );
 }

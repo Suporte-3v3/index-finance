@@ -14,6 +14,7 @@ import { useBPOState } from "../hooks/useBPOState";
 import { Document } from "../types";
 import FileTypeIcon from "../components/FileTypeIcon";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
+import ImportEntriesActions from "../components/ImportEntriesActions";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
 import { Badge, BadgeTone, Button, Card, MetricCard, Modal } from "../components/ui";
@@ -339,6 +340,7 @@ export default function DocumentsReceivedView() {
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          <ImportEntriesActions />
           <Button icon={<Plus className="h-4 w-4" />} variant="secondary" onClick={() => setNewLaunchOpen(true)}>
             Novo lançamento
           </Button>
