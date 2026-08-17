@@ -79,6 +79,18 @@ function competence(value: unknown) {
   }
   return normalized;
 }
+function confidenceForDatabase(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  const percentage = Number(value);
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+    throw new DocumentRecordApiError("Confiança da análise inválida.");
+  }
+  return percentage / 100;
+}
+function confidenceFromDatabase(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  return Number((Number(value) * 100).toFixed(2));
+}
 function fileBytes(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value) && value >= 0) return BigInt(Math.round(value));
   if (typeof value !== "string") return 0n;
@@ -202,7 +214,7 @@ function mapDocument(item: any, users: Map<string, { name: string; role?: Role }
     signedUrl: item.objectKey.startsWith("/uploads/") ? item.objectKey : undefined,
     aiSummary: item.aiSummary || undefined,
     extractedData: Object.keys(extractedData).length ? extractedData : undefined,
-    processingConfidence: item.processingConfidence == null ? undefined : Number(item.processingConfidence),
+    processingConfidence: confidenceFromDatabase(item.processingConfidence),
     supplier: internal.supplier as string | undefined,
     dueDate: internal.dueDate as string | undefined,
     expenseType: internal.expenseType as string | undefined,
@@ -389,7 +401,7 @@ export async function createDocument(profile: DocumentProfile, body: any) {
         purpose: shareRecipientId ? "VIEW_ONLY" : "PROCESSING",
         aiSummary: optionalText(body?.aiSummary, 20_000),
         extractedData: pack(body?.extractedData, internal),
-        processingConfidence: body?.processingConfidence == null ? null : Number(body.processingConfidence),
+        processingConfidence: confidenceForDatabase(body?.processingConfidence),
         analysisWarnings: Array.isArray(body?.analysisWarnings)
           ? body.analysisWarnings.filter((item: unknown): item is string => typeof item === "string").slice(0, 100)
           : [],
@@ -446,7 +458,7 @@ export async function updateDocument(profile: DocumentProfile, documentId: strin
   if (body.description !== undefined) data.description = optionalText(body.description, 20_000);
   if (body.competenceMonth !== undefined) data.competenceMonth = competence(body.competenceMonth);
   if (body.aiSummary !== undefined) data.aiSummary = optionalText(body.aiSummary, 20_000);
-  if (body.processingConfidence !== undefined) data.processingConfidence = body.processingConfidence == null ? null : Number(body.processingConfidence);
+  if (body.processingConfidence !== undefined) data.processingConfidence = confidenceForDatabase(body.processingConfidence);
   if (body.analysisWarnings !== undefined && Array.isArray(body.analysisWarnings)) data.analysisWarnings = body.analysisWarnings.filter((item: unknown): item is string => typeof item === "string").slice(0, 100);
   if (body.relatedEntityId !== undefined) {
     data.relatedEntityId = uuid(body.relatedEntityId, "Vínculo financeiro", false);

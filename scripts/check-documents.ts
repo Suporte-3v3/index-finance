@@ -57,6 +57,7 @@ const baseDocument = {
   supplier: "Fornecedor Temporário",
   dueDate: "2026-08-20",
   amount: 250.5,
+  processingConfidence: 87,
   documentNumber: "DOC-TESTE-001",
   expenseType: "Administrativo",
 };
@@ -98,14 +99,22 @@ try {
   assert.match(privateDocument.document.id, /^[0-9a-f-]{36}$/i);
   assert.equal(privateDocument.document.status, "Aguardando Análise");
   assert.equal(privateDocument.document.amount, 250.5);
+  assert.equal(privateDocument.document.processingConfidence, 87);
+  const storedPrivateDocument = await database.document.findUniqueOrThrow({
+    where: { id: privateDocument.document.id },
+    select: { processingConfidence: true },
+  });
+  assert.equal(Number(storedPrivateDocument.processingConfidence), 0.87);
 
   const updated = await updateDocument(adminProfile, privateDocument.document.id, {
     description: "Documento atualizado no PostgreSQL",
     amount: 300,
+    processingConfidence: 92,
     entryType: "Conta a Pagar",
   });
   assert.equal(updated.description, "Documento atualizado no PostgreSQL");
   assert.equal(updated.amount, 300);
+  assert.equal(updated.processingConfidence, 92);
 
   const shared = await createDocument(adminProfile, {
     ...baseDocument,

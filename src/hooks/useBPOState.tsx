@@ -413,7 +413,7 @@ interface BPOContextType {
     previewUrl?: string;
     recipientId?: string;
     approvalRecipientId?: string;
-  }) => void;
+  }) => Promise<void>;
   deleteDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<Document>) => boolean;
   launchDocument: (id: string, updates?: Partial<Document>) => void;
@@ -1887,7 +1887,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   };
 
   // --- DOCUMENTS MANAGEMENT ---
-  const uploadDocument = (data: {
+  const uploadDocument = async (data: {
     name: string;
     description: string;
     category: Document["category"];
@@ -1908,8 +1908,10 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     previewUrl?: string;
     recipientId?: string;
     approvalRecipientId?: string;
-  }) => {
-    if (!hasPermission("documents.upload")) return;
+  }): Promise<void> => {
+    if (!hasPermission("documents.upload")) {
+      throw new Error("Você não tem permissão para enviar documentos.");
+    }
 
     const {
       recipientId: requestedShareRecipientId,
@@ -1942,55 +1944,50 @@ export function BPOProvider({ children }: { children: ReactNode }) {
               user.companies?.includes(targetCompanyId),
           )
         : undefined;
-    void createPersistedDocument({
+    const result = await createPersistedDocument({
       ...documentData,
       companyId: targetCompanyId,
       recipientId: shareRecipient?.id,
       approvalRecipientId: approvalRecipient?.id,
       origin: "Documento",
-    })
-      .then((result) => {
-        setDocuments((previous) => [...previous, result.document]);
-        if (result.approval) {
-          setApprovals((previous) => [...previous, result.approval!]);
-        }
-        if (shareRecipient) {
-          addNotification(
-            "Documento recebido do BPO",
-            `${currentUser.name} compartilhou "${result.document.name}" somente para visualização.`,
-            "INFO",
-            shareRecipient.id,
-            targetCompanyId,
-          );
-        }
-        if (approvalRecipient) {
-          addNotification(
-            "Documento analisado para aprovação",
-            `${currentUser.name} enviou "${result.document.name}" para sua aprovação documental.`,
-            "ALERT",
-            approvalRecipient.id,
-            targetCompanyId,
-          );
-        }
-        addNotification(
-          shareRecipient
-            ? "Documento compartilhado"
-            : approvalRecipient
-              ? "Documento enviado para aprovação"
-              : "Documento enviado",
-          shareRecipient
-            ? `O arquivo "${data.name}" foi compartilhado para visualização com ${shareRecipient.name}.`
-            : approvalRecipient
-              ? `O arquivo "${data.name}" foi analisado e enviado para aprovação de ${approvalRecipient.name}.`
-              : `O arquivo "${data.name}" foi incluído com sucesso na categoria ${data.category}.`,
-          "SUCCESS",
-          currentUser.id,
-          targetCompanyId,
-        );
-      })
-      .catch((error) => {
-        console.error("Falha ao salvar documento no banco:", error);
-      });
+    });
+    setDocuments((previous) => [...previous, result.document]);
+    if (result.approval) {
+      setApprovals((previous) => [...previous, result.approval!]);
+    }
+    if (shareRecipient) {
+      addNotification(
+        "Documento recebido do BPO",
+        `${currentUser.name} compartilhou "${result.document.name}" somente para visualização.`,
+        "INFO",
+        shareRecipient.id,
+        targetCompanyId,
+      );
+    }
+    if (approvalRecipient) {
+      addNotification(
+        "Documento analisado para aprovação",
+        `${currentUser.name} enviou "${result.document.name}" para sua aprovação documental.`,
+        "ALERT",
+        approvalRecipient.id,
+        targetCompanyId,
+      );
+    }
+    addNotification(
+      shareRecipient
+        ? "Documento compartilhado"
+        : approvalRecipient
+          ? "Documento enviado para aprovação"
+          : "Documento enviado",
+      shareRecipient
+        ? `O arquivo "${data.name}" foi compartilhado para visualização com ${shareRecipient.name}.`
+        : approvalRecipient
+          ? `O arquivo "${data.name}" foi analisado e enviado para aprovação de ${approvalRecipient.name}.`
+          : `O arquivo "${data.name}" foi incluído com sucesso na categoria ${data.category}.`,
+      "SUCCESS",
+      currentUser.id,
+      targetCompanyId,
+    );
   };
 
   const deleteDocument = (id: string) => {
@@ -2668,7 +2665,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       !report.fileName
     )
       return false;
-    uploadDocument({
+    void uploadDocument({
       name: report.fileName,
       description: `Relatório gerado: ${report.name}`,
       category: "Relatório",
@@ -2677,6 +2674,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       mimeType: report.mimeType,
       previewUrl: `data:${report.mimeType};base64,${report.fileContent}`,
       recipientId,
+    }).catch((error) => {
+      console.error("Falha ao salvar relatório na Central de Documentos:", error);
     });
     return true;
   };

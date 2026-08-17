@@ -533,7 +533,7 @@ export default function DocumentsView() {
     try {
       const previewUrl = await storeOriginalFile(file, warnings);
       const now = new Date();
-      uploadDocument({
+      await uploadDocument({
         name: file.name,
         description: "Documento avulso compartilhado somente para visualização.",
         category: "Outros",
@@ -584,7 +584,7 @@ export default function DocumentsView() {
         pending.file,
         storageWarnings,
       );
-      uploadDocument({
+      await uploadDocument({
         name: pending.file.name,
         description: pending.summary,
         category: pending.category,
