@@ -7,6 +7,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), quiet: true });
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: false, quiet: true });
 
 const { changeOwnPassword } = await import("../backend/account.js");
+const { getAuth } = await import("../backend/auth.js");
 const { getAuthenticatedProfile } = await import("../backend/auth-profile.js");
 const { disconnectDatabase, getDatabaseClient } = await import("../backend/database.js");
 const { verifyPassword } = await import("../backend/passwords.js");
@@ -19,10 +20,33 @@ const {
 } = await import("../backend/users.js");
 
 const database = getDatabaseClient();
+const auth = getAuth();
+const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 const adminId = randomUUID();
 const tenantId = randomUUID();
 const companyId = randomUUID();
 let managedUserId: string | undefined;
+const previousPassword = "Senha anterior segura #2026";
+const chosenPassword = "Nova senha exclusiva #2026";
+const testIp = `10.${parseInt(adminId.slice(0, 2), 16)}.${parseInt(adminId.slice(2, 4), 16)}.${parseInt(adminId.slice(4, 6), 16)}`;
+
+function authRequest(pathname: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("origin", baseURL);
+  headers.set("sec-fetch-site", "same-origin");
+  headers.set("x-forwarded-for", testIp);
+  return new Request(`${baseURL}${pathname}`, { ...init, headers });
+}
+
+async function signIn(email: string, password: string) {
+  return auth.handler(
+    authRequest("/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }),
+  );
+}
 
 const adminProfile = {
   id: adminId,
@@ -99,12 +123,10 @@ try {
   assert.equal(updated.title, "Cliente atualizado");
   assert.deepEqual(updated.permissions.sort(), ["dashboard.view", "reports.generate"]);
 
-  const reset = await resetManagedUserPassword(adminProfile, managedUserId);
-  assert.notEqual(reset.temporaryPassword, created.temporaryPassword);
-  const sessionId = randomUUID();
+  const setupSessionId = randomUUID();
   await database.userSession.create({
     data: {
-      id: sessionId,
+      id: setupSessionId,
       userId: managedUserId,
       token: `user-check-${randomUUID()}`,
       expiresAt: new Date(Date.now() + 60_000),
@@ -112,14 +134,69 @@ try {
   });
   await changeOwnPassword({
     userId: managedUserId,
-    currentSessionId: sessionId,
-    currentPassword: reset.temporaryPassword,
-    newPassword: "Nova senha exclusiva #2026",
+    currentSessionId: setupSessionId,
+    currentPassword: created.temporaryPassword,
+    newPassword: previousPassword,
   });
   assert.equal(
     (await getAuthenticatedProfile(managedUserId))?.mustChangePassword,
     false,
   );
+
+  const activeLogin = await signIn(created.user.email, previousPassword);
+  assert.equal(activeLogin.status, 200, await activeLogin.text());
+  assert.ok(
+    await database.userSession.count({ where: { userId: managedUserId } }),
+    "O login anterior ao reset deve criar uma sessão ativa.",
+  );
+
+  const reset = await resetManagedUserPassword(adminProfile, managedUserId);
+  assert.notEqual(reset.temporaryPassword, created.temporaryPassword);
+  assert.equal(
+    await database.userSession.count({ where: { userId: managedUserId } }),
+    0,
+    "O reset deve encerrar todas as sessões existentes.",
+  );
+  const resetAccount = await database.authAccount.findFirstOrThrow({
+    where: { userId: managedUserId, providerId: "credential" },
+  });
+  assert.equal(
+    await verifyPassword(resetAccount.password!, reset.temporaryPassword),
+    true,
+  );
+  assert.equal(await verifyPassword(resetAccount.password!, previousPassword), false);
+  assert.equal(
+    (await getAuthenticatedProfile(managedUserId))?.mustChangePassword,
+    true,
+  );
+
+  const temporaryLogin = await signIn(created.user.email, reset.temporaryPassword);
+  assert.equal(temporaryLogin.status, 200, await temporaryLogin.text());
+  const temporarySession = await database.userSession.findFirstOrThrow({
+    where: { userId: managedUserId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  await changeOwnPassword({
+    userId: managedUserId,
+    currentSessionId: temporarySession.id,
+    currentPassword: reset.temporaryPassword,
+    newPassword: chosenPassword,
+  });
+  const changedAccount = await database.authAccount.findFirstOrThrow({
+    where: { userId: managedUserId, providerId: "credential" },
+  });
+  assert.equal(await verifyPassword(changedAccount.password!, reset.temporaryPassword), false);
+  assert.equal(await verifyPassword(changedAccount.password!, chosenPassword), true);
+  assert.equal(
+    (await getAuthenticatedProfile(managedUserId))?.mustChangePassword,
+    false,
+  );
+
+  const obsoleteLogin = await signIn(created.user.email, reset.temporaryPassword);
+  assert.equal(obsoleteLogin.status, 401, "A senha temporária deve ser invalidada após a troca.");
+  const finalLogin = await signIn(created.user.email, chosenPassword);
+  assert.equal(finalLogin.status, 200, await finalLogin.text());
 
   const managedUsers = await listManagedUsers(adminProfile);
   assert.equal(managedUsers.some(({ id }) => id === managedUserId), true);
@@ -139,7 +216,7 @@ try {
   );
 
   console.log(
-    "Usuários validados: credencial, RBAC, senha temporária, troca obrigatória e desativação.",
+    "Usuários validados: reset temporário, sessões revogadas, troca obrigatória persistida e novo login.",
   );
 } finally {
   if (managedUserId) {

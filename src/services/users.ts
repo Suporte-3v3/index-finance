@@ -68,10 +68,3 @@ export function resetPersistedUserPassword(userId: string) {
     { method: "POST", body: "{}" },
   );
 }
-
-export function setPersistedUserPassword(userId: string, newPassword: string) {
-  return request<void>(`/api/users/${encodeURIComponent(userId)}/password`, {
-    method: "POST",
-    body: JSON.stringify({ newPassword }),
-  });
-}

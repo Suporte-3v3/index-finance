@@ -12,7 +12,6 @@ import {
   Check,
   UserPlus,
   Key,
-  KeyRound,
   Trash2,
   Lock,
   Pencil,
@@ -31,7 +30,6 @@ export default function TeamView() {
     updateTeamMember,
     deleteTeamMember,
     resetTeamMemberPassword,
-    setTeamMemberPassword,
     currentUser
   } = useBPOState();
 
@@ -46,11 +44,6 @@ export default function TeamView() {
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [temporaryPasswordEmail, setTemporaryPasswordEmail] = useState('');
   const [isSavingUser, setIsSavingUser] = useState(false);
-  const [isSetPasswordOpen, setIsSetPasswordOpen] = useState(false);
-  const [newPasswordValue, setNewPasswordValue] = useState('');
-  const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
-  const [setPasswordError, setSetPasswordError] = useState('');
-  const [isSettingPassword, setIsSettingPassword] = useState(false);
 
   // Invitation Form
   const [name, setName] = useState('');
@@ -250,41 +243,6 @@ export default function TeamView() {
     setTemporaryPassword(result.temporaryPassword);
   };
 
-  const openSetPassword = () => {
-    setNewPasswordValue('');
-    setConfirmPasswordValue('');
-    setSetPasswordError('');
-    setIsSetPasswordOpen(true);
-  };
-
-  const closeSetPassword = () => {
-    setIsSetPasswordOpen(false);
-    setNewPasswordValue('');
-    setConfirmPasswordValue('');
-    setSetPasswordError('');
-  };
-
-  const handleSetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser) return;
-    if (newPasswordValue.length < 12 || newPasswordValue.length > 128) {
-      setSetPasswordError('A senha deve ter entre 12 e 128 caracteres.');
-      return;
-    }
-    if (newPasswordValue !== confirmPasswordValue) {
-      setSetPasswordError('As senhas informadas não coincidem.');
-      return;
-    }
-    setIsSettingPassword(true);
-    const result = await setTeamMemberPassword(selectedUser.id, newPasswordValue);
-    setIsSettingPassword(false);
-    if (!result.success) {
-      setSetPasswordError(result.error || 'Não foi possível definir a senha.');
-      return;
-    }
-    closeSetPassword();
-  };
-
   return (
     <div id="team-root" className="space-y-5">
       {/* Header */}
@@ -451,57 +409,6 @@ export default function TeamView() {
         </div>
       </Modal>
 
-      {/* Set Specific Password Modal */}
-      <Modal
-        open={isSetPasswordOpen}
-        onClose={closeSetPassword}
-        title="Definir senha"
-        description={selectedUser ? `Escolha a nova senha de acesso de ${selectedUser.email}.` : undefined}
-        footer={
-          <>
-            <Button variant="text" onClick={closeSetPassword}>
-              Cancelar
-            </Button>
-            <Button type="submit" form="team-set-password-form" loading={isSettingPassword} disabled={isSettingPassword}>
-              Salvar senha
-            </Button>
-          </>
-        }
-      >
-        <form id="team-set-password-form" onSubmit={handleSetPassword} className="space-y-3 text-xs">
-          {setPasswordError && <p className="text-brand-red-600 font-semibold">{setPasswordError}</p>}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide block">Nova senha *</label>
-            <input
-              type="password"
-              required
-              minLength={12}
-              maxLength={128}
-              autoComplete="new-password"
-              className="w-full p-2 bg-canvas dark:bg-white/5 border border-line dark:border-line-dark text-ink dark:text-ink-dark rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30"
-              value={newPasswordValue}
-              onChange={(e) => setNewPasswordValue(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wide block">Confirmar nova senha *</label>
-            <input
-              type="password"
-              required
-              minLength={12}
-              maxLength={128}
-              autoComplete="new-password"
-              className="w-full p-2 bg-canvas dark:bg-white/5 border border-line dark:border-line-dark text-ink dark:text-ink-dark rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30"
-              value={confirmPasswordValue}
-              onChange={(e) => setConfirmPasswordValue(e.target.value)}
-            />
-          </div>
-          <div className="rounded-lg border border-brand-navy-700/20 bg-brand-blue-50 p-3 text-[10px] leading-relaxed text-brand-navy-900 dark:bg-brand-navy-900/20 dark:text-brand-blue-100">
-            Mínimo de 12 caracteres. A senha entra em vigor imediatamente e todas as sessões atuais deste usuário serão encerradas.
-          </div>
-        </form>
-      </Modal>
-
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
@@ -600,12 +507,6 @@ export default function TeamView() {
                       label="Gerar nova senha temporária"
                       size="sm"
                       onClick={() => void handleResetPassword(selectedUser.id, selectedUser.email)}
-                    />
-                    <IconButton
-                      icon={<KeyRound />}
-                      label="Definir senha específica"
-                      size="sm"
-                      onClick={openSetPassword}
                     />
                     <IconButton
                       icon={<Trash2 />}
