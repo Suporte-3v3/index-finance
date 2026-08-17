@@ -47,7 +47,6 @@ import {
   INITIAL_ACCOUNTS_RECEIVABLE,
   INITIAL_APPROVALS,
   INITIAL_DOCUMENTS,
-  BANK_STATEMENTS_TO_IMPORT,
 } from "../services/mockData";
 import {
   AuthenticationError,
@@ -430,7 +429,7 @@ interface BPOContextType {
       Pick<Document, "description" | "supplier" | "dueDate" | "amount">,
   ) => void;
 
-  importStatement: (bankAccountId: string) => void;
+  importStatement: (bankAccountId: string, entries: BankStatementItem[]) => void;
   reconcileItemManually: (
     bankAccountId: string,
     statementItemId: string,
@@ -2035,11 +2034,10 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   };
 
   // --- BANK RECONCILIATION ---
-  const importStatement = (bankAccountId: string) => {
+  const importStatement = (bankAccountId: string, entries: BankStatementItem[]) => {
     if (!hasPermission("reconciliation.execute")) return;
 
-    const sourceItems = BANK_STATEMENTS_TO_IMPORT[bankAccountId] || [];
-    void importPersistedStatement(bankAccountId, sourceItems)
+    void importPersistedStatement(bankAccountId, entries)
       .then((result) => {
         setStatementItems((previous) => ({
           ...previous,

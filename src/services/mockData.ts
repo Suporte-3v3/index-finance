@@ -12,7 +12,6 @@ import {
   AccountReceivable,
   Approval,
   Document,
-  BankStatementItem,
   AuditLog,
   Notification,
   ReportRecord
@@ -559,66 +558,3 @@ export const INITIAL_NOTIFICATIONS: Notification[] = [
     createdAt: '2026-07-08T09:35:00Z',
   }
 ];
-
-export const BANK_STATEMENTS_TO_IMPORT: Record<string, BankStatementItem[]> = {
-  'ba-101-itau': [
-    {
-      id: 'st-001',
-      date: '2026-07-08',
-      description: 'PIX ENV PAGTO LIMPA TUDO SERVICOS',
-      amount: -1150.00, // Matches ap-202 final amount
-      documentNumber: '1039',
-      isReconciled: true,
-      reconciliationStatus: 'Conciliada',
-      matchedTransactionId: 'ap-202'
-    },
-    {
-      id: 'st-002',
-      date: '2026-07-10',
-      description: 'COBRANCA RECEBIDA INTERSISTEMAS SL',
-      amount: 45000.00, // Matches ar-301 amount
-      documentNumber: '2026042',
-      isReconciled: true,
-      reconciliationStatus: 'Conciliada',
-      matchedTransactionId: 'ar-301'
-    },
-    {
-      id: 'st-003',
-      date: '2026-07-12',
-      description: 'TARIFA BANCARIA MENSAL CTA CORRENTE',
-      amount: -89.90, // Unreconciled, needs manual categorization or ignoring
-      isReconciled: false,
-      reconciliationStatus: 'Pendente',
-    },
-    {
-      id: 'st-004',
-      date: '2026-07-13',
-      description: 'PIX REC RECEBIMENTO CLIENTE AVULSO',
-      amount: 1500.00, // Matches a potential new or partial receivable
-      isReconciled: false,
-      reconciliationStatus: 'Pendente',
-    }
-  ],
-  'ba-101-santander': [
-    {
-      id: 'st-101',
-      date: '2026-07-06',
-      description: 'PIX ENV AGENCIA BUZZ DIGITAL SA',
-      amount: -3500.00, // Matches ap-203
-      isReconciled: false,
-      reconciliationStatus: 'Pendente',
-    }
-  ],
-  'ba-102-itau': [
-    {
-      id: 'st-201',
-      date: '2026-07-03',
-      description: 'PIX REC MARIANA E PEDRO EVENTOS BR',
-      amount: 6000.00, // Partial payment for ar-303
-      isReconciled: true,
-      reconciliationStatus: 'Parcialmente conciliada',
-      matchedTransactionId: 'ar-303'
-    }
-  ],
-  'ba-103-brasil': []
-};

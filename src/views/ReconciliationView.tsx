@@ -3,10 +3,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { BankStatementItem } from "../types";
-import { Badge, Button, Card, EmptyState } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  Modal,
+  Table,
+  TableHead,
+  TableBody,
+  Tr,
+  Th,
+  Td,
+  Tooltip,
+} from "../components/ui";
+import { parseOfxFile, OfxImportError, type ParsedStatementRow } from "../services/ofxImport";
+import {
+  parseStatementExcelFile,
+  downloadStatementImportTemplate,
+  ReconciliationImportError,
+} from "../services/reconciliationImport";
 import {
   Building2,
   Upload,
@@ -14,6 +34,10 @@ import {
   HelpCircle,
   AlertCircle,
   CheckCircle,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Download,
   Search,
 } from "lucide-react";
 
@@ -45,6 +69,14 @@ export default function ReconciliationView({
     "A_PAGAR",
   );
   const [reconciliationError, setReconciliationError] = useState("");
+
+  // Statement file import (OFX/Excel)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [importParseError, setImportParseError] = useState("");
+  const [parsedStatementRows, setParsedStatementRows] = useState<ParsedStatementRow[]>([]);
+  const [accountNumberHint, setAccountNumberHint] = useState<string | undefined>(undefined);
 
   if (!activeCompany) return null;
 
@@ -86,9 +118,79 @@ export default function ReconciliationView({
       ar.description.toLowerCase().includes(ledgerSearchTerm.toLowerCase()),
   );
 
-  const handleImport = () => {
+  const parsedValidRows = parsedStatementRows.filter((row) => row.errors.length === 0);
+  const parsedInvalidRows = parsedStatementRows.filter((row) => row.errors.length > 0);
+  const accountDigits = activeAccount?.accountNumber.replace(/\D/g, "") || "";
+  const hintDigits = accountNumberHint?.replace(/\D/g, "") || "";
+  const accountNumberMismatch =
+    Boolean(accountDigits) &&
+    Boolean(hintDigits) &&
+    !accountDigits.endsWith(hintDigits) &&
+    !hintDigits.endsWith(accountDigits);
+
+  const openImportModal = () => {
+    setImportParseError("");
+    setParsedStatementRows([]);
+    setAccountNumberHint(undefined);
+    setIsImportModalOpen(true);
+  };
+
+  const closeImportModal = () => {
+    setIsImportModalOpen(false);
+    setImportParseError("");
+    setParsedStatementRows([]);
+    setAccountNumberHint(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDownloadTemplate = () => {
     if (!activeAccount) return;
-    importStatement(activeAccount.id);
+    void downloadStatementImportTemplate(`${activeAccount.bankName}-${activeAccount.accountNumber}`);
+  };
+
+  const handleFileSelected = async (file: File) => {
+    setImportParseError("");
+    setParsedStatementRows([]);
+    setAccountNumberHint(undefined);
+    setIsParsingFile(true);
+    try {
+      const extension = file.name.toLowerCase().split(".").pop();
+      if (extension === "ofx" || extension === "qfx") {
+        const { rows, accountNumberHint: hint } = await parseOfxFile(file);
+        setParsedStatementRows(rows);
+        setAccountNumberHint(hint);
+      } else if (extension === "xlsx" || extension === "xls") {
+        const rows = await parseStatementExcelFile(file);
+        setParsedStatementRows(rows);
+      } else {
+        throw new Error("Formato de arquivo não suportado. Envie um arquivo .ofx, .qfx, .xlsx ou .xls.");
+      }
+    } catch (error) {
+      setParsedStatementRows([]);
+      setImportParseError(
+        error instanceof OfxImportError || error instanceof ReconciliationImportError || error instanceof Error
+          ? error.message
+          : "Não foi possível ler o arquivo enviado.",
+      );
+    } finally {
+      setIsParsingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleConfirmImport = () => {
+    if (!activeAccount || !parsedValidRows.length) return;
+    const entries: BankStatementItem[] = parsedValidRows.map((row) => ({
+      id: row.externalId,
+      date: row.date,
+      description: row.description,
+      amount: row.amount,
+      documentNumber: row.documentNumber,
+      isReconciled: false,
+      reconciliationStatus: "Pendente",
+    }));
+    importStatement(activeAccount.id, entries);
+    closeImportModal();
   };
 
   const handleAutoReconcile = () => {
@@ -191,9 +293,9 @@ export default function ReconciliationView({
                   variant="outline"
                   size="sm"
                   icon={<Upload className="h-4 w-4" />}
-                  onClick={handleImport}
+                  onClick={openImportModal}
                 >
-                  Importar Extrato (OFX)
+                  Importar Extrato (OFX/Excel)
                 </Button>
 
                 <Button
@@ -208,6 +310,147 @@ export default function ReconciliationView({
           </div>
         )}
       </Card>
+
+      {/* Import Statement Modal (OFX/Excel) */}
+      <Modal
+        open={isImportModalOpen}
+        onClose={closeImportModal}
+        title="Importar Extrato"
+        description={
+          activeAccount
+            ? `Envie o extrato de ${activeAccount.bankName} - Ag. ${activeAccount.agency} - C/C: ${activeAccount.accountNumber} em .ofx/.qfx ou .xlsx/.xls.`
+            : undefined
+        }
+        size="lg"
+        footer={
+          <>
+            <Button variant="text" onClick={closeImportModal}>
+              Cancelar
+            </Button>
+            <Button
+              icon={<Upload className="h-4 w-4" />}
+              disabled={!parsedValidRows.length}
+              onClick={handleConfirmImport}
+            >
+              Importar {parsedValidRows.length} transação(ões)
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ofx,.qfx,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleFileSelected(file);
+              }}
+            />
+            <Button
+              variant="outline"
+              icon={<Upload className="h-4 w-4" />}
+              loading={isParsingFile}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Selecionar arquivo
+            </Button>
+            <Button
+              variant="text"
+              icon={<Download className="h-4 w-4" />}
+              onClick={handleDownloadTemplate}
+            >
+              Baixar planilha modelo
+            </Button>
+          </div>
+
+          {importParseError && (
+            <p className="text-brand-red-600 dark:text-red-400 font-semibold flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {importParseError}
+            </p>
+          )}
+
+          {accountNumberMismatch && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-brand-gold-300/10 p-3 font-semibold text-amber-700 dark:text-brand-gold-300"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Este arquivo parece ser de outra conta bancária — confira antes de importar.
+            </div>
+          )}
+
+          {parsedStatementRows.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                  {parsedValidRows.length} válida(s)
+                </Badge>
+                {parsedInvalidRows.length > 0 && (
+                  <Badge tone="red" icon={<XCircle className="h-3.5 w-3.5" />}>
+                    {parsedInvalidRows.length} com erro
+                  </Badge>
+                )}
+              </div>
+              <div className="max-h-[320px] overflow-y-auto border border-line dark:border-line-dark rounded-lg">
+                <Table>
+                  <TableHead>
+                    <Tr>
+                      <Th>Status</Th>
+                      <Th>Data</Th>
+                      <Th>Descrição</Th>
+                      <Th align="right">Valor</Th>
+                      <Th>Nº Doc.</Th>
+                    </Tr>
+                  </TableHead>
+                  <TableBody>
+                    {parsedStatementRows.map((row) => {
+                      const hasErrors = row.errors.length > 0;
+                      return (
+                        <Tr key={`${row.row}-${row.externalId}`}>
+                          <Td>
+                            <Tooltip
+                              content={
+                                hasErrors ? (
+                                  <ul className="space-y-0.5">
+                                    {row.errors.map((message, index) => (
+                                      <li key={index}>{message}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  "Linha pronta para importação."
+                                )
+                              }
+                            >
+                              <span className="inline-flex items-center gap-1.5 cursor-help">
+                                {hasErrors ? (
+                                  <XCircle className="h-4 w-4 text-brand-red-600" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4 text-brand-green-600" />
+                                )}
+                              </span>
+                            </Tooltip>
+                          </Td>
+                          <Td>{row.date || "-"}</Td>
+                          <Td className="max-w-64 truncate">{row.description || "-"}</Td>
+                          <Td align="right">
+                            {Number.isFinite(row.amount)
+                              ? row.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+                              : "-"}
+                          </Td>
+                          <Td>{row.documentNumber || "-"}</Td>
+                        </Tr>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Side-by-side reconciliation zone */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -297,8 +540,8 @@ export default function ReconciliationView({
                 icon={<AlertCircle />}
                 title="Nenhum extrato importado para este banco."
                 action={
-                  <Button variant="outline" size="sm" onClick={handleImport}>
-                    Importar OFX do Mês
+                  <Button variant="outline" size="sm" onClick={openImportModal}>
+                    Importar Extrato
                   </Button>
                 }
               />
