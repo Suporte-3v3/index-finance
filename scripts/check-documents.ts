@@ -19,6 +19,7 @@ const {
 
 const database = getDatabaseClient();
 const adminId = randomUUID();
+const teamId = randomUUID();
 const clientId = randomUUID();
 const outsiderId = randomUUID();
 const tenantId = randomUUID();
@@ -37,6 +38,16 @@ const clientProfile = {
     companyId,
     role: "CLIENT" as const,
     permissions: ["documents.upload", "documents.view"],
+  }],
+};
+const teamProfile = {
+  id: teamId,
+  isPlatformAdmin: false,
+  tenantMemberships: [],
+  companyMemberships: [{
+    companyId,
+    role: "BPO_TEAM" as const,
+    permissions: ["documents.upload", "documents.view", "approvals.request"],
   }],
 };
 const outsiderProfile = {
@@ -66,6 +77,7 @@ try {
   await database.user.createMany({
     data: [
       { id: adminId, name: "Administrador de documentos", email: `document-admin-${adminId}@idex.invalid`, emailVerified: true },
+      { id: teamId, name: "Analista de documentos", email: `document-team-${teamId}@idex.invalid`, emailVerified: true },
       { id: clientId, name: "Cliente de documentos", email: `document-client-${clientId}@idex.invalid`, emailVerified: true },
       { id: outsiderId, name: "Usuário sem acesso", email: `document-outsider-${outsiderId}@idex.invalid`, emailVerified: true },
     ],
@@ -86,11 +98,15 @@ try {
       corporateName: "Empresa temporária de documentos Ltda",
       tradeName: "Verificação de documentos",
       memberships: {
-        create: {
+        create: [{
           userId: clientId,
           role: "CLIENT",
           permissions: ["documents.upload", "documents.view"],
-        },
+        }, {
+          userId: teamId,
+          role: "BPO_TEAM",
+          permissions: ["documents.upload", "documents.view", "approvals.request"],
+        }],
       },
     },
   });
@@ -174,6 +190,62 @@ try {
     name: "documento-do-cliente.pdf",
   });
   assert.equal(clientOwned.document.uploadedById, clientId);
+  assert.equal(clientOwned.document.status, "Aguardando Análise");
+  assert.equal(
+    (await listDocuments(adminProfile)).documents.some(
+      (item) => item.id === clientOwned.document.id,
+    ),
+    true,
+  );
+  assert.equal(
+    (await listDocuments(teamProfile)).documents.some(
+      (item) => item.id === clientOwned.document.id,
+    ),
+    true,
+  );
+  assert.equal(
+    (await listDocuments(teamProfile)).documentUsers.some(
+      (user) => user.id === clientId && user.role === "CLIENT",
+    ),
+    true,
+  );
+  assert.equal((await listDocuments(clientProfile)).documentUsers.length, 0);
+  const reviewedClientDocument = await updateDocument(
+    teamProfile,
+    clientOwned.document.id,
+    { amount: 475.9, description: "Documento revisado pelo BPO" },
+  );
+  assert.equal(reviewedClientDocument.amount, 475.9);
+  const clientApproval = await submitDocumentApproval(
+    teamProfile,
+    clientOwned.document.id,
+    { recipientId: clientId },
+  );
+  assert.equal(clientApproval.document.status, "Aguardando Aprovação");
+  assert.equal(clientApproval.document.uploadedById, clientId);
+  assert.equal(clientApproval.document.sharedByRole, "BPO_TEAM");
+  assert.equal(
+    (await listDocuments(clientProfile)).documents.some(
+      (item) =>
+        item.id === clientOwned.document.id &&
+        item.status === "Aguardando Aprovação",
+    ),
+    true,
+  );
+  const returnedToBpo = await decideDocumentApproval(
+    clientProfile,
+    clientApproval.approval.id,
+    { decision: "Ajuste solicitado", comment: "Revisar o valor" },
+  );
+  assert.equal(returnedToBpo.document.status, "Aguardando Análise");
+  assert.equal(
+    (await listDocuments(teamProfile)).documents.some(
+      (item) =>
+        item.id === clientOwned.document.id &&
+        item.status === "Aguardando Análise",
+    ),
+    true,
+  );
   await deleteDocument(clientProfile, clientOwned.document.id);
   assert.equal((await listDocuments(clientProfile)).documents.some((item) => item.id === clientOwned.document.id), false);
 
@@ -197,6 +269,6 @@ try {
   await database.document.deleteMany({ where: { companyId } });
   await database.company.deleteMany({ where: { id: companyId } });
   await database.tenant.deleteMany({ where: { id: tenantId } });
-  await database.user.deleteMany({ where: { id: { in: [adminId, clientId, outsiderId] } } });
+  await database.user.deleteMany({ where: { id: { in: [adminId, teamId, clientId, outsiderId] } } });
   await disconnectDatabase();
 }

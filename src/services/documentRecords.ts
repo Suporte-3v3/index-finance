@@ -1,4 +1,4 @@
-import type { Approval, Document } from "../types";
+import type { Approval, Document, User } from "../types";
 
 export class DocumentRecordServiceError extends Error {}
 
@@ -27,7 +27,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchDocumentRecords() {
-  return request<{ documents: Document[]; documentApprovals: Approval[] }>(
+  return request<{
+    documents: Document[];
+    documentApprovals: Approval[];
+    documentUsers: User[];
+  }>(
     "/api/document-records",
   );
 }

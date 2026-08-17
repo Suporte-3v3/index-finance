@@ -4,6 +4,7 @@
  */
 
 import React, {
+  useCallback,
   createContext,
   useContext,
   useState,
@@ -414,6 +415,7 @@ interface BPOContextType {
     recipientId?: string;
     approvalRecipientId?: string;
   }) => Promise<void>;
+  refreshDocumentRecords: () => Promise<void>;
   deleteDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<Document>) => boolean;
   launchDocument: (id: string, updates?: Partial<Document>) => void;
@@ -995,7 +997,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     ]);
     return {
       ...workspace,
-      users: managedUsers.users,
+      users: [
+        ...new Map(
+          [...managedUsers.users, ...documentRecords.documentUsers].map((user) => [
+            user.id,
+            user,
+          ]),
+        ).values(),
+      ],
       ...financialSetup,
       ...financialEntries,
       ...documentRecords,
@@ -1382,6 +1391,43 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   ) => {
     refreshNotifications();
   };
+
+  const refreshDocumentRecords = useCallback(async () => {
+    const workspace = await fetchDocumentRecords();
+    setDocuments(workspace.documents);
+    setUsers((current) => [
+      ...new Map(
+        [...current, ...workspace.documentUsers].map((user) => [user.id, user]),
+      ).values(),
+    ]);
+    setApprovals((current) => [
+      ...current.filter((approval) => approval.type !== "DOCUMENTO"),
+      ...workspace.documentApprovals,
+    ]);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || mustChangePassword) return;
+    const refresh = () => {
+      void refreshDocumentRecords().catch((error) => {
+        console.error(
+          "Falha ao atualizar a fila de documentos:",
+          error instanceof Error ? error.message : error,
+        );
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [isAuthenticated, mustChangePassword, refreshDocumentRecords]);
 
   const markNotificationRead = (id: string) => {
     void markPersistedNotificationRead(id)
@@ -4478,6 +4524,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         importFinancialEntries,
         decideApproval,
         uploadDocument,
+        refreshDocumentRecords,
         deleteDocument,
         updateDocument,
         launchDocument,

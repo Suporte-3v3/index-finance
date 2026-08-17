@@ -106,6 +106,7 @@ export default function DocumentsReceivedView() {
     accountsReceivable,
     bankAccounts,
     masterData,
+    refreshDocumentRecords,
     updateDocument,
     launchDocument,
     submitDocumentForApproval,
@@ -179,6 +180,14 @@ export default function DocumentsReceivedView() {
   useEffect(() => {
     if (!selectedId && filtered[0]) setSelectedId(filtered[0].id);
   }, [selectedId, filtered]);
+  useEffect(() => {
+    void refreshDocumentRecords().catch((error) => {
+      console.error(
+        "Falha ao carregar a fila de documentos:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }, [refreshDocumentRecords]);
   useEffect(() => setApprovalRecipientId(""), [activeCompany?.id]);
   if (!["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)) {
     return (
@@ -770,7 +779,7 @@ export default function DocumentsReceivedView() {
                   <th className="p-3">Vencimento</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Origem</th>
-                  <th className="p-3">Lançado por</th>
+                  <th className="p-3">Enviado/Lançado por</th>
                   <th className="p-3">Recebido em</th>
                 </tr>
               </thead>
@@ -892,15 +901,10 @@ export default function DocumentsReceivedView() {
                       className="p-3 text-ink dark:text-ink-dark truncate"
                       title={
                         document.launchedByName ||
-                        (document.status === "Lançado"
-                          ? document.uploadedByName
-                          : "Ainda não lançado")
+                        document.uploadedByName
                       }
                     >
-                      {document.launchedByName ||
-                        (document.status === "Lançado"
-                          ? document.uploadedByName
-                          : "Pendente")}
+                      {document.launchedByName || document.uploadedByName}
                     </td>
                     <td className="p-3 text-ink-soft dark:text-ink-soft-dark whitespace-nowrap">
                       {new Date(document.uploadedAt).toLocaleString("pt-BR", {

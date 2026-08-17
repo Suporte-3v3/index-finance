@@ -8,6 +8,7 @@ export function isDocumentDeliveredByBpo(
 ): boolean {
   return (
     document.recipientId === recipientId &&
+    document.uploadedById !== recipientId &&
     Boolean(document.sharedById) &&
     BPO_ROLES.has(document.sharedByRole || "")
   );

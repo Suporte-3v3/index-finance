@@ -292,6 +292,58 @@ async function userMap(ids: Array<string | null | undefined>) {
   }]));
 }
 
+async function documentUsersForBpo(
+  profile: DocumentProfile,
+  companies: Array<{ id: string; tenantId: string }>,
+) {
+  const companyIds = companies
+    .filter((company) => isBpoForCompany(profile, company))
+    .map(({ id }) => id);
+  if (companyIds.length === 0) return [];
+  const rows = await getDatabaseClient().user.findMany({
+    where: {
+      status: "ACTIVE",
+      deletedAt: null,
+      companyMemberships: {
+        some: {
+          companyId: { in: companyIds },
+          status: "ACTIVE",
+          role: { in: ["CLIENT", "ACCOUNTANT"] },
+        },
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      title: true,
+      companyMemberships: {
+        where: {
+          companyId: { in: companyIds },
+          status: "ACTIVE",
+          role: { in: ["CLIENT", "ACCOUNTANT"] },
+        },
+        select: { companyId: true, role: true, permissions: true },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+  return rows.map((user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    title: user.title || undefined,
+    role: user.companyMemberships.some(({ role }) => role === "CLIENT")
+      ? "CLIENT" as const
+      : "ACCOUNTANT" as const,
+    status: "ACTIVE" as const,
+    companies: [...new Set(user.companyMemberships.map(({ companyId }) => companyId))],
+    permissions: [
+      ...new Set(user.companyMemberships.flatMap(({ permissions }) => permissions)),
+    ],
+  }));
+}
+
 function internalFromBody(body: any, previous: InternalFields = {}) {
   const keys = [
     "supplier", "dueDate", "expenseType", "documentNumber", "amount", "entryType",
@@ -357,6 +409,7 @@ export async function listDocuments(profile: DocumentProfile) {
   return {
     documents: documents.map((item) => mapDocument(item, users)),
     documentApprovals: approvals.map((item) => mapApproval(item, users)),
+    documentUsers: await documentUsersForBpo(profile, companies),
   };
 }
 
@@ -377,6 +430,7 @@ export async function createDocument(profile: DocumentProfile, body: any) {
     ? body.hash.toLowerCase()
     : createHash("sha256").update(`${companyId}:${objectKey}:${randomUUID()}`).digest("hex");
   const shared = Boolean(recipientId);
+  const awaitsBpoAnalysis = !shared && !isBpoForCompany(profile, company);
   const internal = internalFromBody({
     ...body,
     origin: body?.origin || "Documento",
@@ -431,9 +485,13 @@ export async function createDocument(profile: DocumentProfile, body: any) {
     await writeNotification(tx, {
       companyId: company.id,
       userId: recipientId || undefined,
-      title: "Novo documento",
-      message: `${document.name} foi adicionado à Central de Documentos.`,
-      type: "INFO",
+      title: awaitsBpoAnalysis
+        ? "Documento aguardando análise do BPO"
+        : "Novo documento",
+      message: awaitsBpoAnalysis
+        ? `${document.uploadedBy.name} enviou ${document.name} para análise do BPO.`
+        : `${document.name} foi adicionado à Central de Documentos.`,
+      type: awaitsBpoAnalysis ? "WARNING" : "INFO",
     });
     const users = await userMap([profile.id, recipientId]);
     return { document: mapDocument(document, users), approval: approval ? mapApproval(approval, users) : undefined };

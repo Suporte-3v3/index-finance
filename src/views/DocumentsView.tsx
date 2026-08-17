@@ -621,6 +621,9 @@ export default function DocumentsView() {
       });
       setPending(null);
       setApprovalRecipientId("");
+      setEditingAnalysis(false);
+      setStatusFilter("ALL");
+      setHistoryTab("sent");
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -899,8 +902,10 @@ export default function DocumentsView() {
                     </div>
                     <div className="bg-brand-green-50 dark:bg-brand-green-600/10 border border-brand-green-600/25 dark:border-brand-green-600/25 rounded-lg p-3 max-w-[85%]">
                       <p className="text-[10px] text-brand-green-600 dark:text-emerald-300 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> DOCUMENTO
-                        INCLUÍDO
+                        <CheckCircle2 className="h-3.5 w-3.5" />{" "}
+                        {isBpoUser
+                          ? "DOCUMENTO INCLUÍDO"
+                          : "ENVIADO PARA ANÁLISE DO BPO"}
                       </p>
                       <p className="text-xs text-ink dark:text-ink-dark mt-1">
                         {document.aiSummary || document.description}
@@ -1158,7 +1163,9 @@ export default function DocumentsView() {
                       )}{" "}
                       {approvalRecipientId
                         ? "Enviar para aprovação documental"
-                        : "Incluir documento"}
+                        : isBpoUser
+                          ? "Incluir documento"
+                          : "Enviar para análise do BPO"}
                     </button>
                     <Button
                       size="sm"
