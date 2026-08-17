@@ -27,6 +27,7 @@ import {
   deactivateManagedUser,
   listManagedUsers,
   resetManagedUserPassword,
+  setManagedUserPassword,
   updateManagedUser,
 } from './backend/users.js';
 import {
@@ -917,6 +918,25 @@ app.post('/api/users/:userId/reset-password', async (request, response) => {
     }
     response.status(status).json({
       error: error instanceof UserApiError ? error.message : 'Não foi possível redefinir a senha.',
+    });
+  }
+});
+
+app.post('/api/users/:userId/password', async (request, response) => {
+  try {
+    await setManagedUserPassword(
+      response.locals.authProfile,
+      request.params.userId,
+      request.body?.newPassword,
+    );
+    response.status(204).end();
+  } catch (error) {
+    const status = error instanceof UserApiError ? error.status : 500;
+    if (status === 500) {
+      console.error('Password set failed:', error instanceof Error ? error.message : error);
+    }
+    response.status(status).json({
+      error: error instanceof UserApiError ? error.message : 'Não foi possível definir a senha.',
     });
   }
 });

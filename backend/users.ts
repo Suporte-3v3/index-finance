@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { getDatabaseClient } from "./database.js";
-import { hashPassword } from "./passwords.js";
+import { hashPassword, verifyPassword } from "./passwords.js";
+import { validateNewPassword } from "./account.js";
 import type { AccessProfile } from "./companies.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
@@ -466,4 +467,45 @@ export async function resetManagedUserPassword(
     database.userSession.deleteMany({ where: { userId: targetUserId } }),
   ]);
   return { temporaryPassword: generatedPassword };
+}
+
+export async function setManagedUserPassword(
+  profile: AccessProfile,
+  targetUserId: string,
+  newPassword: unknown,
+) {
+  const target = await getManagedTarget(profile, targetUserId);
+  if (targetUserId === profile.id) {
+    throw new UserApiError("Use a alteração de senha da própria conta.");
+  }
+  const database = getDatabaseClient();
+  const account = await database.authAccount.findFirst({
+    where: { userId: targetUserId, providerId: "credential" },
+    select: { id: true, password: true },
+  });
+  if (!account) throw new UserApiError("Credencial não encontrada.", 404);
+
+  let validated: string;
+  try {
+    validated = validateNewPassword(newPassword, target.email);
+  } catch (error) {
+    throw new UserApiError(
+      error instanceof Error ? error.message : "Senha inválida.",
+    );
+  }
+  if (account.password && (await verifyPassword(account.password, validated))) {
+    throw new UserApiError("A nova senha deve ser diferente da senha atual.");
+  }
+  const passwordHash = await hashPassword(validated);
+  await database.$transaction([
+    database.authAccount.update({
+      where: { id: account.id },
+      data: { password: passwordHash },
+    }),
+    database.user.update({
+      where: { id: targetUserId },
+      data: { passwordChangedAt: new Date() },
+    }),
+    database.userSession.deleteMany({ where: { userId: targetUserId } }),
+  ]);
 }

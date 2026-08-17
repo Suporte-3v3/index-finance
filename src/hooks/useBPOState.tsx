@@ -84,6 +84,7 @@ import {
   deactivatePersistedUser,
   fetchManagedUsers,
   resetPersistedUserPassword,
+  setPersistedUserPassword,
   updatePersistedUser,
 } from "../services/users";
 import {
@@ -529,6 +530,10 @@ interface BPOContextType {
     error?: string;
     temporaryPassword?: string;
   }>;
+  setTeamMemberPassword: (
+    id: string,
+    newPassword: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   addNotification: (
     title: string,
@@ -3577,6 +3582,22 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       }
     };
 
+  const setTeamMemberPassword: BPOContextType["setTeamMemberPassword"] =
+    async (id, newPassword) => {
+      try {
+        await setPersistedUserPassword(id, newPassword);
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof UserServiceError
+              ? error.message
+              : "Não foi possível definir a nova senha.",
+        };
+      }
+    };
+
   const updateDocument = (id: string, updates: Partial<Document>) => {
     const document = documents.find((item) => item.id === id);
     if (
@@ -4509,6 +4530,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         updateTeamMember,
         deleteTeamMember,
         resetTeamMemberPassword,
+        setTeamMemberPassword,
         addNotification,
         markNotificationRead,
         clearNotifications,
