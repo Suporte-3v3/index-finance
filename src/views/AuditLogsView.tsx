@@ -9,6 +9,7 @@ import { AuditLog, UserRole } from '../types';
 import { Button, Card, MetricCard, Modal, SearchField } from '../components/ui';
 import { MetricTone } from '../components/ui/MetricCard';
 import { Table, TableHead, TableBody, Tr, Th, Td } from '../components/ui/Table';
+import { formatDate, formatDateTime } from '../services/dateFormatters';
 import {
   Activity,
   ArrowDownToLine,
@@ -106,7 +107,7 @@ export default function AuditLogsView() {
     ];
     const rows = filteredLogs.map(log => [
       eventIdentifier(log),
-      log.timestamp,
+      formatDateTime(log.timestamp),
       log.userName,
       ROLE_LABELS[log.role],
       log.companyName || 'Operação global',
@@ -121,7 +122,7 @@ export default function AuditLogsView() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `idex-finance-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `idex-finance-logs-${formatDate(new Date())}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -198,7 +199,7 @@ export default function AuditLogsView() {
         <TableBody>
           {filteredLogs.map(log => (
             <Tr key={log.id}>
-              <Td className="whitespace-nowrap text-ink-soft dark:text-ink-soft-dark">{new Date(log.timestamp).toLocaleString('pt-BR')}</Td>
+              <Td className="whitespace-nowrap text-ink-soft dark:text-ink-soft-dark">{formatDateTime(log.timestamp)}</Td>
               <Td>
                 <div className="flex items-center gap-2">
                   <span className={`h-6 w-6 rounded-full ${AVATAR_PALETTE[0]} text-white text-[9px] font-semibold flex items-center justify-center shrink-0`}>
@@ -244,7 +245,7 @@ export default function AuditLogsView() {
           <div className="space-y-5 text-xs">
             <div className="grid sm:grid-cols-2 gap-3">
               {[
-                ['Data e hora', new Date(selectedLog.timestamp).toLocaleString('pt-BR')],
+                ['Data e hora', formatDateTime(selectedLog.timestamp)],
                 ['Operador', selectedLog.userName],
                 ['Perfil', ROLE_LABELS[selectedLog.role]],
                 ['Empresa', selectedLog.companyName || 'Operação global'],

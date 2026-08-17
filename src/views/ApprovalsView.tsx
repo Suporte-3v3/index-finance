@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import DocumentPreview from "../components/DocumentPreview";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
+import { formatDate, formatDateTime } from "../services/dateFormatters";
 import {
   Badge,
   Button,
@@ -284,7 +285,7 @@ export default function ApprovalsView() {
                       </Badge>
                       <span className="text-xs text-ink-soft dark:text-ink-soft-dark">
                         Solicitado em{" "}
-                        {new Date(apv.createdAt).toLocaleDateString("pt-BR")}
+                        {formatDate(apv.createdAt)}
                       </span>
                     </div>
                     <h3 className="text-sm font-bold text-ink dark:text-ink-dark">
@@ -295,9 +296,7 @@ export default function ApprovalsView() {
                       {apv.type === "DOCUMENTO" ? "Documento de" : "Vence em"}
                       :{" "}
                       <strong className="text-ink dark:text-ink-dark">
-                        {new Date(
-                          `${apv.dueDate}T12:00:00`,
-                        ).toLocaleDateString("pt-BR")}
+                        {formatDate(apv.dueDate)}
                       </strong>
                     </p>
                     {apv.type === "DOCUMENTO" && apv.recipientName && (
@@ -426,8 +425,8 @@ export default function ApprovalsView() {
                     <p className="text-xs text-ink-soft dark:text-ink-soft-dark">
                       Decidido em{" "}
                       {step
-                        ? new Date(step.timestamp).toLocaleString("pt-BR")
-                        : new Date().toLocaleDateString("pt-BR")}{" "}
+                        ? formatDateTime(step.timestamp)
+                        : formatDate(new Date())}{" "}
                       por <strong className="text-ink dark:text-ink-dark">{step?.userName || "Cliente"}</strong>
                     </p>
                   </div>
@@ -469,7 +468,7 @@ export default function ApprovalsView() {
                               {h.userName} ({h.role.replace(/_/g, " ")})
                             </span>
                             <span className="text-ink-soft dark:text-ink-soft-dark">
-                              {new Date(h.timestamp).toLocaleString("pt-BR")}
+                              {formatDateTime(h.timestamp)}
                             </span>
                           </div>
                           <div className="bg-surface dark:bg-surface-dark p-2.5 rounded-lg border border-line dark:border-line-dark">

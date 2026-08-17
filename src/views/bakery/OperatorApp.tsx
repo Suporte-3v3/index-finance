@@ -17,6 +17,7 @@ import {
 } from "../../types";
 import { computeShiftTotals, formatBRL } from "./calculations";
 import CurrencyInput from "../../components/CurrencyInput";
+import { formatDate } from "../../services/dateFormatters";
 import {
   ArrowLeft,
   Store,
@@ -1587,7 +1588,7 @@ export default function OperatorApp() {
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-ink dark:text-ink-dark">
-                {new Date(shift.openedAt).toLocaleDateString("pt-BR")} — {shift.shiftLabel}
+                {formatDate(shift.openedAt)} — {shift.shiftLabel}
               </span>
               <span
                 className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -1651,7 +1652,7 @@ export default function OperatorApp() {
     return (
       <div className="space-y-4">
         <ScreenHeader
-          title={`${shift.shiftLabel} · ${new Date(shift.openedAt).toLocaleDateString("pt-BR")}`}
+          title={`${shift.shiftLabel} · ${formatDate(shift.openedAt)}`}
           subtitle={shift.registerName}
           onBack={() => setScreen("history")}
         />

@@ -6,7 +6,7 @@
 import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { downloadReportFile } from "../services/reportFiles";
-import { Button, IconButton, Card, MetricCard } from "../components/ui";
+import { BrazilianDateInput, Button, IconButton, Card, MetricCard } from "../components/ui";
 import {
   BarChart3,
   TableProperties,
@@ -512,16 +512,14 @@ export default function CashFlowView() {
           </select>
           {periodRange === "CUSTOM" && (
             <div className="flex gap-1">
-              <input
-                type="date"
+              <BrazilianDateInput
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onValueChange={setCustomStart}
                 className="w-1/2 border border-line dark:border-line-dark bg-white dark:bg-zinc-800/70 text-ink dark:text-ink-dark rounded-lg px-1 text-[9px] dark:[color-scheme:dark]"
               />
-              <input
-                type="date"
+              <BrazilianDateInput
                 value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onValueChange={setCustomEnd}
                 className="w-1/2 border border-line dark:border-line-dark bg-white dark:bg-zinc-800/70 text-ink dark:text-ink-dark rounded-lg px-1 text-[9px] dark:[color-scheme:dark]"
               />
             </div>

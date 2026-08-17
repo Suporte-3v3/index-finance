@@ -8,8 +8,9 @@ import { useBPOState } from "../../hooks/useBPOState";
 import { useBakeryCashState } from "../../hooks/useBakeryCashState";
 import { BakeryPixReconciliationStatus, BakeryShift } from "../../types";
 import { computeShiftTotals, formatBRL } from "./calculations";
-import { Badge, BadgeTone, Card, MetricCard, Modal } from "../../components/ui";
+import { Badge, BadgeTone, BrazilianDateInput, Card, MetricCard, Modal } from "../../components/ui";
 import { MetricTone } from "../../components/ui/MetricCard";
+import { formatDate, formatDateTime } from "../../services/dateFormatters";
 import {
   Store,
   Coins,
@@ -229,10 +230,9 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-1.5 text-ink-soft dark:text-ink-soft-dark text-xs font-semibold pr-1">
           <Filter className="h-3.5 w-3.5" /> Filtros
         </div>
-        <input
-          type="date"
+        <BrazilianDateInput
           value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
+          onValueChange={setDateFilter}
           className={FILTER_SELECT_CLASS}
         />
         <button
@@ -345,7 +345,7 @@ export default function AdminDashboard() {
                   className="hover:bg-canvas/60 dark:hover:bg-white/[0.03] transition-colors"
                 >
                   <td className="px-4 py-3 whitespace-nowrap text-ink dark:text-ink-dark">
-                    {new Date(shift.openedAt).toLocaleDateString("pt-BR")}
+                    {formatDate(shift.openedAt)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-ink dark:text-ink-dark">
                     {shift.registerName}
@@ -465,7 +465,7 @@ export default function AdminDashboard() {
                   </span>
                 </p>
                 <p className="text-[11px] text-ink-soft dark:text-ink-soft-dark">
-                  {new Date(sale.createdAt).toLocaleString("pt-BR")}
+                  {formatDateTime(sale.createdAt)}
                   {sale.customerName ? ` · ${sale.customerName}` : ""}
                   {sale.canceled ? " · Cancelada" : ""}
                 </p>

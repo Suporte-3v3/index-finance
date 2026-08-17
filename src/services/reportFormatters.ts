@@ -1,31 +1,19 @@
+import { formatDate, formatDateTime } from "./dateFormatters";
+
 export type ReportFilePeriod = {
   startDate?: string;
   endDate?: string;
 };
 
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const ISO_MONTH = /^(\d{4})-(\d{2})$/;
-
 export const formatBrazilianDate = (value?: string | null): string => {
-  if (!value) return "-";
-  const dateMatch = value.match(ISO_DATE);
-  if (dateMatch) return `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
-  const monthMatch = value.match(ISO_MONTH);
-  if (monthMatch) return `${monthMatch[2]}/${monthMatch[1]}`;
-  return value;
+  return formatDate(value);
 };
 
 export const formatBrazilianDateTime = (
   value: string,
   timeZone?: string,
 ): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(date);
+  return formatDateTime(value, timeZone);
 };
 
 export const formatBrazilianCurrency = (value: number): string =>
@@ -60,7 +48,7 @@ export const buildReportFileBaseName = (
   period: ReportFilePeriod,
   generatedAt: string,
 ): string => {
-  const periodLabel = (period.startDate || generatedAt).slice(0, 7);
+  const periodLabel = formatDate((period.startDate || generatedAt).slice(0, 7));
   return [
     sanitizeFileNameSegment(reportType),
     sanitizeFileNameSegment(companyName),

@@ -6,6 +6,7 @@
 import React, { useRef, useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { Button, Card } from "../components/ui";
+import { formatDate, formatDateTime } from "../services/dateFormatters";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -320,7 +321,7 @@ export default function BackupView() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      const date = new Date().toISOString().slice(0, 10);
+      const date = formatDate(new Date());
       link.href = url;
       link.download = `idex-finance-backup-${date}.json`;
       link.click();
@@ -537,7 +538,7 @@ export default function BackupView() {
               </div>
               <p className="text-ink dark:text-ink-dark truncate">{selectedFileName}</p>
               <p className="text-ink-soft dark:text-ink-soft-dark">
-                Gerado em {new Date(selectedBackup.exportedAt).toLocaleString("pt-BR")}
+                Gerado em {formatDateTime(selectedBackup.exportedAt)}
               </p>
               <p className="text-ink-soft dark:text-ink-soft-dark">
                 {selectedBackup.files.length} arquivo(s) físico(s) — {" "}

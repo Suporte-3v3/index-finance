@@ -17,8 +17,9 @@ import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import ImportEntriesActions from "../components/ImportEntriesActions";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
-import { Badge, BadgeTone, Button, Card, MetricCard, Modal } from "../components/ui";
+import { Badge, BadgeTone, BrazilianDateInput, BrazilianMonthInput, Button, Card, MetricCard, Modal } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
+import { formatDate, formatDateTime } from "../services/dateFormatters";
 
 const STATUS: Document["status"][] = [
   "Aguardando Análise",
@@ -452,12 +453,11 @@ export default function DocumentsReceivedView() {
             />
           </Field>
           <Field label="Vencimento" required>
-            <input
+            <BrazilianDateInput
               required
-              type="date"
               value={newLaunch.dueDate}
-              onChange={(e) =>
-                setNewLaunch({ ...newLaunch, dueDate: e.target.value })
+              onValueChange={(dueDate) =>
+                setNewLaunch({ ...newLaunch, dueDate })
               }
             />
           </Field>
@@ -617,14 +617,13 @@ export default function DocumentsReceivedView() {
               </Field>
             )}
           <Field label="Competência" required>
-            <input
+            <BrazilianMonthInput
               required
-              type="month"
               value={newLaunch.competenceMonth}
-              onChange={(e) =>
+              onValueChange={(competenceMonth) =>
                 setNewLaunch({
                   ...newLaunch,
-                  competenceMonth: e.target.value,
+                  competenceMonth,
                 })
               }
             />
@@ -872,11 +871,7 @@ export default function DocumentsReceivedView() {
                         : "—"}
                     </td>
                     <td className="p-3 whitespace-nowrap text-ink dark:text-ink-dark">
-                      {document.dueDate
-                        ? new Date(
-                            `${document.dueDate}T12:00:00`,
-                          ).toLocaleDateString("pt-BR")
-                        : "—"}
+                      {document.dueDate ? formatDate(document.dueDate) : "—"}
                     </td>
                     <td className="p-3">
                       <span className={`inline-block whitespace-nowrap text-[9px] font-semibold px-1.5 py-1 rounded ${PILL_TONE_CLASS[STATUS_TONE[document.status]]}`}>
@@ -907,12 +902,7 @@ export default function DocumentsReceivedView() {
                       {document.launchedByName || document.uploadedByName}
                     </td>
                     <td className="p-3 text-ink-soft dark:text-ink-soft-dark whitespace-nowrap">
-                      {new Date(document.uploadedAt).toLocaleString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTime(document.uploadedAt)}
                     </td>
                   </tr>
                 ))}
@@ -950,9 +940,7 @@ export default function DocumentsReceivedView() {
                     </h3>
                     <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark mt-1">
                       {selected.category} · Recebido{" "}
-                      {new Date(selected.uploadedAt).toLocaleDateString(
-                        "pt-BR",
-                      )}
+                      {formatDate(selected.uploadedAt)}
                     </p>
                   </div>
                 </div>
@@ -1066,10 +1054,9 @@ export default function DocumentsReceivedView() {
                       />
                     </Field>
                     <Field label="Vencimento" required>
-                      <input
-                        type="date"
+                      <BrazilianDateInput
                         value={String(value("dueDate"))}
-                        onChange={(e) => set("dueDate", e.target.value)}
+                        onValueChange={(dueDate) => set("dueDate", dueDate)}
                       />
                     </Field>
                   </div>
@@ -1195,10 +1182,9 @@ export default function DocumentsReceivedView() {
                       </select>
                     </Field>
                     <Field label="Competência">
-                      <input
-                        type="month"
+                      <BrazilianMonthInput
                         value={String(value("competenceMonth"))}
-                        onChange={(e) => set("competenceMonth", e.target.value)}
+                        onValueChange={(competenceMonth) => set("competenceMonth", competenceMonth)}
                       />
                     </Field>
                   </div>

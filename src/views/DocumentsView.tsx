@@ -7,6 +7,7 @@ import DocumentPreview from "../components/DocumentPreview";
 import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import CurrencyInput from "../components/CurrencyInput";
 import { isDocumentDeliveredByBpo } from "../services/documentVisibility";
+import { formatDate, formatDateTime } from "../services/dateFormatters";
 import {
   Badge,
   Button,
@@ -15,6 +16,7 @@ import {
   IconButton,
   Modal,
   Tabs,
+  BrazilianDateInput,
 } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
 import {
@@ -911,7 +913,7 @@ export default function DocumentsView() {
                         {document.aiSummary || document.description}
                       </p>
                       <p className="text-[9px] text-ink-soft dark:text-ink-soft-dark mt-2">
-                        {new Date(document.uploadedAt).toLocaleString("pt-BR")}
+                        {formatDateTime(document.uploadedAt)}
                       </p>
                     </div>
                   </div>
@@ -1005,13 +1007,12 @@ export default function DocumentsView() {
                       </label>
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark">
                         Vencimento
-                        <input
-                          type="date"
+                        <BrazilianDateInput
                           value={pending.dueDate}
-                          onChange={(event) =>
+                          onValueChange={(dueDate) =>
                             setPending({
                               ...pending,
-                              dueDate: event.target.value,
+                              dueDate,
                             })
                           }
                           className="mt-1 w-full border border-line dark:border-line-dark rounded-lg p-2 text-xs bg-canvas dark:bg-white/5 text-ink dark:text-ink-dark dark:[color-scheme:dark]"
@@ -1081,11 +1082,7 @@ export default function DocumentsView() {
                         ["Fornecedor", pending.supplier],
                         [
                           "Vencimento",
-                          pending.dueDate
-                            ? new Date(
-                                `${pending.dueDate}T12:00:00`,
-                              ).toLocaleDateString("pt-BR")
-                            : "A confirmar",
+                          pending.dueDate ? formatDate(pending.dueDate) : "A confirmar",
                         ],
                         ["Tipo de despesa", pending.expenseType],
                         [
@@ -1338,11 +1335,11 @@ export default function DocumentsView() {
                       </p>
                       <p className="text-[9px] text-ink-soft dark:text-ink-soft-dark mt-1 flex items-center gap-1">
                         <Clock3 className="h-3 w-3" />{" "}
-                        {new Date(
+                        {formatDateTime(
                           isDocumentDeliveredByBpo(document, currentUser.id)
                             ? document.sharedAt || document.uploadedAt
                             : document.uploadedAt,
-                        ).toLocaleString("pt-BR")}{" "}
+                        )}{" "}
                         ·{" "}
                         {historyTab === "cancelled"
                           ? "cancelado"

@@ -25,7 +25,7 @@ function validRow(issueDate: unknown = "01-08-2026", dueDate: unknown = "10-08-2
     "Imobiliária Central",
     "Aluguel",
     "Administrativo",
-    "2026-08",
+    "08-2026",
     issueDate,
     dueDate,
     "3.500,50",
@@ -50,6 +50,7 @@ test("aceita DD-MM-AAAA na planilha e converte as datas para o formato do banco"
   const payload = toImportPayload(row);
   assert.equal(payload.issueDate, "2026-08-01");
   assert.equal(payload.dueDate, "2026-08-10");
+  assert.equal(payload.competenceMonth, "2026-08");
 });
 
 test("rejeita datas no formato americano/ISO e mostra o erro no campo correto", () => {
@@ -92,6 +93,7 @@ test("gera o modelo com cabeçalhos brasileiros e células de data formatadas", 
 
   assert.equal(sheet.G1.v, "Data de Emissão (DD-MM-AAAA)");
   assert.equal(sheet.H1.v, "Data de Vencimento (DD-MM-AAAA)");
+  assert.equal(sheet.F1.v, "Competência (MM-AAAA)");
   assert.equal(sheet.G2.z, "dd-mm-yyyy");
   assert.equal(sheet.H2.z, "dd-mm-yyyy");
   assert.ok(sheet.G2.v instanceof Date);

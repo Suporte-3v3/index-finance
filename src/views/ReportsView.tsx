@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { downloadReportFile } from "../services/reportFiles";
+import { formatDateTime } from "../services/dateFormatters";
 import { REPORT_MODEL_INFO, REPORT_MODEL_TYPES } from "../config/reportBlocks";
 import { ReportModelType, ReportRecord, ReportTemplate } from "../types";
 import ReportBuilderView from "./reports/ReportBuilderView";
@@ -34,8 +35,6 @@ import {
   Star,
   Wallet,
 } from "lucide-react";
-
-const formatDateTime = (value: string) => new Date(value).toLocaleString("pt-BR");
 
 const MODEL_ICONS: Record<ReportModelType, React.ComponentType<{ className?: string }>> = {
   "Contas a Pagar": ArrowUpRight,

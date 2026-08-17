@@ -6,12 +6,15 @@
 import React, { InputHTMLAttributes } from "react";
 import Field, { FIELD_INPUT_CLASS, fieldBorderClass } from "./Field";
 import { cn } from "./cn";
+import BrazilianDateInput from "./BrazilianDateInput";
 
 export interface DateFieldProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type"> {
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type" | "value" | "defaultValue" | "onChange"> {
   label?: string;
   hint?: string;
   error?: string;
+  value?: string;
+  onValueChange: (isoDate: string) => void;
 }
 
 export default function DateField({
@@ -25,9 +28,8 @@ export default function DateField({
   return (
     <Field label={label} required={required} hint={hint} error={error}>
       {(id, describedBy) => (
-        <input
+        <BrazilianDateInput
           id={id}
-          type="date"
           required={required}
           aria-invalid={Boolean(error)}
           aria-describedby={describedBy}

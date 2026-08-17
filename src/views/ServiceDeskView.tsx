@@ -8,6 +8,7 @@ import {
 import { uploadSupportAttachment } from "../services/fileUpload";
 import { Badge, Card, ConfirmDialog, EmptyState, IconButton, MetricCard } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
+import { formatDateTime } from "../services/dateFormatters";
 import {
   AlertCircle,
   CheckCircle2,
@@ -373,7 +374,7 @@ export default function ServiceDeskView() {
                           </a>
                         ))}
                         <p className="mt-1 text-[9px] opacity-60">
-                          {new Date(item.createdAt).toLocaleString("pt-BR")}
+                          {formatDateTime(item.createdAt)}
                         </p>
                       </div>
                     </div>

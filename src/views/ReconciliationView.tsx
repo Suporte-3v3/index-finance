@@ -34,6 +34,7 @@ import {
   toStatementImportPayload,
   validateStatementRow,
 } from "../services/reconciliationImport";
+import { formatDate } from "../services/dateFormatters";
 import {
   Building2,
   Upload,
@@ -663,7 +664,7 @@ export default function ReconciliationView({
                   <div className="space-y-1 pr-4">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-mono font-semibold">
-                        {new Date(item.date).toLocaleDateString("pt-BR")}
+                        {formatDate(item.date)}
                       </span>
                       <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-mono">
                         Nº: {item.documentNumber || "N/A"}
@@ -764,9 +765,7 @@ export default function ReconciliationView({
                       </h4>
                       <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-mono">
                         Vencimento Extrato:{" "}
-                        {new Date(
-                          selectedStatementItem.date,
-                        ).toLocaleDateString("pt-BR")}
+                        {formatDate(selectedStatementItem.date)}
                       </span>
                     </div>
                     <span
@@ -865,9 +864,7 @@ export default function ReconciliationView({
                                 </span>
                                 <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-medium">
                                   Favorecido: {ap.supplier} | Venc:{" "}
-                                  {new Date(ap.dueDate).toLocaleDateString(
-                                    "pt-BR",
-                                  )}
+                                  {formatDate(ap.dueDate)}
                                 </span>
                               </div>
 
@@ -927,9 +924,7 @@ export default function ReconciliationView({
                                 </span>
                                 <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-medium">
                                   Cliente: {ar.customer} | Venc:{" "}
-                                  {new Date(ar.dueDate).toLocaleDateString(
-                                    "pt-BR",
-                                  )}
+                                  {formatDate(ar.dueDate)}
                                 </span>
                               </div>
 

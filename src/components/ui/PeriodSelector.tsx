@@ -5,6 +5,7 @@
 
 import React from "react";
 import { cn } from "./cn";
+import BrazilianDateInput from "./BrazilianDateInput";
 
 export type PeriodValue = "7" | "15" | "30" | "90" | "custom";
 
@@ -54,17 +55,15 @@ export default function PeriodSelector({
       </div>
       {value === "custom" && onCustomChange && (
         <div className="flex items-center gap-1.5">
-          <input
-            type="date"
+          <BrazilianDateInput
             value={customStart}
-            onChange={(event) => onCustomChange(event.target.value, customEnd)}
+            onValueChange={(date) => onCustomChange(date, customEnd)}
             className="h-9 rounded-lg border border-line dark:border-line-dark bg-surface dark:bg-surface-dark px-2.5 text-xs text-ink dark:text-ink-dark dark:[color-scheme:dark]"
           />
           <span className="text-ink-soft dark:text-ink-soft-dark text-xs">a</span>
-          <input
-            type="date"
+          <BrazilianDateInput
             value={customEnd}
-            onChange={(event) => onCustomChange(customStart, event.target.value)}
+            onValueChange={(date) => onCustomChange(customStart, date)}
             className="h-9 rounded-lg border border-line dark:border-line-dark bg-surface dark:bg-surface-dark px-2.5 text-xs text-ink dark:text-ink-dark dark:[color-scheme:dark]"
           />
         </div>

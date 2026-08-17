@@ -8,6 +8,7 @@ import { useBPOState } from "../hooks/useBPOState";
 import { AccountPayable, MasterDataType } from "../types";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
+import { formatDate } from "../services/dateFormatters";
 import {
   Button,
   Card,
@@ -15,6 +16,8 @@ import {
   SearchField,
   StatusBadge,
   ConfirmDialog,
+  BrazilianDateInput,
+  BrazilianMonthInput,
 } from "../components/ui";
 import {
   Plus,
@@ -706,11 +709,10 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Mês Competência
                       </label>
-                      <input
-                        type="month"
+                      <BrazilianMonthInput
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={competenceMonth}
-                        onChange={(e) => setCompetenceMonth(e.target.value)}
+                        onValueChange={setCompetenceMonth}
                       />
                     </div>
 
@@ -718,11 +720,10 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Data Emissão
                       </label>
-                      <input
-                        type="date"
+                      <BrazilianDateInput
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={issueDate}
-                        onChange={(e) => setIssueDate(e.target.value)}
+                        onValueChange={setIssueDate}
                       />
                     </div>
 
@@ -730,12 +731,11 @@ export default function AccountsPayableView({
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">
                         Data Vencimento *
                       </label>
-                      <input
-                        type="date"
+                      <BrazilianDateInput
                         required
                         className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
+                        onValueChange={setDueDate}
                       />
                     </div>
                   </div>
@@ -902,7 +902,7 @@ export default function AccountsPayableView({
                               Number(installmentCount),
                           )}{" "}
                           — 1ª parcela em{" "}
-                          {new Date(dueDate).toLocaleDateString("pt-BR")}, as
+                          {formatDate(dueDate)}, as
                           demais nos meses seguintes.
                         </p>
                       )}
@@ -1049,7 +1049,7 @@ export default function AccountsPayableView({
                       <td
                         className={`p-4 font-medium ${isOverdue ? "text-rose-600 dark:text-rose-400 font-semibold" : "text-zinc-600 dark:text-zinc-300"}`}
                       >
-                        {new Date(ap.dueDate).toLocaleDateString("pt-BR")}
+                        {formatDate(ap.dueDate)}
                         {isOverdue && (
                           <span className="text-[9px] bg-rose-50 border border-rose-100 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/25 dark:text-rose-400 px-1.5 py-0.5 rounded ml-2 font-semibold uppercase tracking-wider">
                             Atrasado
@@ -1205,8 +1205,8 @@ export default function AccountsPayableView({
                       ...(selected.installmentCount
                         ? ([["Parcela", `${selected.installmentNumber} de ${selected.installmentCount}`]] as [string, string][])
                         : []),
-                      ["Vencimento", new Date(selected.dueDate).toLocaleDateString("pt-BR")],
-                      ["Emissão", new Date(selected.issueDate).toLocaleDateString("pt-BR")],
+                      ["Vencimento", formatDate(selected.dueDate)],
+                      ["Emissão", formatDate(selected.issueDate)],
                       ["Categoria", selected.category],
                       ["Centro de Custo", selected.costCenter],
                       ["Forma de Pagamento", selected.paymentMethod],
@@ -1300,20 +1300,18 @@ export default function AccountsPayableView({
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Emissão</label>
-                      <input
-                        type="date"
+                      <BrazilianDateInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editIssueDate}
-                        onChange={(e) => setEditIssueDate(e.target.value)}
+                        onValueChange={setEditIssueDate}
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Vencimento *</label>
-                      <input
-                        type="date"
+                      <BrazilianDateInput
                         className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                         value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
+                        onValueChange={setEditDueDate}
                       />
                     </div>
                   </div>
@@ -1499,11 +1497,10 @@ export default function AccountsPayableView({
 
                       <div className="space-y-1">
                         <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Data do pagamento</label>
-                        <input
-                          type="date"
+                        <BrazilianDateInput
                           className="w-full p-2 bg-zinc-50 dark:bg-zinc-800/70 text-ink dark:text-ink-dark border border-line dark:border-line-dark rounded-lg"
                           value={payDate}
-                          onChange={(e) => setPayDate(e.target.value)}
+                          onValueChange={setPayDate}
                         />
                       </div>
 
@@ -1598,7 +1595,7 @@ export default function AccountsPayableView({
                               className="font-semibold text-zinc-800 dark:text-zinc-200 hover:underline flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/70 border border-line dark:border-line-dark rounded-lg p-2.5"
                             >
                               <CheckCircle className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
-                              Comprovante de {new Date(p.date).toLocaleDateString("pt-BR")} — {formatBRL(p.amount)}
+                              Comprovante de {formatDate(p.date)} — {formatBRL(p.amount)}
                             </a>
                           ))}
                       </div>
@@ -1622,7 +1619,7 @@ export default function AccountsPayableView({
                           <div className="flex items-center justify-between">
                             <span className="font-semibold text-ink dark:text-ink-dark">{formatBRL(p.amount)}</span>
                             <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
-                              {new Date(p.date).toLocaleDateString("pt-BR")}
+                              {formatDate(p.date)}
                             </span>
                           </div>
                           <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark flex items-center gap-1">

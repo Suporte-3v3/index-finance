@@ -10,8 +10,8 @@ import {
 } from "./reportFormatters";
 
 test("formata datas, moeda e percentuais no padrão brasileiro", () => {
-  assert.equal(formatBrazilianDate("2026-07-31"), "31/07/2026");
-  assert.equal(formatBrazilianDate("2026-07"), "07/2026");
+  assert.equal(formatBrazilianDate("2026-07-31"), "31-07-2026");
+  assert.equal(formatBrazilianDate("2026-07"), "07-2026");
   assert.equal(formatBrazilianCurrency(1234.56), "R$ 1.234,56");
   assert.equal(formatBrazilianCurrency(-50), "-R$ 50,00");
   assert.equal(formatBrazilianPercent(12.345), "12,35%");
@@ -26,7 +26,7 @@ test("remove acentos, espaços e caracteres especiais do nome do arquivo", () =>
       { startDate: "2026-07-01", endDate: "2026-07-31" },
       "2026-08-06T17:30:00.000Z",
     ),
-    "contas-a-pagar_alfa-tecnologia_2026-07",
+    "contas-a-pagar_alfa-tecnologia_07-2026",
   );
 });
 

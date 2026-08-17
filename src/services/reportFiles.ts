@@ -1,10 +1,7 @@
-import * as XLSX from "xlsx";
 import { ReportExportFormat, ReportRecord } from "../types";
 import { createIdexReportPdf, ReportOrientation } from "./idexReportTemplate";
-import {
-  buildReportFileBaseName,
-  formatBrazilianDate,
-} from "./reportFormatters";
+import { buildReportFileBaseName } from "./reportFormatters";
+import { createExcel } from "./reportExcel";
 
 export type ReportCell = string | number;
 
@@ -71,62 +68,6 @@ const base64ToBytes = (content: string) => {
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
-};
-
-const uniqueSheetName = (base: string, used: Set<string>) => {
-  const clean = base.replace(/[\\/*?:[\]]/g, " ").trim().slice(0, 31) || "Dados";
-  let name = clean;
-  let suffix = 2;
-  while (used.has(name.toLocaleLowerCase("pt-BR"))) {
-    name = `${clean.slice(0, 28)} ${suffix}`;
-    suffix += 1;
-  }
-  used.add(name.toLocaleLowerCase("pt-BR"));
-  return name;
-};
-
-const createExcel = (doc: ReportDocumentData) => {
-  const workbook = XLSX.utils.book_new();
-  const usedSheetNames = new Set<string>();
-  const period = doc.period?.startDate && doc.period?.endDate
-    ? `${formatBrazilianDate(doc.period.startDate)} a ${formatBrazilianDate(doc.period.endDate)}`
-    : "-";
-  const summaryRows: ReportCell[][] = [
-    ["IDEX FINANCE - CENTRAL DE RELATÓRIOS"],
-    [doc.title],
-    ["Empresa", doc.companyName],
-    ["CNPJ", doc.companyCnpj || "-"],
-    ["Período", period],
-    ["Filtros", doc.filters],
-    ["Emitido em", new Date(doc.generatedAt).toLocaleString("pt-BR")],
-    ["Gerado por", doc.generatedBy],
-  ];
-  doc.sections
-    .filter((section): section is Extract<ReportSectionData, { kind: "kpis" }> => section.kind === "kpis")
-    .forEach((section) => {
-      summaryRows.push([]);
-      if (section.title) summaryRows.push([section.title]);
-      section.items.forEach((item) => summaryRows.push([item.label, item.value]));
-    });
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.aoa_to_sheet(summaryRows),
-    uniqueSheetName("Resumo", usedSheetNames),
-  );
-
-  doc.sections
-    .filter((section) => section.kind !== "kpis")
-    .forEach((section) => {
-      if (section.kind !== "table" && section.kind !== "chart") return;
-      const rows: ReportCell[][] = [[section.title], section.columns, ...section.rows];
-      XLSX.utils.book_append_sheet(
-        workbook,
-        XLSX.utils.aoa_to_sheet(rows),
-        uniqueSheetName(section.title, usedSheetNames),
-      );
-    });
-
-  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
 };
 
 export function createReportArtifact(

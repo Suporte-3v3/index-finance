@@ -32,7 +32,7 @@ import {
   Legend,
 } from "recharts";
 import { useBPOState } from "../../hooks/useBPOState";
-import { Button, IconButton, Card, SectionLabel } from "../../components/ui";
+import { BrazilianDateInput, Button, IconButton, Card, SectionLabel } from "../../components/ui";
 import {
   CashFlowReportGrouping,
   CashFlowReportView,
@@ -56,6 +56,7 @@ import {
   computeReportSections,
 } from "../../services/reportComputations";
 import { ReportSectionData, downloadReportFile } from "../../services/reportFiles";
+import { safeReportText } from "../../services/reportFormatters";
 import { ChartDefs, ChartTooltip, CHART_SHADOW } from "../../components/charts";
 
 const PALETTE = ["#0B2C52", "#C8102E", "#E7B967", "#15996F", "#174E83", "#8F071B"];
@@ -152,7 +153,7 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
                 <tr key={rowIndex}>
                   {row.map((cell, cellIndex) => (
                     <td key={cellIndex} className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">
-                      {cell}
+                      {typeof cell === "string" ? safeReportText(cell) : cell}
                     </td>
                   ))}
                 </tr>
@@ -178,7 +179,7 @@ function SectionPreview({ section, showTitle = true }: { section: ReportSectionD
 
   const seriesKeys = section.columns.slice(1);
   const data = section.rows.map((row) => {
-    const entry: Record<string, string | number> = { name: String(row[0]) };
+    const entry: Record<string, string | number> = { name: safeReportText(row[0]) };
     seriesKeys.forEach((key, index) => {
       entry[key] = Number(row[index + 1]) || 0;
     });
@@ -569,9 +570,9 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
           <div className="space-y-1">
             <label className={LABEL_CLASS}>Período</label>
             <div className="flex items-center gap-2">
-              <input type="date" className={INPUT_CLASS} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <BrazilianDateInput className={INPUT_CLASS} value={startDate} onValueChange={setStartDate} />
               <span className="text-zinc-400 text-xs">a</span>
-              <input type="date" className={INPUT_CLASS} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <BrazilianDateInput className={INPUT_CLASS} value={endDate} onValueChange={setEndDate} />
             </div>
           </div>
           <div className="space-y-1">

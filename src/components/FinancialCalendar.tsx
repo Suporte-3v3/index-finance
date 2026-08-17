@@ -13,6 +13,7 @@ import {
   Clock3,
 } from "lucide-react";
 import { Card, IconButton, cn } from "./ui";
+import { formatDate } from "../services/dateFormatters";
 
 export type FinancialCalendarEventType =
   | "payable"
@@ -234,7 +235,7 @@ export default function FinancialCalendar({
                     );
                   }
                 }}
-                aria-label={`${day.toLocaleDateString("pt-BR")}, ${dayEvents.length} eventos`}
+                aria-label={`${formatDate(day)}, ${dayEvents.length} eventos`}
                 className={cn(
                   "relative mx-auto flex h-8 w-8 cursor-pointer flex-col items-center justify-center rounded-lg text-[10px] font-semibold transition-colors",
                   isCurrentMonth

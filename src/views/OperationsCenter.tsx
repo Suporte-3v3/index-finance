@@ -14,8 +14,10 @@ import {
   MetricCard,
   SearchField,
   StatusBadge,
+  BrazilianMonthInput,
 } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
+import { formatDate, formatDateTime } from "../services/dateFormatters";
 import { Table, TableHead, TableBody, Tr, Th, Td } from "../components/ui/Table";
 import {
   Building2,
@@ -378,10 +380,9 @@ export default function OperationsCenter({
             Competência analisada
           </label>
           <div className="flex items-center gap-2">
-            <input
-              type="month"
+            <BrazilianMonthInput
               value={referenceMonth}
-              onChange={(event) => changeReferenceMonth(event.target.value)}
+              onValueChange={changeReferenceMonth}
               className="text-xs font-semibold text-ink dark:text-ink-dark bg-canvas dark:bg-white/5 border border-line dark:border-line-dark rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-navy-700/30 dark:[color-scheme:dark]"
             />
             <span className="text-xs capitalize hidden sm:inline text-ink-soft dark:text-ink-soft-dark">
@@ -389,11 +390,7 @@ export default function OperationsCenter({
             </span>
           </div>
           <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-mono">
-            Posição consultada em {lastUpdated.toLocaleDateString("pt-BR")} às{" "}
-            {lastUpdated.toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            Posição consultada em {formatDateTime(lastUpdated)}
           </p>
         </Card>
       </div>
@@ -603,9 +600,7 @@ export default function OperationsCenter({
                         <div
                           className={`font-semibold ${isNextDueOverdue ? "text-brand-red-600 dark:text-red-400" : "text-ink dark:text-ink-dark"}`}
                         >
-                          {new Date(
-                            stats.nextDuePayable.dueDate,
-                          ).toLocaleDateString("pt-BR")}
+                          {formatDate(stats.nextDuePayable.dueDate)}
                         </div>
                         <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark truncate max-w-40">
                           {stats.nextDuePayable.supplier}
@@ -782,9 +777,7 @@ export default function OperationsCenter({
                         <span
                           className={`text-sm font-semibold ${new Date(stats.nextDuePayable.dueDate) < new Date() ? "text-brand-red-600 dark:text-red-400" : "text-ink dark:text-ink-dark"}`}
                         >
-                          {new Date(
-                            stats.nextDuePayable.dueDate,
-                          ).toLocaleDateString("pt-BR")}
+                          {formatDate(stats.nextDuePayable.dueDate)}
                         </span>
                       ) : (
                         <span className="text-sm font-semibold text-ink-soft dark:text-ink-soft-dark">
@@ -1008,9 +1001,7 @@ export default function OperationsCenter({
                         <span
                           className={`text-sm font-semibold block ${new Date(previewStats.nextDuePayable.dueDate) < new Date() ? "text-brand-red-600 dark:text-red-400" : "text-ink dark:text-ink-dark"}`}
                         >
-                          {new Date(
-                            previewStats.nextDuePayable.dueDate,
-                          ).toLocaleDateString("pt-BR")}
+                          {formatDate(previewStats.nextDuePayable.dueDate)}
                         </span>
                         <span className="text-[9px] text-ink-soft dark:text-ink-soft-dark truncate block">
                           {previewStats.nextDuePayable.supplier}
@@ -1090,9 +1081,7 @@ export default function OperationsCenter({
                               </div>
                               <span className="text-[10px] text-ink-soft dark:text-ink-soft-dark block">
                                 {ap.supplier} ·{" "}
-                                {new Date(ap.dueDate).toLocaleDateString(
-                                  "pt-BR",
-                                )}
+                                {formatDate(ap.dueDate)}
                               </span>
                             </div>
                             <span className="font-semibold text-ink dark:text-ink-dark shrink-0">

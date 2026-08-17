@@ -4,6 +4,7 @@ import { SupportTicketPriority } from '../types';
 import { uploadSupportAttachment } from '../services/fileUpload';
 import { Badge, Button, Card, EmptyState, Modal } from '../components/ui';
 import { Clock3, FileText, MessageSquare, Paperclip, Plus, Send, X } from 'lucide-react';
+import { formatDateTime } from '../services/dateFormatters';
 
 const STATUS_LABELS = {
   ABERTO: 'Aberto', EM_ATENDIMENTO: 'Em atendimento', AGUARDANDO_SOLICITANTE: 'Aguardando você', RESOLVIDO: 'Resolvido', ENCERRADO: 'Encerrado'
@@ -127,7 +128,7 @@ export default function SupportRequestsView() {
                 </div>
                 <p className="text-xs font-semibold text-ink dark:text-ink-dark mt-1 truncate">{ticket.subject}</p>
                 <div className="flex items-center gap-1 text-[10px] text-ink-soft dark:text-ink-soft-dark mt-2">
-                  <Clock3 className="h-3 w-3" /> {new Date(ticket.updatedAt).toLocaleString('pt-BR')}
+                  <Clock3 className="h-3 w-3" /> {formatDateTime(ticket.updatedAt)}
                 </div>
               </button>
             ))}
@@ -166,7 +167,7 @@ export default function SupportRequestsView() {
                             <FileText className="h-4 w-4 shrink-0" /><span className="truncate">{file.name}</span>
                           </a>
                         ))}
-                        <p className="text-[9px] opacity-60 mt-1">{new Date(item.createdAt).toLocaleString('pt-BR')}</p>
+                        <p className="text-[9px] opacity-60 mt-1">{formatDateTime(item.createdAt)}</p>
                       </div>
                     </div>
                   );

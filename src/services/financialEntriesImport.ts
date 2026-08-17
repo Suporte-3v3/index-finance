@@ -4,6 +4,7 @@
  */
 
 import type { AccountPayable, AccountReceivable, BankAccount, Document, MasterDataOption } from "../types";
+import { brazilianDateToIso as parseBrazilianDateToIso, brazilianMonthToIso } from "./dateFormatters";
 
 export class FinancialEntriesImportError extends Error {}
 
@@ -36,7 +37,7 @@ const HEADER_ROW: (string | number)[] = [
   "Fornecedor/Cliente",
   "Categoria",
   "Centro de Custo",
-  "Competência (AAAA-MM)",
+  "Competência (MM-AAAA)",
   "Data de Emissão (DD-MM-AAAA)",
   "Data de Vencimento (DD-MM-AAAA)",
   "Valor",
@@ -56,7 +57,7 @@ const EXAMPLE_ROWS: (string | number | Date)[][] = [
     "Imobiliária Central",
     "Aluguel",
     "Administrativo",
-    "2026-08",
+    "08-2026",
     new Date(2026, 7, 1),
     new Date(2026, 7, 10),
     3500,
@@ -74,7 +75,7 @@ const EXAMPLE_ROWS: (string | number | Date)[][] = [
     "Cliente Modelo Ltda",
     "Serviços prestados",
     "Comercial",
-    "2026-08",
+    "08-2026",
     new Date(2026, 7, 2),
     new Date(2026, 7, 20),
     1200,
@@ -98,7 +99,7 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Fornecedor/Cliente", "Sim", "Nome do fornecedor (contas a pagar) ou cliente (contas a receber)"],
   ["Categoria", "Sim", "Veja a aba \"Valores Válidos\" para os nomes já cadastrados"],
   ["Centro de Custo", "Sim", "Veja a aba \"Valores Válidos\""],
-  ["Competência (AAAA-MM)", "Sim", "Ex.: 2026-08"],
+  ["Competência (MM-AAAA)", "Sim", "Ex.: 08-2026"],
   ["Data de Emissão (DD-MM-AAAA)", "Sim", "Ex.: 01-08-2026"],
   ["Data de Vencimento (DD-MM-AAAA)", "Sim", "Ex.: 10-08-2026"],
   ["Valor", "Sim", "Número maior que zero. Use ponto ou vírgula para decimais (ex.: 1500.50)"],
@@ -293,19 +294,7 @@ function normalizeDateCell(raw: unknown) {
 }
 
 export function brazilianDateToIso(value: string) {
-  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
-  if (!match) return null;
-  const [, dayText, monthText, yearText] = match;
-  const day = Number(dayText);
-  const month = Number(monthText);
-  const year = Number(yearText);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year
-    || date.getUTCMonth() !== month - 1
-    || date.getUTCDate() !== day
-  ) return null;
-  return `${yearText}-${monthText}-${dayText}`;
+  return parseBrazilianDateToIso(value);
 }
 
 function addFieldMessage(
@@ -347,8 +336,8 @@ export function validateImportRow(
     addFieldMessage(fieldWarnings, "costCenter", "Centro de custo não encontrado nos cadastros da empresa — será criado como texto livre.");
   }
 
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(row.fields.competenceMonth)) {
-    addFieldMessage(fieldErrors, "competenceMonth", "Competência inválida (use AAAA-MM).");
+  if (!brazilianMonthToIso(row.fields.competenceMonth)) {
+    addFieldMessage(fieldErrors, "competenceMonth", "Competência inválida (use MM-AAAA).");
   }
   if (!brazilianDateToIso(row.fields.issueDate)) {
     addFieldMessage(fieldErrors, "issueDate", "Data de emissão inválida (use DD-MM-AAAA).");
@@ -496,8 +485,9 @@ export function toImportPayload(row: ParsedImportRow) {
   const isPayable = row.type === "PAGAR";
   const issueDate = brazilianDateToIso(row.fields.issueDate);
   const dueDate = brazilianDateToIso(row.fields.dueDate);
-  if (!issueDate || !dueDate) {
-    throw new FinancialEntriesImportError("Corrija as datas inválidas antes de importar esta linha.");
+  const competenceMonth = brazilianMonthToIso(row.fields.competenceMonth);
+  if (!issueDate || !dueDate || !competenceMonth) {
+    throw new FinancialEntriesImportError("Corrija as datas e a competência antes de importar esta linha.");
   }
   return {
     row: row.row,
@@ -506,7 +496,7 @@ export function toImportPayload(row: ParsedImportRow) {
     ...(isPayable ? { supplier: row.fields.partyName } : { customer: row.fields.partyName }),
     category: row.fields.category,
     costCenter: row.fields.costCenter,
-    competenceMonth: row.fields.competenceMonth,
+    competenceMonth,
     issueDate,
     dueDate,
     amount: row.fields.amount,

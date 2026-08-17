@@ -15,6 +15,7 @@ import {
 } from "../types";
 import type { ReportCell, ReportSectionData } from "./reportFiles";
 import { getBlockDefinition } from "../config/reportBlocks";
+import { formatBrazilianDate } from "./reportFormatters";
 
 export interface ReportDataSource {
   accountsPayable: AccountPayable[];
@@ -712,7 +713,7 @@ export const buildFiltersSummary = (
     competence: "competência",
   };
   const parts = [
-    `Período: ${filters.startDate} a ${filters.endDate} (${basisLabel[filters.dateBasis]})`,
+    `Período: ${formatBrazilianDate(filters.startDate)} a ${formatBrazilianDate(filters.endDate)} (${basisLabel[filters.dateBasis]})`,
   ];
   if (filters.supplier) parts.push(`Fornecedor: ${filters.supplier}`);
   if (filters.customer) parts.push(`Cliente: ${filters.customer}`);

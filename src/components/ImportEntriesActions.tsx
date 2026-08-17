@@ -475,10 +475,10 @@ export default function ImportEntriesActions() {
                                   {reference?.costCenters.map((name) => <option key={name} value={name} />)}
                                 </datalist>
                               </EditableField>
-                              <EditableField label="Competência (AAAA-MM)" errors={errorsFor("competenceMonth")}>
+                              <EditableField label="Competência (MM-AAAA)" errors={errorsFor("competenceMonth")}>
                                 <input
                                   className={editInputClass(errorsFor("competenceMonth").length > 0)}
-                                  placeholder="2026-08"
+                                  placeholder="08-2026"
                                   value={row.fields.competenceMonth}
                                   onChange={(event) => updateField(row.row, "competenceMonth", event.target.value)}
                                 />
