@@ -37,8 +37,8 @@ const HEADER_ROW: (string | number)[] = [
   "Categoria",
   "Centro de Custo",
   "Competência (AAAA-MM)",
-  "Data de Emissão (AAAA-MM-DD)",
-  "Data de Vencimento (AAAA-MM-DD)",
+  "Data de Emissão (DD-MM-AAAA)",
+  "Data de Vencimento (DD-MM-AAAA)",
   "Valor",
   "Juros",
   "Multa",
@@ -49,7 +49,7 @@ const HEADER_ROW: (string | number)[] = [
   "Observações",
 ];
 
-const EXAMPLE_ROWS: (string | number)[][] = [
+const EXAMPLE_ROWS: (string | number | Date)[][] = [
   [
     "A Pagar",
     "Aluguel da sede (EXEMPLO - apague esta linha)",
@@ -57,8 +57,8 @@ const EXAMPLE_ROWS: (string | number)[][] = [
     "Aluguel",
     "Administrativo",
     "2026-08",
-    "2026-08-01",
-    "2026-08-10",
+    new Date(2026, 7, 1),
+    new Date(2026, 7, 10),
     3500,
     0,
     0,
@@ -75,8 +75,8 @@ const EXAMPLE_ROWS: (string | number)[][] = [
     "Serviços prestados",
     "Comercial",
     "2026-08",
-    "2026-08-02",
-    "2026-08-20",
+    new Date(2026, 7, 2),
+    new Date(2026, 7, 20),
     1200,
     0,
     0,
@@ -99,8 +99,8 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Categoria", "Sim", "Veja a aba \"Valores Válidos\" para os nomes já cadastrados"],
   ["Centro de Custo", "Sim", "Veja a aba \"Valores Válidos\""],
   ["Competência (AAAA-MM)", "Sim", "Ex.: 2026-08"],
-  ["Data de Emissão (AAAA-MM-DD)", "Sim", "Ex.: 2026-08-01"],
-  ["Data de Vencimento (AAAA-MM-DD)", "Sim", "Ex.: 2026-08-10"],
+  ["Data de Emissão (DD-MM-AAAA)", "Sim", "Ex.: 01-08-2026"],
+  ["Data de Vencimento (DD-MM-AAAA)", "Sim", "Ex.: 10-08-2026"],
   ["Valor", "Sim", "Número maior que zero. Use ponto ou vírgula para decimais (ex.: 1500.50)"],
   ["Juros", "Não", "Número. Deixe em branco ou 0 se não houver"],
   ["Multa", "Não", "Número. Deixe em branco ou 0 se não houver"],
@@ -143,13 +143,39 @@ export function buildImportTemplateMasterData(
   };
 }
 
-async function buildImportTemplateWorkbookBase64(reference: TemplateMasterData) {
+export async function buildImportTemplateWorkbookBase64(reference: TemplateMasterData) {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
+  const entriesSheet = XLSX.utils.aoa_to_sheet([HEADER_ROW, ...EXAMPLE_ROWS], {
+    cellDates: true,
+    dateNF: "dd-mm-yyyy",
+  });
+  for (const address of ["G2", "H2", "G3", "H3"]) {
+    if (entriesSheet[address]) entriesSheet[address].z = "dd-mm-yyyy";
+  }
+  entriesSheet["!cols"] = [
+    { wch: 14 },
+    { wch: 42 },
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 24 },
+    { wch: 22 },
+    { wch: 28 },
+    { wch: 31 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 28 },
+    { wch: 36 },
+    { wch: 20 },
+    { wch: 42 },
+  ];
+  entriesSheet["!autofilter"] = { ref: `A1:P${EXAMPLE_ROWS.length + 1}` };
 
   XLSX.utils.book_append_sheet(
     workbook,
-    XLSX.utils.aoa_to_sheet([HEADER_ROW, ...EXAMPLE_ROWS]),
+    entriesSheet,
     "Lançamentos",
   );
   XLSX.utils.book_append_sheet(
@@ -228,7 +254,11 @@ export interface ParsedImportRow {
   };
   errors: string[];
   warnings: string[];
+  fieldErrors: Partial<Record<ImportFieldKey, string[]>>;
+  fieldWarnings: Partial<Record<ImportFieldKey, string[]>>;
 }
+
+export type ImportFieldKey = "type" | keyof ParsedImportRow["fields"];
 
 const TYPE_LABELS: Record<string, "PAGAR" | "RECEBER"> = {
   "a pagar": "PAGAR",
@@ -243,80 +273,156 @@ function parseMoney(raw: string) {
   return Number(normalized);
 }
 
-function cell(row: string[], index: number) {
+function cell(row: unknown[], index: number) {
   return (row[index] ?? "").toString().trim();
 }
 
+function formatDateParts(day: number, month: number, year: number) {
+  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${String(year).padStart(4, "0")}`;
+}
+
+function normalizeDateCell(raw: unknown) {
+  if (raw instanceof Date && Number.isFinite(raw.getTime())) {
+    return formatDateParts(raw.getDate(), raw.getMonth() + 1, raw.getFullYear());
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(raw) * 86_400_000);
+    return formatDateParts(date.getUTCDate(), date.getUTCMonth() + 1, date.getUTCFullYear());
+  }
+  return String(raw ?? "").trim();
+}
+
+export function brazilianDateToIso(value: string) {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
+  if (!match) return null;
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+  return `${yearText}-${monthText}-${dayText}`;
+}
+
+function addFieldMessage(
+  messages: Partial<Record<ImportFieldKey, string[]>>,
+  field: ImportFieldKey,
+  message: string,
+) {
+  messages[field] = [...(messages[field] ?? []), message];
+}
+
+export function validateImportRow(
+  row: ParsedImportRow,
+  reference: TemplateMasterData,
+): ParsedImportRow {
+  const fieldErrors: ParsedImportRow["fieldErrors"] = {};
+  const fieldWarnings: ParsedImportRow["fieldWarnings"] = {};
+  const categorySet = new Set(reference.categories.map((name) => name.toLocaleLowerCase("pt-BR")));
+  const costCenterSet = new Set(reference.costCenters.map((name) => name.toLocaleLowerCase("pt-BR")));
+  const paymentMethodSet = new Set(reference.paymentMethods.map((name) => name.toLocaleLowerCase("pt-BR")));
+  const bankAccountIds = new Set(reference.bankAccounts.map((account) => account.id));
+
+  if (!row.type) addFieldMessage(fieldErrors, "type", 'Tipo inválido: use "A Pagar" ou "A Receber".');
+  if (!row.fields.description) addFieldMessage(fieldErrors, "description", "Descrição é obrigatória.");
+  if (!row.fields.partyName) {
+    addFieldMessage(
+      fieldErrors,
+      "partyName",
+      row.type === "RECEBER" ? "Cliente é obrigatório." : "Fornecedor é obrigatório.",
+    );
+  }
+
+  if (!row.fields.category) addFieldMessage(fieldErrors, "category", "Categoria é obrigatória.");
+  else if (categorySet.size && !categorySet.has(row.fields.category.toLocaleLowerCase("pt-BR"))) {
+    addFieldMessage(fieldWarnings, "category", "Categoria não encontrada nos cadastros da empresa — será criada como texto livre.");
+  }
+
+  if (!row.fields.costCenter) addFieldMessage(fieldErrors, "costCenter", "Centro de custo é obrigatório.");
+  else if (costCenterSet.size && !costCenterSet.has(row.fields.costCenter.toLocaleLowerCase("pt-BR"))) {
+    addFieldMessage(fieldWarnings, "costCenter", "Centro de custo não encontrado nos cadastros da empresa — será criado como texto livre.");
+  }
+
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(row.fields.competenceMonth)) {
+    addFieldMessage(fieldErrors, "competenceMonth", "Competência inválida (use AAAA-MM).");
+  }
+  if (!brazilianDateToIso(row.fields.issueDate)) {
+    addFieldMessage(fieldErrors, "issueDate", "Data de emissão inválida (use DD-MM-AAAA).");
+  }
+  if (!brazilianDateToIso(row.fields.dueDate)) {
+    addFieldMessage(fieldErrors, "dueDate", "Data de vencimento inválida (use DD-MM-AAAA).");
+  }
+
+  if (!Number.isFinite(row.fields.amount) || row.fields.amount <= 0) {
+    addFieldMessage(fieldErrors, "amount", "Valor inválido (deve ser maior que zero).");
+  }
+  if (!Number.isFinite(row.fields.interest) || row.fields.interest < 0) {
+    addFieldMessage(fieldErrors, "interest", "Juros inválido.");
+  }
+  if (!Number.isFinite(row.fields.penalty) || row.fields.penalty < 0) {
+    addFieldMessage(fieldErrors, "penalty", "Multa inválida.");
+  }
+  if (!Number.isFinite(row.fields.discount) || row.fields.discount < 0) {
+    addFieldMessage(fieldErrors, "discount", "Desconto inválido.");
+  }
+
+  if (!row.fields.paymentMethod) addFieldMessage(fieldErrors, "paymentMethod", "Forma de pagamento é obrigatória.");
+  else if (paymentMethodSet.size && !paymentMethodSet.has(row.fields.paymentMethod.toLocaleLowerCase("pt-BR"))) {
+    addFieldMessage(fieldWarnings, "paymentMethod", "Forma de pagamento não encontrada nos cadastros da empresa — será criada como texto livre.");
+  }
+
+  if (row.fields.bankAccountId && !bankAccountIds.has(row.fields.bankAccountId)) {
+    addFieldMessage(fieldErrors, "bankAccountId", 'Conta bancária não encontrada — selecione uma conta válida.');
+  }
+
+  return {
+    ...row,
+    fieldErrors,
+    fieldWarnings,
+    errors: Object.values(fieldErrors).flat(),
+    warnings: Object.values(fieldWarnings).flat(),
+  };
+}
+
 export function parseImportRows(
-  sheetRows: string[][],
+  sheetRows: unknown[][],
   reference: TemplateMasterData,
 ): ParsedImportRow[] {
   const bankAccountByLabel = new Map(
     reference.bankAccounts.map((account) => [bankAccountLabel(account).toLocaleLowerCase("pt-BR"), account.id]),
   );
-  const categorySet = new Set(reference.categories.map((name) => name.toLocaleLowerCase("pt-BR")));
-  const costCenterSet = new Set(reference.costCenters.map((name) => name.toLocaleLowerCase("pt-BR")));
-  const paymentMethodSet = new Set(reference.paymentMethods.map((name) => name.toLocaleLowerCase("pt-BR")));
-
   const dataRows = sheetRows.slice(1).filter((row) => row.some((value) => String(value ?? "").trim()));
 
   return dataRows.map((row, index) => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
     const typeLabel = cell(row, 0);
     const type = TYPE_LABELS[typeLabel.toLocaleLowerCase("pt-BR")] ?? null;
-    if (!type) errors.push('Tipo inválido: use "A Pagar" ou "A Receber".');
 
     const description = cell(row, 1);
-    if (!description) errors.push("Descrição é obrigatória.");
-
     const partyName = cell(row, 2);
-    if (!partyName) errors.push(type === "RECEBER" ? "Cliente é obrigatório." : "Fornecedor é obrigatório.");
-
     const category = cell(row, 3);
-    if (!category) errors.push("Categoria é obrigatória.");
-    else if (categorySet.size && !categorySet.has(category.toLocaleLowerCase("pt-BR")))
-      warnings.push('Categoria não encontrada nos cadastros da empresa — será criada como texto livre.');
-
     const costCenter = cell(row, 4);
-    if (!costCenter) errors.push("Centro de custo é obrigatório.");
-    else if (costCenterSet.size && !costCenterSet.has(costCenter.toLocaleLowerCase("pt-BR")))
-      warnings.push('Centro de custo não encontrado nos cadastros da empresa — será criado como texto livre.');
-
     const competenceMonth = cell(row, 5);
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competenceMonth)) errors.push("Competência inválida (use AAAA-MM).");
-
-    const issueDate = cell(row, 6);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(issueDate)) errors.push("Data de emissão inválida (use AAAA-MM-DD).");
-
-    const dueDate = cell(row, 7);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) errors.push("Data de vencimento inválida (use AAAA-MM-DD).");
+    const issueDate = normalizeDateCell(row[6]);
+    const dueDate = normalizeDateCell(row[7]);
 
     const amountRaw = cell(row, 8);
     const amount = parseMoney(amountRaw);
-    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) errors.push("Valor inválido (deve ser maior que zero).");
-
     const interest = cell(row, 9) ? parseMoney(cell(row, 9)) : 0;
-    if (!Number.isFinite(interest) || interest < 0) errors.push("Juros inválido.");
     const penalty = cell(row, 10) ? parseMoney(cell(row, 10)) : 0;
-    if (!Number.isFinite(penalty) || penalty < 0) errors.push("Multa inválida.");
     const discount = cell(row, 11) ? parseMoney(cell(row, 11)) : 0;
-    if (!Number.isFinite(discount) || discount < 0) errors.push("Desconto inválido.");
 
     const paymentMethod = cell(row, 12);
-    if (!paymentMethod) errors.push("Forma de pagamento é obrigatória.");
-    else if (paymentMethodSet.size && !paymentMethodSet.has(paymentMethod.toLocaleLowerCase("pt-BR")))
-      warnings.push("Forma de pagamento não encontrada nos cadastros da empresa — será criada como texto livre.");
-
     const bankAccountLabelRaw = cell(row, 13);
     let bankAccountId: string | undefined;
     if (bankAccountLabelRaw) {
-      bankAccountId = bankAccountByLabel.get(bankAccountLabelRaw.toLocaleLowerCase("pt-BR"));
-      if (!bankAccountId) errors.push('Conta bancária não encontrada — copie o nome exato da aba "Valores Válidos".');
+      bankAccountId = bankAccountByLabel.get(bankAccountLabelRaw.toLocaleLowerCase("pt-BR")) ?? bankAccountLabelRaw;
     }
 
-    return {
+    return validateImportRow({
       row: index + 2,
       type,
       fields: {
@@ -336,9 +442,11 @@ export function parseImportRows(
         documentNumber: cell(row, 14) || undefined,
         notes: cell(row, 15) || undefined,
       },
-      errors,
-      warnings,
-    };
+      errors: [],
+      warnings: [],
+      fieldErrors: {},
+      fieldWarnings: {},
+    }, reference);
   });
 }
 
@@ -349,15 +457,18 @@ export async function parseImportFile(
   const XLSX = await import("xlsx");
   let workbook;
   try {
-    workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   } catch {
     throw new FinancialEntriesImportError("Não foi possível ler o arquivo. Envie um arquivo .xlsx válido.");
   }
   const sheetName = workbook.SheetNames.find((name) => name === "Lançamentos") ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) throw new FinancialEntriesImportError('A planilha não contém a aba "Lançamentos".');
-  const rows = XLSX.utils.sheet_to_json<(string | number | boolean)[]>(sheet, { header: 1, defval: "" })
-    .map((row) => row.map((value) => String(value)));
+  const rows = XLSX.utils.sheet_to_json<(string | number | boolean | Date)[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+  });
   if (!rows.length) throw new FinancialEntriesImportError("A planilha está vazia.");
   return parseImportRows(rows, reference);
 }
@@ -383,6 +494,11 @@ export function submitImportEntries(companyId: string, entries: unknown[]) {
 
 export function toImportPayload(row: ParsedImportRow) {
   const isPayable = row.type === "PAGAR";
+  const issueDate = brazilianDateToIso(row.fields.issueDate);
+  const dueDate = brazilianDateToIso(row.fields.dueDate);
+  if (!issueDate || !dueDate) {
+    throw new FinancialEntriesImportError("Corrija as datas inválidas antes de importar esta linha.");
+  }
   return {
     row: row.row,
     type: row.type,
@@ -391,8 +507,8 @@ export function toImportPayload(row: ParsedImportRow) {
     category: row.fields.category,
     costCenter: row.fields.costCenter,
     competenceMonth: row.fields.competenceMonth,
-    issueDate: row.fields.issueDate,
-    dueDate: row.fields.dueDate,
+    issueDate,
+    dueDate,
     amount: row.fields.amount,
     interest: row.fields.interest,
     penalty: row.fields.penalty,

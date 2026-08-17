@@ -14,6 +14,7 @@ const {
   createPayables,
   createReceivables,
   decidePaymentApproval,
+  importFinancialEntries,
   listFinancialEntries,
   payPayable,
   receiveReceivable,
@@ -208,9 +209,49 @@ try {
   });
   assert.equal((await cancelReceivable(profile, cancelableReceivable[0].id)).status, "Cancelado");
 
+  const importedBatch = await importFinancialEntries(profile, {
+    companyId,
+    entries: [
+      {
+        row: 2,
+        type: "PAGAR",
+        ...payableInput,
+        description: "Conta a pagar importada em lote",
+        documentNumber: "LOTE-PAGAR-001",
+      },
+      {
+        row: 3,
+        type: "RECEBER",
+        description: "Conta a receber importada em lote",
+        customer: "Cliente da Importação",
+        category: "Receitas",
+        costCenter: "Comercial",
+        competenceMonth: "2026-08",
+        issueDate: "2026-08-02",
+        dueDate: "2026-08-22",
+        amount: 450,
+        interest: 0,
+        penalty: 0,
+        discount: 0,
+        paymentMethod: "PIX",
+        bankAccountId,
+        recurrence: "Nenhuma",
+        documentNumber: "LOTE-RECEBER-001",
+        notes: "Registro temporário do teste em lote",
+        responsibleId: userId,
+      },
+    ],
+  });
+  assert.equal(importedBatch.total, 2);
+  assert.equal(importedBatch.createdCount, 2);
+  assert.equal(importedBatch.failedCount, 0);
+  assert.deepEqual(importedBatch.results.map((result) => result.row), [2, 3]);
+  assert.ok(importedBatch.results.every((result) => result.success));
+  assert.ok(importedBatch.results.every((result) => result.success && result.document));
+
   const workspace = await listFinancialEntries(profile);
-  assert.equal(workspace.accountsPayable.length, 5);
-  assert.equal(workspace.accountsReceivable.length, 3);
+  assert.equal(workspace.accountsPayable.length, 6);
+  assert.equal(workspace.accountsReceivable.length, 4);
   assert.equal(workspace.paymentApprovals.length, 1);
 
   await assert.rejects(
@@ -222,7 +263,7 @@ try {
   );
 
   console.log(
-    "Títulos validados: parcelas, aprovação, edição, pagamentos, recebimentos, cancelamentos e saldos atômicos.",
+    "Títulos validados: importação em lote, parcelas, aprovação, edição, pagamentos, recebimentos, cancelamentos e saldos atômicos.",
   );
 } finally {
   await database.auditLog.deleteMany({ where: { companyId } });
@@ -230,6 +271,7 @@ try {
   await database.approval.deleteMany({ where: { companyId } });
   await database.accountPayablePayment.deleteMany({ where: { payable: { companyId } } });
   await database.accountReceivableReceipt.deleteMany({ where: { receivable: { companyId } } });
+  await database.document.deleteMany({ where: { companyId } });
   await database.accountPayable.deleteMany({ where: { companyId } });
   await database.accountReceivable.deleteMany({ where: { companyId } });
   await database.bankAccount.deleteMany({ where: { companyId } });
