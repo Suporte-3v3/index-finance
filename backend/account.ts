@@ -11,8 +11,8 @@ export class AccountApiError extends Error {
 }
 
 export function validateNewPassword(password: unknown, email: string) {
-  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
-    throw new AccountApiError("A nova senha deve ter entre 12 e 128 caracteres.");
+  if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+    throw new AccountApiError("A nova senha deve ter entre 8 e 128 caracteres.");
   }
   const emailIdentifier = email.split("@")[0]?.toLowerCase();
   if (emailIdentifier && password.toLowerCase().includes(emailIdentifier)) {

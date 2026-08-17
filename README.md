@@ -183,7 +183,7 @@ aprovação de pagamentos, baixas parciais, cancelamentos e vínculo com a conta
 bancária. Pagamentos e recebimentos alteram título e saldo na mesma transação.
 
 Defina temporariamente as variáveis abaixo em um terminal administrativo e rode
-o bootstrap uma única vez. A senha deve ter entre 12 e 128 caracteres e não deve
+o bootstrap uma única vez. A senha deve ter entre 8 e 128 caracteres e não deve
 conter o identificador do e-mail.
 
 ```powershell

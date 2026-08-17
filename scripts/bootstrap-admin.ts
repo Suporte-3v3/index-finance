@@ -23,8 +23,8 @@ if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
 if (!name || name.length < 3) {
   throw new Error("Defina ADMIN_NAME com pelo menos 3 caracteres.");
 }
-if (password.length < 12 || password.length > 128) {
-  throw new Error("ADMIN_PASSWORD deve ter entre 12 e 128 caracteres.");
+if (password.length < 8 || password.length > 128) {
+  throw new Error("ADMIN_PASSWORD deve ter entre 8 e 128 caracteres.");
 }
 if (password.toLowerCase().includes(email.split("@")[0])) {
   throw new Error("ADMIN_PASSWORD não pode conter o identificador do e-mail.");

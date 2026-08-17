@@ -15,8 +15,8 @@ export default function ChangePasswordView() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
-    if (newPassword.length < 12 || newPassword.length > 128) {
-      setError("A nova senha deve ter entre 12 e 128 caracteres.");
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      setError("A nova senha deve ter entre 8 e 128 caracteres.");
       return;
     }
     if (newPassword !== confirmation) {
@@ -67,7 +67,7 @@ export default function ChangePasswordView() {
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
-                minLength={12}
+                minLength={8}
                 maxLength={128}
                 className="h-11 w-full rounded-xl border border-line bg-canvas px-3 text-sm outline-none focus:border-brand-navy-700 focus:ring-4 focus:ring-brand-navy-700/10"
                 required
@@ -80,7 +80,7 @@ export default function ChangePasswordView() {
                 autoComplete="new-password"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
-                minLength={12}
+                minLength={8}
                 maxLength={128}
                 className="h-11 w-full rounded-xl border border-line bg-canvas px-3 text-sm outline-none focus:border-brand-navy-700 focus:ring-4 focus:ring-brand-navy-700/10"
                 required
@@ -88,7 +88,7 @@ export default function ChangePasswordView() {
             </label>
 
             <p className="text-[10px] leading-relaxed text-ink-soft">
-              Use uma senha exclusiva com pelo menos 12 caracteres e que não contenha seu e-mail.
+              Use uma senha exclusiva com pelo menos 8 caracteres e que não contenha seu e-mail.
             </p>
             {error && (
               <div className="flex gap-2 rounded-xl border border-brand-red-600/30 bg-brand-red-50 p-3 text-xs font-semibold text-brand-red-600">

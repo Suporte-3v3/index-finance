@@ -4,14 +4,14 @@ import { AccountApiError, validateNewPassword } from "./account";
 
 test("aceita senha de primeiro acesso com tamanho seguro", () => {
   assert.equal(
-    validateNewPassword("Senha exclusiva e longa #2026", "usuario@exemplo.com"),
-    "Senha exclusiva e longa #2026",
+    validateNewPassword("Abc#1234", "usuario@exemplo.com"),
+    "Abc#1234",
   );
 });
 
 test("rejeita senha curta ou contendo o identificador do e-mail", () => {
   assert.throws(
-    () => validateNewPassword("curta", "usuario@exemplo.com"),
+    () => validateNewPassword("Ab#1234", "usuario@exemplo.com"),
     AccountApiError,
   );
   assert.throws(
