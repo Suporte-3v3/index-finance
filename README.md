@@ -4,187 +4,285 @@
   <h1>Idex Finance</h1>
 
   <p>
-    Plataforma multiempresa para centralizar a operação de BPO financeiro,
-    do recebimento de documentos à conciliação e à geração de relatórios.
+    Plataforma multiempresa para operação de BPO financeiro, do recebimento
+    de documentos ao lançamento, aprovação, conciliação e relatório.
   </p>
 
   <p>
+    <img alt="Status" src="https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-15996F" />
     <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" />
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white" />
-    <img alt="Vite" src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white" />
     <img alt="Node.js" src="https://img.shields.io/badge/Node.js-22-5FA04E?logo=nodedotjs&logoColor=white" />
-    <img alt="Status" src="https://img.shields.io/badge/status-em%20desenvolvimento-F59E0B" />
+    <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white" />
+    <img alt="AWS" src="https://img.shields.io/badge/produ%C3%A7%C3%A3o-AWS-FF9900?logo=amazonwebservices&logoColor=white" />
   </p>
 </div>
 
-## Sobre o projeto
+## Visão geral
 
-O **Idex Finance** é uma aplicação web responsiva para empresas e equipes de BPO que precisam acompanhar múltiplos clientes em um único workspace. A plataforma reúne rotinas financeiras, documentos, aprovações, conciliação bancária, indicadores e atendimento ao cliente com separação de acesso por perfil.
+O **Idex Finance** é o sistema de operação financeira da **NFlow Analytics**. Ele atende equipes de BPO, empresas clientes e contadores em um workspace com isolamento por tenant e empresa, permissões granulares e histórico auditável.
 
-O projeto combina uma SPA em React com um servidor Express. O servidor entrega a aplicação, recebe uploads e protege a chave usada na análise de documentos com Gemini. Autenticação, usuários, RBAC, empresas, contas bancárias, cadastros mestres, contas a pagar e contas a receber já usam PostgreSQL; os demais módulos permanecem temporariamente no `localStorage`. Os arquivos enviados ficam no diretório local `.data/uploads`.
+O sistema está em produção na AWS. A aplicação é uma SPA React servida pelo mesmo processo Express que expõe as APIs privadas. O PostgreSQL é a fonte de verdade dos dados operacionais; anexos enviados ficam no disco privado da instância em `.data/uploads` e são entregues somente para sessões autenticadas.
 
-## Funcionalidades
+## O que o sistema possui
 
-- Dashboard financeiro com indicadores e visão consolidada;
-- centro de operações multiempresa para a equipe de BPO;
-- contas a pagar e contas a receber;
-- fluxo de caixa e acompanhamento de vencimentos;
-- central de aprovações com histórico de decisões;
-- conciliação bancária manual e automática;
-- recebimento, visualização e classificação de documentos;
-- extração de dados de imagens e PDFs financeiros com Gemini;
-- lançamentos financeiros manuais ou originados de documentos;
-- DRE, relatórios e exportações;
-- cadastros de fornecedores, clientes, categorias e centros de custo;
-- gestão de empresas, colaboradores e permissões por perfil (RBAC);
-- logs de auditoria, notificações e backup dos dados locais;
-- abertura e acompanhamento de requerimentos entre clientes e BPO;
-- interface responsiva para desktop e dispositivos móveis.
+### Operação financeira
+
+- Painel geral com saldos, entradas, saídas, vencimentos, inadimplência e aprovações;
+- centro de operação multiempresa para acompanhamento consolidado da carteira BPO;
+- fluxo de caixa por período, conta bancária e natureza da movimentação;
+- contas a pagar com parcelamento, edição, agendamento, aprovação, pagamento parcial ou integral e cancelamento;
+- contas a receber com parcelamento, recebimento parcial ou integral, inadimplência e cancelamento;
+- atualização transacional dos saldos bancários durante pagamentos, recebimentos e transferências;
+- importação em lote de contas a pagar e receber por planilha Excel;
+- planilha modelo gerada com os cadastros atuais da empresa e validação linha a linha antes da importação.
+
+### Documentos, lançamentos e aprovações
+
+- Central de Documentos para enviar, receber, visualizar, baixar e cancelar arquivos;
+- Assistente de Documentos com análise visual pelo Gemini para PDF e imagens;
+- extração de fornecedor, valor, vencimento, competência, número do documento, categoria, resumo, confiança e alertas;
+- revisão manual dos campos identificados antes do envio;
+- fluxo cliente → fila de análise BPO → lançamento ou solicitação de aprovação;
+- histórico separado entre “Meus envios”, “Recebidos” e “Cancelados”;
+- atualização da fila do BPO ao abrir o módulo, ao retomar a janela e periodicamente;
+- lançamento manual ou originado de documento como conta a pagar, conta a receber ou transferência;
+- processamento individual ou em lote dos documentos aguardando análise;
+- aprovação documental com decisões de aprovar, rejeitar ou solicitar ajuste;
+- compartilhamento BPO → cliente/contador apenas para visualização, sem gerar lançamento financeiro;
+- notificações persistidas durante as transições do documento.
+
+### Conciliação bancária
+
+- Importação de extratos em **OFX/QFX** ou pela planilha modelo **Excel**;
+- prevenção de duplicidade na importação;
+- conciliação manual com contas a pagar ou a receber;
+- sugestão e conciliação automática de movimentos compatíveis;
+- estados de pendente, conciliado, parcialmente conciliado, divergente e ignorado;
+- trilha persistida das conciliações realizadas.
+
+### Relatórios e DRE
+
+- Construtor de relatórios por blocos;
+- modelos de Contas a Pagar, Contas a Receber, Fluxo de Caixa e DRE Gerencial;
+- filtros por datas, competência, situação, conta bancária, categoria, centro de custo, fornecedor/cliente e forma de pagamento;
+- indicadores, gráficos, agrupamentos e listas detalhadas;
+- exportação em **PDF** ou **Excel**;
+- modelos reutilizáveis, favoritos, duplicação e arquivamento;
+- histórico dos relatórios gerados no PostgreSQL;
+- envio de relatório para a Central de Documentos e compartilhamento com cliente.
+
+### Cadastros e administração
+
+- Cadastro multiempresa com CNPJ, regime tributário, segmento, contatos, responsável BPO, logotipo e módulos liberados ao cliente;
+- contas bancárias e conta interna “Bolsa” por empresa;
+- fornecedores, clientes, categorias, subcategorias, centros de custo, formas de pagamento e tipos de documento;
+- gestão de colaboradores, perfis, empresas permitidas e permissões granulares;
+- senha temporária automática no cadastro ou reset e troca obrigatória no primeiro acesso;
+- senha definitiva com mínimo de 8 e máximo de 128 caracteres;
+- desativação lógica de empresas e usuários;
+- logs de conformidade/auditoria e notificações persistentes.
+
+### Atendimento e módulos especializados
+
+- Requerimentos entre cliente/contador e BPO com protocolo, categoria, prioridade, status, mensagens e anexos;
+- Central de Requerimentos para triagem e atendimento pela equipe BPO;
+- indicação de presença recente da equipe;
+- módulo **Caixa Padaria** com visão de operador e administração BPO;
+- abertura, envio para fechamento, fechamento, reabertura e cancelamento de turnos;
+- despesas, retiradas, vendas Pix, conferência e conciliação de Pix;
+- controle da conta Bolsa ligada à operação da empresa.
 
 ## Perfis de acesso
 
 | Perfil | Escopo principal |
 | --- | --- |
-| `BPO_ADMIN` | Visão global, gestão de empresas e equipe, auditoria, backup e service desk |
-| `BPO_TEAM` | Execução das rotinas financeiras conforme as permissões concedidas |
-| `CLIENT` | Acompanhamento da empresa, aprovações, documentos e solicitações ao BPO |
-| `ACCOUNTANT` | Consulta e colaboração nas informações financeiras da empresa autorizada |
+| `BPO_ADMIN` | Administração do tenant, empresas, equipe, operação global, auditoria e backups |
+| `BPO_TEAM` | Operação das empresas autorizadas conforme permissões concedidas |
+| `CLIENT` | Módulos liberados para a empresa, documentos, aprovações e requerimentos |
+| `ACCOUNTANT` | Consulta e colaboração nas empresas autorizadas |
 
-> O login usa autenticação definitiva no backend, com sessões no PostgreSQL e
-> acesso derivado dos vínculos ativos do usuário com tenants e empresas.
+O administrador pode liberar módulos por empresa. O perfil de operador do cliente possui uma visão mais restrita e não acessa Painel Geral, Central de Aprovações nem Fluxo de Caixa.
 
-## Tecnologias
+As permissões controlam operações como visualizar o centro de operação, gerenciar empresas/equipe, criar ou editar títulos, solicitar/decidir aprovações, enviar documentos, gerar relatórios e executar conciliações.
 
-| Camada | Tecnologias |
+## Arquitetura e persistência
+
+| Camada | Implementação |
 | --- | --- |
-| Frontend | React 19, TypeScript, Vite e Tailwind CSS 4 |
-| Interface | Lucide React e Motion |
-| Gráficos | Recharts |
-| Planilhas | SheetJS (`xlsx`) |
-| Backend | Node.js e Express |
+| Frontend | React 19, TypeScript, Vite 6 e Tailwind CSS 4 |
+| Interface | Lucide React, Motion e Recharts |
+| Arquivos e relatórios | SheetJS, jsPDF e jsPDF AutoTable |
+| Backend | Node.js 22 e Express 4 |
+| Autenticação | Better Auth, cookies `HttpOnly` e Argon2id |
+| Banco de dados | PostgreSQL 17 e Prisma ORM |
 | Inteligência artificial | Google GenAI / Gemini |
-| Persistência atual | PostgreSQL, `localStorage` durante a migração e sistema de arquivos local |
+| Produção | AWS/Ubuntu, Nginx, systemd e Docker |
 
-## Pré-requisitos
+O PostgreSQL armazena tenants, empresas, usuários, sessões, papéis, permissões, contas bancárias, cadastros, contas a pagar e receber, pagamentos, recebimentos, aprovações, documentos, extratos, conciliações, auditoria, notificações, caixa da padaria, relatórios, modelos e requerimentos.
 
-- [Node.js](https://nodejs.org/) 22 ou superior;
+O navegador mantém apenas um espelho de estado e preferências de interface para compatibilidade. Após autenticação ou atualização, os dados canônicos são carregados novamente pelas APIs protegidas.
+
+Os arquivos físicos não ficam dentro do PostgreSQL. Na instalação atual, documentos e anexos são gravados em `.data/uploads`. Esse diretório deve fazer parte da rotina de backup da instância.
+
+## Segurança
+
+- Cadastro público desativado;
+- senhas protegidas com Argon2id e salt exclusivo;
+- cookies de sessão `HttpOnly`, `SameSite=Lax` e `Secure` em produção;
+- sessões com duração de 12 horas;
+- limite de tentativas no login;
+- troca obrigatória da senha temporária no primeiro acesso;
+- reset de senha encerra todas as sessões ativas do usuário;
+- autorização por tenant, empresa, papel e permissão;
+- rotas financeiras, documentos, uploads e APIs administrativas protegidas no backend;
+- isolamento dos registros pela empresa acessível à sessão;
+- operações críticas registradas na auditoria;
+- segredos e conexão do banco mantidos somente no servidor.
+
+## Formatos aceitos
+
+### Assistente de Documentos
+
+A Central de Documentos aceita arquivos PDF, JPG, JPEG, PNG, HEIC, OFX, XML, XLSX e CSV com até **20 MB**. A análise visual pelo Gemini é aplicada a PDF e formatos de imagem compatíveis. Quando a IA não está configurada ou não consegue analisar o arquivo, a interface oferece uma classificação local e exige revisão manual.
+
+### Importação de lançamentos
+
+A tela de Lançamentos disponibiliza o botão para baixar a planilha modelo e importa arquivos `.xlsx` ou `.xls`. O mesmo arquivo pode conter contas a pagar e contas a receber.
+
+### Conciliação
+
+A conciliação importa extratos `.ofx`, `.qfx`, `.xlsx` ou `.xls`.
+
+### Relatórios
+
+Os relatórios são gerados em PDF ou Excel.
+
+## Ambiente de produção na AWS
+
+A topologia prevista pelos arquivos deste repositório e utilizada na instalação atual é:
+
+```text
+Internet
+   │
+   ▼
+Nginx :80/:443
+   │ reverse proxy
+   ▼
+Express/Node :3000  ─────►  .data/uploads
+   │
+   ▼
+PostgreSQL 17 em Docker (127.0.0.1:5432)
+```
+
+- O serviço `idex-finance.service` executa `npm start` como usuário `ubuntu`;
+- o diretório esperado é `/home/ubuntu/index-finance`;
+- o Nginx encaminha as requisições para `127.0.0.1:3000` e aceita corpos de até 30 MB;
+- o PostgreSQL publica a porta somente no loopback da máquina;
+- logs da aplicação são enviados para o journal do systemd;
+- o processo reinicia automaticamente em caso de falha.
+
+### Atualizar a produção
+
+Depois que as alterações estiverem disponíveis no GitHub, execute na instância:
+
+```bash
+cd /home/ubuntu/index-finance
+bash deploy/deploy.sh
+```
+
+O script executa, nesta ordem:
+
+1. `git pull --ff-only`;
+2. `npm ci`;
+3. `npm run build`;
+4. `npm run db:deploy`;
+5. reinício e verificação do serviço `idex-finance`.
+
+Comandos úteis para diagnóstico:
+
+```bash
+sudo systemctl status idex-finance --no-pager -l
+sudo journalctl -u idex-finance -n 200 --no-pager
+sudo journalctl -u idex-finance -f
+sudo nginx -t
+docker ps
+docker logs idex-finance-postgres --tail 100
+```
+
+Nunca execute `prisma db push` no banco de produção. Alterações estruturais devem chegar por migrações versionadas e ser aplicadas com `npm run db:deploy`.
+
+## Backup em produção
+
+O backup principal do banco é feito com `pg_dump` compactado:
+
+```bash
+cd /home/ubuntu/index-finance
+bash deploy/backup-db.sh
+```
+
+O script grava os arquivos em `~/backups/postgres` e mantém sete dias de histórico. Ele pode ser agendado no `cron` do usuário `ubuntu`.
+
+Além do PostgreSQL, preserve separadamente:
+
+- `/home/ubuntu/index-finance/.env.local` em um cofre de segredos, não em backup público;
+- `/home/ubuntu/index-finance/.data/uploads`, que contém os anexos físicos;
+- as configurações ativas do Nginx e do serviço systemd.
+
+A tela administrativa “Backup de Dados” gera um pacote JSON com um retrato dos dados carregados e cópias verificáveis dos anexos. Ela é útil para exportação e compatibilidade, mas não substitui o `pg_dump` como estratégia de recuperação do PostgreSQL.
+
+## Desenvolvimento local
+
+### Pré-requisitos
+
+- Node.js 22 ou superior;
 - npm 10 ou superior;
-- uma chave da API Gemini, necessária apenas para análise inteligente de documentos.
+- Docker com Docker Compose;
+- chave Gemini apenas para testar a análise inteligente.
 
-## Instalação e execução
+### Instalação
 
-1. Clone o repositório e acesse a pasta do projeto:
+```bash
+git clone <URL_DO_REPOSITORIO>
+cd index-finance
+npm install
+cp .env.example .env.local
+npm run db:up
+npm run db:deploy
+npm run dev
+```
 
-   ```bash
-   git clone <URL_DO_REPOSITORIO>
-   cd index-finance
-   ```
-
-2. Instale as dependências:
-
-   ```bash
-   npm install
-   ```
-
-3. Crie o arquivo de ambiente local a partir do exemplo:
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   No PowerShell, use:
-
-   ```powershell
-   Copy-Item .env.example .env.local
-   ```
-
-4. Ajuste as variáveis em `.env.local` e inicie o ambiente de desenvolvimento:
-
-   ```bash
-   npm run dev
-   ```
-
-5. Acesse [http://localhost:3000](http://localhost:3000).
-
-Na tela inicial, entre com uma conta criada pelo bootstrap administrativo. A
-sessão é restaurada com segurança ao recarregar a página.
-
-## Variáveis de ambiente
-
-| Variável | Obrigatória | Padrão | Descrição |
-| --- | :---: | --- | --- |
-| `GEMINI_API_KEY` | Para IA | — | Chave privada usada exclusivamente pelo servidor para chamar a API Gemini |
-| `GEMINI_MODEL` | Não | `gemini-2.5-flash` | Modelo utilizado na análise visual de documentos |
-| `PORT` | Não | `3000` | Porta HTTP do servidor Express |
-| `APP_URL` | Não | — | URL pública da aplicação, reservada para integrações e callbacks |
-| `DISABLE_HMR` | Não | `false` | Desativa HMR e o acompanhamento de arquivos no Vite quando definido como `true` |
-| `DATABASE_URL` | Para PostgreSQL | — | Conexão privada usada exclusivamente pelo servidor e pelo Prisma |
-| `BETTER_AUTH_URL` | Para autenticação | `http://localhost:3000` | URL base da aplicação; em produção deve usar o domínio HTTPS definitivo |
-| `BETTER_AUTH_SECRET` | Produção | — | Segredo aleatório exclusivo usado para proteger as sessões; nunca deve ir para o frontend |
-| `BETTER_AUTH_TRUSTED_ORIGINS` | Não | URL base | Origens adicionais permitidas, separadas por vírgula |
-| `POSTGRES_DB` | Desenvolvimento | `idex_finance` | Banco criado pelo Docker Compose local |
-| `POSTGRES_USER` | Desenvolvimento | `idex_app` | Usuário do PostgreSQL local |
-| `POSTGRES_PASSWORD` | Desenvolvimento | — | Senha local; use um segredo forte e exclusivo em produção |
-| `POSTGRES_PORT` | Não | `5432` | Porta local publicada apenas em `127.0.0.1` |
-
-Nunca versione `.env.local` nem chaves reais. Arquivos `.env*` estão ignorados pelo Git, com exceção de `.env.example`.
-
-## PostgreSQL local
-
-O banco definitivo usa PostgreSQL 17 e Prisma. O Docker publica o banco somente
-em `127.0.0.1`, e o volume `idex-finance-postgres-data` preserva os dados entre
-reinicializações dos contêineres.
+No PowerShell, copie o ambiente com:
 
 ```powershell
 Copy-Item .env.example .env.local
-npm run db:up
-npm run db:deploy
-npm run db:status
 ```
 
-Durante o desenvolvimento de uma nova alteração estrutural, crie uma migração
-versionada com `npm run db:migrate -- --name nome_da_alteracao`. Em produção,
-aplique apenas migrações já revisadas usando `npm run db:deploy`; nunca use
-`prisma db push` contra o banco de produção.
+A aplicação fica disponível em [http://localhost:3000](http://localhost:3000).
 
-O endpoint `GET /api/database/status` verifica a conexão sem revelar endereço,
-usuário ou credenciais. Empresas, usuários, contas bancárias, cadastros mestres e
-títulos a pagar/receber são carregados do banco após o login; outros módulos ainda usam `localStorage`
-durante a migração gradual.
+## Variáveis de ambiente
 
-## Autenticação e administrador inicial
+| Variável | Obrigatória | Padrão local | Finalidade |
+| --- | :---: | --- | --- |
+| `DATABASE_URL` | Sim | — | Conexão privada usada pelo Prisma e pelo servidor |
+| `BETTER_AUTH_URL` | Sim em produção | `http://localhost:3000` | URL pública/base da autenticação |
+| `BETTER_AUTH_SECRET` | Sim em produção | — | Segredo exclusivo das sessões, com pelo menos 32 bytes aleatórios |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Conforme ambiente | URL base | Origens adicionais permitidas, separadas por vírgula |
+| `GEMINI_API_KEY` | Para análise por IA | — | Chave privada da API Gemini; nunca use prefixo `VITE_` |
+| `GEMINI_MODEL` | Não | `gemini-2.5-flash` | Modelo utilizado na análise visual |
+| `PORT` | Não | `3000` | Porta do servidor Express |
+| `APP_URL` | Não | — | URL pública usada por integrações e links internos |
+| `DISABLE_HMR` | Não | `false` | Desativa o acompanhamento de arquivos no Vite |
+| `POSTGRES_DB` | Desenvolvimento/produção Docker | `idex_finance` | Nome do banco criado pelo Compose |
+| `POSTGRES_USER` | Desenvolvimento/produção Docker | `idex_app` | Usuário do PostgreSQL |
+| `POSTGRES_PASSWORD` | Sim | — | Senha exclusiva do PostgreSQL |
+| `POSTGRES_PORT` | Não | `5432` | Porta publicada somente em `127.0.0.1` |
 
-O backend usa login por e-mail e senha, Argon2id para armazenamento das senhas,
-cookies de sessão `HttpOnly`, expiração em 12 horas e limite de cinco tentativas
-de login por minuto. O cadastro público está desativado: o primeiro administrador
-é criado por um comando executado diretamente no servidor. A interface restaura
-a sessão ao recarregar a página e resolve o papel e as permissões separadamente
-para cada empresa ativa.
+Nunca versione `.env.local`, chaves, senhas, dumps ou dados reais de clientes.
 
-As rotas de documentos e os arquivos em `/uploads` exigem sessão ativa. A área
-de equipe cria usuários, credenciais Argon2id, vínculos com empresas, papéis e
-permissões diretamente no PostgreSQL. O servidor gera uma senha temporária que
-é exibida uma única vez; antes de acessar o workspace, o novo usuário precisa
-substituí-la por uma senha exclusiva. Redefinições encerram as sessões ativas.
+## Administrador inicial
 
-O cadastro de empresas já usa o PostgreSQL como fonte de verdade. A criação grava
-empresa, conta bancária inicial e cadastros básicos em uma única transação. As
-listagens respeitam os vínculos do usuário, e a exclusão administrativa é uma
-desativação lógica para evitar perda acidental. A logo normalizada também é
-persistida no banco nesta fase e poderá ser movida para object storage depois.
-
-Contas bancárias e cadastros mestres também usam o PostgreSQL como fonte de
-verdade. Inclusões, edições e desativações são autorizadas por tenant e empresa,
-registradas em auditoria e reaparecem em qualquer dispositivo. A conta interna
-Bolsa é única por empresa, e ajustes de saldo e transferências são transacionais.
-
-Contas a pagar e a receber são persistidas com parcelamento calculado no servidor,
-aprovação de pagamentos, baixas parciais, cancelamentos e vínculo com a conta
-bancária. Pagamentos e recebimentos alteram título e saldo na mesma transação.
-
-Defina temporariamente as variáveis abaixo em um terminal administrativo e rode
-o bootstrap uma única vez. A senha deve ter entre 8 e 128 caracteres e não deve
-conter o identificador do e-mail.
+O primeiro administrador e tenant são criados diretamente no servidor. A senha deve ter entre 8 e 128 caracteres e não pode conter o identificador do e-mail.
 
 ```powershell
 $env:ADMIN_EMAIL="administrador@seudominio.com"
@@ -196,150 +294,120 @@ npm run auth:bootstrap-admin
 Remove-Item Env:ADMIN_EMAIL, Env:ADMIN_NAME, Env:ADMIN_PASSWORD, Env:ADMIN_TENANT_NAME, Env:ADMIN_TENANT_SLUG
 ```
 
-O comando se recusa a sobrescrever uma conta existente. Para verificar login,
-cookie de sessão e logout usando um usuário efêmero, execute
-`npm run auth:check`.
+No Linux, defina as mesmas variáveis com `export`, execute o comando e remova-as da sessão com `unset`.
+
+O bootstrap não sobrescreve uma conta existente.
 
 ## Scripts disponíveis
 
 | Comando | Descrição |
 | --- | --- |
-| `npm run dev` | Inicia o Express com o Vite em modo middleware e desenvolvimento |
-| `npm run build` | Gera o bundle de produção em `dist/` |
-| `npm start` | Serve a API, os uploads e o bundle compilado em modo de produção |
-| `npm run preview` | Visualiza diretamente o bundle do Vite |
-| `npm run lint` | Executa a verificação estática do TypeScript sem emitir arquivos |
-| `npm run clean` | Remove os artefatos locais de build |
+| `npm run dev` | Inicia Express e Vite em modo de desenvolvimento |
+| `npm run build` | Gera o cliente Prisma e o bundle de produção |
+| `npm start` | Serve APIs, uploads e SPA compilada em modo de produção |
+| `npm run preview` | Abre diretamente a prévia do bundle Vite |
+| `npm run clean` | Remove o bundle e artefatos locais de build |
+| `npm run lint` | Executa a verificação TypeScript sem emitir arquivos |
+| `npm test` | Executa os testes automatizados do frontend e backend |
 | `npm run db:up` | Inicia o PostgreSQL local em Docker |
-| `npm run db:down` | Encerra os contêineres sem apagar o volume de dados |
-| `npm run db:check` | Confirma a conexão, as tabelas essenciais e as migrações aplicadas |
-| `npm run db:migrate -- --name nome` | Cria e aplica uma migração de desenvolvimento |
-| `npm run db:deploy` | Aplica migrações pendentes em homologação ou produção |
+| `npm run db:down` | Encerra o contêiner sem remover o volume |
+| `npm run db:logs` | Acompanha os logs do PostgreSQL local |
+| `npm run db:generate` | Gera novamente o cliente Prisma |
+| `npm run db:validate` | Valida o schema Prisma |
+| `npm run db:check` | Verifica conexão, tabelas e migrações essenciais |
+| `npm run db:migrate -- --name nome` | Cria e aplica uma migração em desenvolvimento |
+| `npm run db:deploy` | Aplica migrações versionadas pendentes |
 | `npm run db:status` | Exibe o estado das migrações |
-| `npm run db:studio` | Abre a interface administrativa local do Prisma |
-| `npm run auth:bootstrap-admin` | Cria o primeiro administrador e seu tenant sem habilitar cadastro público |
-| `npm run auth:check` | Valida login, sessão e logout contra o PostgreSQL |
-| `npm run company:check` | Valida criação transacional, isolamento, edição e desativação de empresas |
-| `npm run financial-setup:check` | Valida contas bancárias, dados mestres, isolamento, conta Bolsa e saldos |
-| `npm run financial-entries:check` | Valida parcelas, aprovações, baixas, recebimentos, cancelamentos e saldos atômicos |
-| `npm run users:check` | Valida credencial, RBAC, senha temporária, primeiro acesso e desativação de usuários |
+| `npm run db:studio` | Abre o Prisma Studio |
+| `npm run auth:bootstrap-admin` | Cria o primeiro administrador e tenant |
+| `npm run auth:check` | Valida login, sessão e logout |
+| `npm run company:check` | Valida empresas, isolamento, edição e desativação |
+| `npm run financial-setup:check` | Valida contas, cadastros, Bolsa e saldos |
+| `npm run financial-entries:check` | Valida títulos, parcelas, aprovações, baixas e saldos |
+| `npm run documents:check` | Valida envio, fila BPO, revisão, aprovação e visibilidade de documentos |
+| `npm run reconciliation:check` | Valida importação e conciliação bancária |
+| `npm run users:check` | Valida credenciais, RBAC, senha temporária e primeiro acesso |
 
-Para validar e executar a versão de produção:
+Antes de publicar uma alteração:
 
 ```bash
 npm run lint
+npm test
 npm run build
-npm start
 ```
 
-## Deploy na Vercel
+Execute também o verificador integrado do módulo alterado quando ele existir.
 
-A Vercel publica o frontend Vite e transforma os arquivos em `api/` em funções
-Node.js. Para ativar o Assistente de Documentos:
+## APIs internas
 
-1. abra o projeto na Vercel e acesse **Settings > Environment Variables**;
-2. crie `GEMINI_API_KEY` com a chave real, sem o prefixo `VITE_`;
-3. opcionalmente, crie `GEMINI_MODEL` (o padrão é `gemini-2.5-flash`);
-4. marque os ambientes em que a chave deve existir, especialmente `Production`;
-5. faça um novo deploy, pois alterações de variáveis só chegam a deployments novos.
+Todas as rotas operacionais exigem sessão válida e troca da senha temporária concluída.
 
-Depois do deploy, abra `/api/documents/status` no domínio da aplicação. O JSON
-deve retornar `"available": true`. A chave nunca é enviada ao frontend: a API
-cria uma sessão temporária e o navegador envia o documento diretamente ao
-Gemini. O arquivo temporário é excluído após a análise.
+| Domínio | Rotas principais |
+| --- | --- |
+| Sessão | `/api/auth/*`, `/api/me`, `/api/account/change-password` |
+| Empresas e usuários | `/api/companies`, `/api/users` |
+| Cadastros financeiros | `/api/financial-setup`, `/api/bank-accounts`, `/api/master-data` |
+| Contas e importação | `/api/financial-entries`, `/api/financial-entries/import`, `/api/payables`, `/api/receivables` |
+| Aprovações | `/api/payment-approvals`, `/api/document-approvals` |
+| Documentos | `/api/document-records`, `/api/documents/*`, `/uploads/*` |
+| Conciliação | `/api/reconciliation/*` |
+| Auditoria e notificações | `/api/audit-logs`, `/api/notifications` |
+| Caixa Padaria | `/api/bakery-cash/*` |
+| Relatórios | `/api/reports`, `/api/report-templates` |
+| Atendimento | `/api/support-tickets/*` |
 
-Na hospedagem local, os arquivos incluídos são mantidos em `.data/uploads`. Na
-Vercel, que não oferece disco persistente para esse fluxo, somente os metadados
-extraídos são mantidos no `localStorage`; o arquivo original não é preservado.
-Para persistência real e acesso entre dispositivos, conecte um armazenamento de
-objetos privado e um banco de dados antes de usar o sistema em produção.
-
-## Análise e upload de documentos
-
-A central aceita arquivos PDF, JPG, PNG, HEIC, OFX, XML, XLSX e CSV com até **20 MB**. Localmente, os uploads confirmados são enviados em Base64 ao backend e armazenados em `.data/uploads` com um nome aleatório.
-
-A análise inteligente está disponível para JPEG, PNG, WebP, HEIC, HEIF e PDF. Quando `GEMINI_API_KEY` está configurada, o servidor autoriza um upload temporário direto ao Gemini e retorna campos estruturados, como fornecedor, vencimento, valor, competência, tipo do documento, resumo, confiança e alertas de legibilidade.
-
-### Endpoints internos
-
-| Método | Rota | Finalidade |
-| --- | --- | --- |
-| `POST` | `/api/documents/upload` | Armazena um arquivo enviado pela interface |
-| `POST` | `/api/documents/upload-url` | Cria uma sessão temporária de upload direto ao Gemini |
-| `GET` | `/api/documents/status` | Informa se a análise por IA está configurada e qual modelo está ativo |
-| `POST` | `/api/documents/analyze` | Analisa visualmente um documento compatível |
-| `GET` | `/api/database/status` | Verifica se o PostgreSQL está configurado e acessível sem revelar credenciais |
-| `POST` | `/api/auth/sign-in/email` | Inicia sessão com e-mail e senha |
-| `GET` | `/api/auth/get-session` | Consulta a sessão atual |
-| `POST` | `/api/auth/sign-out` | Encerra a sessão atual |
-| `GET` | `/api/me` | Retorna o usuário autenticado e seus acessos ativos por empresa |
-| `GET` | `/api/companies` | Lista somente empresas e tenants acessíveis pela sessão |
-| `POST` | `/api/companies` | Cadastra empresa, conta inicial e dados mestres em transação |
-| `PATCH` | `/api/companies/:id` | Atualiza dados, módulos e status de uma empresa autorizada |
-| `DELETE` | `/api/companies/:id` | Desativa logicamente uma empresa autorizada |
-| `GET` | `/api/financial-setup` | Carrega contas bancárias e cadastros mestres das empresas acessíveis |
-| `POST/PATCH/DELETE` | `/api/bank-accounts` | Gerencia contas bancárias com autorização por empresa |
-| `POST` | `/api/bank-accounts/batch-adjust` | Aplica movimentações de saldo de forma atômica |
-| `POST/PATCH/DELETE` | `/api/master-data` | Gerencia cadastros mestres e suas hierarquias |
-| `GET` | `/api/financial-entries` | Carrega contas a pagar, contas a receber e aprovações de pagamento acessíveis |
-| `POST/PATCH` | `/api/payables` | Cria, edita, agenda, cancela e registra pagamentos de títulos |
-| `POST/PATCH` | `/api/receivables` | Cria, edita, cancela e registra recebimentos de títulos |
-| `GET` | `/api/users` | Lista os usuários administráveis no tenant da sessão |
-| `POST` | `/api/users` | Cria usuário, credencial temporária e vínculos de acesso |
-| `PATCH` | `/api/users/:id` | Atualiza perfil, status, empresas e permissões |
-| `POST` | `/api/users/:id/reset-password` | Gera uma nova senha temporária e encerra sessões |
-| `DELETE` | `/api/users/:id` | Desativa usuário, revoga vínculos e encerra sessões |
-| `POST` | `/api/account/change-password` | Troca a senha da própria conta e libera o primeiro acesso |
-| `GET` | `/uploads/:arquivo` | Entrega um arquivo armazenado localmente |
+O endpoint `GET /api/database/status` verifica a disponibilidade do PostgreSQL sem revelar credenciais. O endpoint `GET /api/documents/status` informa se a análise por IA está disponível e qual é o limite do arquivo.
 
 ## Estrutura do projeto
 
 ```text
 index-finance/
-├── assets/                 # Identidade visual e imagens
-├── backend/                # Integrações privadas e cliente PostgreSQL
-├── prisma/                 # Esquema e migrações versionadas do banco
-├── scripts/                # Verificações operacionais e geração de prévias
+├── api/                    # Adaptadores de funções para ambientes compatíveis
+├── assets/                 # Identidade visual
+├── backend/                # Regras de negócio, autorização e PostgreSQL
+├── deploy/                 # Deploy, serviço systemd, Nginx e backup do banco
+├── prisma/                 # Schema e migrações versionadas
+├── scripts/                # Bootstrap e verificações integradas
 ├── src/
 │   ├── components/         # Componentes reutilizáveis
-│   ├── hooks/              # Estado global e regras da aplicação
-│   ├── services/           # Dados demonstrativos, upload e análise
+│   ├── config/             # Módulos, relatórios e configurações da interface
+│   ├── hooks/              # Estado global e integração dos módulos
+│   ├── services/           # Clientes HTTP, importadores e geradores de arquivo
 │   ├── types/              # Tipos e contratos TypeScript
-│   ├── views/              # Telas e módulos do produto
+│   ├── views/              # Telas do produto
 │   ├── App.tsx             # Shell, navegação e controle de acesso
-│   ├── index.css           # Estilos globais
-│   └── main.tsx            # Ponto de entrada do React
-├── local-server.ts         # Express local, uploads e entrega da SPA
-├── compose.yaml            # PostgreSQL 17 para desenvolvimento local
-├── prisma.config.ts        # Configuração do Prisma ORM
-├── vite.config.ts          # Configuração do Vite e Tailwind CSS
-├── .env.example            # Modelo de configuração local
-└── package.json            # Dependências e scripts
+│   └── main.tsx            # Entrada do React
+├── local-server.ts         # Express, APIs, uploads e entrega da SPA
+├── compose.yaml            # PostgreSQL 17
+├── prisma.config.ts        # Configuração do Prisma
+├── vite.config.ts          # Vite e Tailwind CSS
+├── .env.example            # Modelo de configuração
+└── package.json            # Dependências e comandos
 ```
 
-## Persistência, backup e limitações atuais
+## Considerações operacionais
 
-- Empresas, contas bancárias, saldos, cadastros mestres e títulos a pagar/receber são persistidos no PostgreSQL.
-- Documentos, conciliação, notificações e os demais módulos operacionais ainda ficam no `localStorage` durante a migração gradual.
-- O módulo de backup exporta e restaura os dados locais em JSON.
-- Os uploads ficam no disco da instância do servidor e não são replicados para armazenamento externo.
-- A autenticação, a tela de login e as sessões definitivas já usam o backend e o PostgreSQL.
-- Usuários, credenciais, papéis, permissões e vínculos por empresa já são persistidos no PostgreSQL.
-- Reiniciar o armazenamento do navegador ou usar outro dispositivo cria uma experiência de dados independente.
+- O PostgreSQL é a fonte de verdade dos módulos operacionais;
+- uploads continuam no disco da instância e precisam de backup próprio;
+- o armazenamento atual de arquivos é adequado para uma única instância, mas deve migrar para object storage antes de escalar horizontalmente;
+- o Gemini depende de chave, cota e disponibilidade do provedor;
+- o backup JSON da interface não substitui o backup do banco;
+- migrações devem ser revisadas antes do deploy;
+- logs de aplicação podem ser consultados pelo `journalctl` e logs do proxy pelo Nginx.
 
-Antes de uso real, ainda é necessário conectar os módulos operacionais restantes ao PostgreSQL, adicionar armazenamento de objetos, proteger os arquivos com antivírus, configurar observabilidade e gerir segredos na infraestrutura.
-
-## Como contribuir
+## Contribuição
 
 1. Crie uma branch a partir da branch principal;
-2. implemente uma alteração pequena e bem delimitada;
-3. execute `npm run lint` e `npm run build`;
-4. descreva no pull request o problema, a solução e como validar a mudança.
+2. implemente uma alteração pequena e delimitada;
+3. preserve o isolamento por tenant e `companyId`;
+4. adicione ou atualize testes do fluxo alterado;
+5. execute lint, testes, build e o verificador integrado aplicável;
+6. descreva no pull request o problema, a solução e a validação realizada.
 
-Adote componentes e tipos já existentes, preserve a separação de dados por `companyId` e nunca inclua credenciais ou dados financeiros reais nos commits.
+Nunca inclua credenciais, dumps, anexos ou dados financeiros reais nos commits.
 
 ## Status e autoria
 
-O Idex Finance está em desenvolvimento e atualmente funciona como uma demonstração funcional da experiência de BPO financeiro. Desenvolvido por **NFlow Analytics**.
+O Idex Finance está em produção e é desenvolvido pela **NFlow Analytics**.
 
-O repositório ainda não declara uma licença de distribuição. Consulte os responsáveis pelo projeto antes de copiar, modificar ou redistribuir o código.
+O repositório não declara uma licença pública de distribuição. Consulte os responsáveis antes de copiar, modificar ou redistribuir o código.
