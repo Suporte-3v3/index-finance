@@ -79,6 +79,38 @@ function companyIdsWithPermission(profile: ReportAccessProfile, permission: "rep
     .map(({ companyId }) => companyId);
 }
 
+function isBpoForCompany(profile: ReportAccessProfile, company: { id: string; tenantId: string }) {
+  return profile.isPlatformAdmin ||
+    administratorTenantIds(profile).includes(company.tenantId) ||
+    profile.companyMemberships.some(({ companyId, role }) =>
+      companyId === company.id && (role === "BPO_ADMIN" || role === "BPO_TEAM"),
+    );
+}
+
+async function validateRecipient(companyId: string, recipientId: string) {
+  const membership = await getDatabaseClient().companyMembership.findFirst({
+    where: {
+      companyId,
+      userId: recipientId,
+      status: "ACTIVE",
+      role: { in: ["CLIENT", "ACCOUNTANT"] },
+      user: { status: "ACTIVE", deletedAt: null },
+    },
+    include: { user: { select: { name: true } } },
+  });
+  if (!membership) throw new ReportApiError("Destinatário inválido para esta empresa.", 400);
+  return { id: recipientId, name: membership.user.name, role: membership.role };
+}
+
+async function validateTemplate(companyId: string, templateId: string) {
+  const template = await getDatabaseClient().reportTemplate.findFirst({
+    where: { id: templateId, companyId },
+    select: { id: true, name: true },
+  });
+  if (!template) throw new ReportApiError("Modelo inválido para esta empresa.", 400);
+  return template;
+}
+
 async function requireCompany(
   profile: ReportAccessProfile,
   companyId: string,
@@ -152,10 +184,20 @@ export async function listReports(profile: ReportAccessProfile) {
             { id: { in: companyIdsWithPermission(profile, "reports.view") } },
           ],
         },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
+  const bpoCompanyIds = companies.filter((company) => isBpoForCompany(profile, company)).map(({ id }) => id);
+  const personalCompanyIds = companies.filter((company) => !isBpoForCompany(profile, company)).map(({ id }) => id);
   const reports = await database.report.findMany({
-    where: { companyId: { in: companies.map(({ id }) => id) } },
+    where: {
+      OR: [
+        { companyId: { in: bpoCompanyIds } },
+        {
+          companyId: { in: personalCompanyIds },
+          OR: [{ generatedById: profile.id }, { recipientId: profile.id }],
+        },
+      ],
+    },
     orderBy: { generatedAt: "desc" },
   });
   return reports.map(mapReport);
@@ -165,6 +207,10 @@ export async function createReport(profile: ReportAccessProfile, body: any) {
   const companyId = uuid(body?.companyId, "a empresa");
   const company = await requireCompany(profile, companyId, "reports.generate");
   const format = body?.format === "PDF" || body?.format === "EXCEL" ? body.format : undefined;
+  const recipientId = uuid(body?.recipientId, "o destinatário", false);
+  const recipient = recipientId ? await validateRecipient(companyId, recipientId) : null;
+  const templateId = uuid(body?.templateId, "o modelo", false);
+  const template = templateId ? await validateTemplate(companyId, templateId) : null;
 
   const report = await getDatabaseClient().report.create({
     data: {
@@ -179,11 +225,11 @@ export async function createReport(profile: ReportAccessProfile, body: any) {
       mimeType: optionalText(body?.mimeType, 150),
       objectKey: optionalText(body?.objectKey, 500),
       fileSizeBytes: typeof body?.fileSizeBytes === "number" ? BigInt(Math.round(body.fileSizeBytes)) : null,
-      templateId: uuid(body?.templateId, "o modelo", false),
-      templateName: optionalText(body?.templateName, 200),
-      recipientId: uuid(body?.recipientId, "o destinatário", false),
-      recipientName: optionalText(body?.recipientName, 160),
-      recipientRole: body?.recipientRole === "CLIENT" || body?.recipientRole === "ACCOUNTANT" ? body.recipientRole : undefined,
+      templateId: template?.id,
+      templateName: template?.name,
+      recipientId: recipient?.id,
+      recipientName: recipient?.name,
+      recipientRole: recipient?.role,
     },
   });
   if (report.recipientId) {
@@ -219,10 +265,17 @@ export async function listReportTemplates(profile: ReportAccessProfile) {
             { id: { in: companyIdsWithPermission(profile, "reports.view") } },
           ],
         },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
+  const bpoCompanyIds = companies.filter((company) => isBpoForCompany(profile, company)).map(({ id }) => id);
+  const personalCompanyIds = companies.filter((company) => !isBpoForCompany(profile, company)).map(({ id }) => id);
   const templates = await database.reportTemplate.findMany({
-    where: { companyId: { in: companies.map(({ id }) => id) } },
+    where: {
+      OR: [
+        { companyId: { in: bpoCompanyIds } },
+        { companyId: { in: personalCompanyIds }, createdById: profile.id },
+      ],
+    },
     orderBy: [{ favorite: "desc" }, { updatedAt: "desc" }],
   });
   return templates.map(mapTemplate);

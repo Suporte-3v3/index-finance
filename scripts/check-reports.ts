@@ -14,6 +14,7 @@ const {
   deleteReport,
   deleteReportTemplate,
   listReports,
+  listReportTemplates,
   updateReportTemplate,
 } = await import("../backend/reports.js");
 
@@ -36,11 +37,13 @@ const database = getDatabaseClient();
 const marker = randomUUID();
 const tenantId = randomUUID();
 const companyId = randomUUID();
+const foreignCompanyId = randomUUID();
 const adminId = randomUUID();
 const generatorId = randomUUID();
 const viewerId = randomUUID();
 const restrictedId = randomUUID();
-const userIds = [adminId, generatorId, viewerId, restrictedId];
+const foreignRecipientId = randomUUID();
+const userIds = [adminId, generatorId, viewerId, restrictedId, foreignRecipientId];
 
 const profile = (
   id: string,
@@ -72,6 +75,7 @@ try {
       { id: generatorId, name: generator.name, email: `reports-generator-${marker}@idex.invalid`, emailVerified: true, passwordChangedAt: new Date() },
       { id: viewerId, name: viewer.name, email: `reports-viewer-${marker}@idex.invalid`, emailVerified: true, passwordChangedAt: new Date() },
       { id: restrictedId, name: restricted.name, email: `reports-restricted-${marker}@idex.invalid`, emailVerified: true, passwordChangedAt: new Date() },
+      { id: foreignRecipientId, name: "Cliente externo", email: `reports-foreign-${marker}@idex.invalid`, emailVerified: true, passwordChangedAt: new Date() },
     ],
   });
   await database.company.create({
@@ -84,11 +88,29 @@ try {
       clientModules: ["reports"],
     },
   });
+  await database.company.create({
+    data: {
+      id: foreignCompanyId,
+      tenantId,
+      cnpj: marker.replace(/-/g, "").slice(14, 28),
+      corporateName: "Outra empresa da verificação",
+      tradeName: "Empresa Externa",
+      clientModules: ["reports"],
+    },
+  });
   await database.companyMembership.createMany({
-    data: [generator, viewer, restricted].flatMap((item) => item.companyMemberships.map((membership) => ({
-      ...membership,
-      userId: item.id,
-    }))),
+    data: [
+      ...[generator, viewer, restricted].flatMap((item) => item.companyMemberships.map((membership) => ({
+        ...membership,
+        userId: item.id,
+      }))),
+      {
+        companyId: foreignCompanyId,
+        userId: foreignRecipientId,
+        role: "CLIENT",
+        permissions: ["reports.view"],
+      },
+    ],
   });
 
   await expectForbidden(() => createReport(restricted, {
@@ -103,7 +125,12 @@ try {
     name: "Relatório autorizado",
     type: "DRE Gerencial",
     filters: {},
+    recipientId: viewerId,
+    recipientName: "Nome adulterado",
+    recipientRole: "ACCOUNTANT",
   });
+  assert.equal(report.recipientName, viewer.name);
+  assert.equal(report.recipientRole, "CLIENT");
   assert.ok((await listReports(viewer)).some((item) => item.id === report.id));
   assert.deepEqual(await listReports(restricted), []);
   await expectForbidden(() => deleteReport(viewer, report.id));
@@ -118,6 +145,7 @@ try {
   await expectForbidden(() => updateReportTemplate(viewer, template.id, { name: "Alteração indevida" }));
   await expectForbidden(() => deleteReportTemplate(viewer, template.id));
   await updateReportTemplate(generator, template.id, { name: "Modelo atualizado" });
+  assert.equal((await listReportTemplates(viewer)).some((item) => item.id === template.id), false);
 
   const adminReport = await createReport(admin, {
     companyId,
@@ -126,15 +154,28 @@ try {
     filters: {},
   });
   assert.ok(adminReport.id);
+  assert.equal((await listReports(viewer)).some((item) => item.id === adminReport.id), false);
+
+  await assert.rejects(
+    () => createReport(generator, {
+      companyId,
+      name: "Destinatário externo",
+      type: "Contas a Receber",
+      filters: {},
+      recipientId: foreignRecipientId,
+    }),
+    (error: unknown) => error instanceof ReportApiError && error.status === 400,
+  );
 
   console.log("Relatórios validados: RBAC de consulta, geração, modelos e exclusão.");
 } finally {
-  await database.notification.deleteMany({ where: { companyId } });
-  await database.report.deleteMany({ where: { companyId } });
-  await database.reportTemplate.deleteMany({ where: { companyId } });
-  await database.companyMembership.deleteMany({ where: { companyId } });
-  await database.auditLog.deleteMany({ where: { companyId } });
-  await database.company.deleteMany({ where: { id: companyId } });
+  const companyIds = [companyId, foreignCompanyId];
+  await database.notification.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.report.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.reportTemplate.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.companyMembership.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.auditLog.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.company.deleteMany({ where: { id: { in: companyIds } } });
   await database.tenantMembership.deleteMany({ where: { tenantId } });
   await database.tenant.deleteMany({ where: { id: tenantId } });
   await database.user.deleteMany({ where: { id: { in: userIds } } });
