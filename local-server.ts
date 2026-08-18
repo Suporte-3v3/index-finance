@@ -87,6 +87,8 @@ import {
 } from './backend/document-assistant.js';
 import {
   DocumentFileError,
+  authorizeLegacyDocumentFile,
+  authorizeLegacyFileUpload,
   readDocumentFile,
   storeDocumentFileChunk,
 } from './backend/document-files.js';
@@ -183,11 +185,23 @@ const requireCompletedPasswordChange: express.RequestHandler = (_request, respon
 
 // Base64 increases the payload by roughly 33%; this safely accommodates a 20 MB file.
 app.use(express.json({ limit: '30mb' }));
-app.use(
-  '/uploads',
+app.get(
+  '/uploads/:fileName',
   requireAuthentication,
   requireCompletedPasswordChange,
-  express.static(uploadDir, { fallthrough: false }),
+  async (request, response) => {
+    const objectKey = `/uploads/${request.params.fileName}`;
+    try {
+      await authorizeLegacyDocumentFile(response.locals.authProfile, objectKey);
+      response.setHeader('Cache-Control', 'private, no-store');
+      response.sendFile(path.join(uploadDir, request.params.fileName));
+    } catch (error) {
+      const status = error instanceof DocumentFileError ? error.status : 500;
+      response.status(status).json({
+        error: error instanceof DocumentFileError ? error.message : 'Não foi possível abrir o arquivo.',
+      });
+    }
+  },
 );
 
 app.get('/api/me', requireAuthentication, (_request, response) => {
@@ -1004,11 +1018,23 @@ app.post('/api/documents/upload', async (request, response) => {
     return;
   }
   try {
+    await authorizeLegacyFileUpload(response.locals.authProfile, request.body);
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+      throw new DocumentFileError('Conteúdo do arquivo inválido.');
+    }
+    const contents = Buffer.from(data, 'base64');
+    if (contents.byteLength === 0 || contents.byteLength > 20 * 1024 * 1024) {
+      throw new DocumentFileError('O arquivo deve ter no máximo 20 MB.');
+    }
     const extension = path.extname(fileName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
     const storedName = `${Date.now()}-${crypto.randomUUID()}${extension}`;
-    await writeFile(path.join(uploadDir, storedName), Buffer.from(data, 'base64'));
+    await writeFile(path.join(uploadDir, storedName), contents);
     response.json({ url: `/uploads/${storedName}` });
   } catch (error) {
+    if (error instanceof DocumentFileError) {
+      response.status(error.status).json({ error: error.message });
+      return;
+    }
     console.error('Document upload failed:', error instanceof Error ? error.message : error);
     response.status(500).json({ error: 'Não foi possível armazenar o documento.' });
   }

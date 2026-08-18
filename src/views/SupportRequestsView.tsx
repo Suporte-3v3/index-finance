@@ -48,7 +48,7 @@ export default function SupportRequestsView() {
     if (!selected || (!message.trim() && !attachment) || sending) return;
     setSending(true); setSendError('');
     try {
-      const attachments = attachment ? [await uploadSupportAttachment(attachment)] : [];
+      const attachments = attachment ? [await uploadSupportAttachment(attachment, selected.id)] : [];
       addSupportMessage(selected.id, message, attachments);
       setMessage(''); setAttachment(null);
     } catch (reason) { setSendError(reason instanceof Error ? reason.message : 'Falha ao enviar.'); }

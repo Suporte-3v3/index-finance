@@ -9,12 +9,18 @@ function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
-export async function uploadSupportAttachment(file: File): Promise<SupportAttachment> {
+export async function uploadSupportAttachment(file: File, ticketId: string): Promise<SupportAttachment> {
   if (file.size > 20 * 1024 * 1024) throw new Error('O anexo excede o limite de 20 MB.');
   const response = await fetch('/api/documents/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: await readFileAsBase64(file), fileName: file.name, mimeType: file.type })
+    body: JSON.stringify({
+      purpose: 'SUPPORT',
+      ticketId,
+      data: await readFileAsBase64(file),
+      fileName: file.name,
+      mimeType: file.type,
+    })
   });
   const result = await response.json() as { url?: string; error?: string };
   if (!response.ok || !result.url) throw new Error(result.error || 'Não foi possível enviar o anexo.');

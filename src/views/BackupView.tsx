@@ -395,6 +395,7 @@ export default function BackupView() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            purpose: "BACKUP",
             data: file.data,
             fileName: file.fileName,
             mimeType: file.mimeType,

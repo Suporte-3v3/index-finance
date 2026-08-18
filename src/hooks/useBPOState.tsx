@@ -2503,6 +2503,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            purpose: "REPORT",
+            companyId: record.companyId,
             data: record.fileContent,
             fileName: record.fileName || `${record.name}.pdf`,
             mimeType: record.mimeType,

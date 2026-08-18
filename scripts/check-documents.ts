@@ -16,7 +16,7 @@ const {
   submitDocumentApproval,
   updateDocument,
 } = await import("../backend/document-records.js");
-const { readDocumentFile, storeDocumentFileChunk } = await import("../backend/document-files.js");
+const { DocumentFileError, readDocumentFile, storeDocumentFileChunk } = await import("../backend/document-files.js");
 
 const database = getDatabaseClient();
 const adminId = randomUUID();
@@ -135,6 +135,10 @@ try {
   assert.match(privateDocument.document.id, /^[0-9a-f-]{36}$/i);
   assert.equal(privateDocument.document.status, "Aguardando Análise");
   assert.equal(privateDocument.document.signedUrl, storedFile.url);
+  await assert.rejects(
+    readDocumentFile(clientProfile, storedFileId),
+    (error) => error instanceof DocumentFileError && error.status === 403,
+  );
   assert.equal(privateDocument.document.amount, 250.5);
   assert.equal(privateDocument.document.processingConfidence, 87);
   const storedPrivateDocument = await database.document.findUniqueOrThrow({
@@ -153,13 +157,30 @@ try {
   assert.equal(updated.amount, 300);
   assert.equal(updated.processingConfidence, 92);
 
+  const sharedFileId = randomUUID();
+  const sharedContents = Buffer.from("arquivo compartilhado com o cliente", "utf8");
+  const sharedFile = await storeDocumentFileChunk(adminProfile, {
+    fileId: sharedFileId,
+    companyId,
+    fileName: "documento-compartilhado.pdf",
+    mimeType: "application/pdf",
+    size: sharedContents.byteLength,
+    chunkIndex: 0,
+    totalChunks: 1,
+    data: sharedContents.toString("base64"),
+  });
   const shared = await createDocument(adminProfile, {
     ...baseDocument,
     name: "documento-compartilhado.pdf",
     recipientId: clientId,
+    previewUrl: sharedFile.url,
   });
   assert.equal(shared.document.status, "Compartilhado");
   assert.equal(shared.document.purpose, "VIEW_ONLY");
+  assert.equal(
+    (await readDocumentFile(clientProfile, sharedFileId)).data.toString("utf8"),
+    sharedContents.toString("utf8"),
+  );
 
   const directApproval = await createDocument(adminProfile, {
     ...baseDocument,

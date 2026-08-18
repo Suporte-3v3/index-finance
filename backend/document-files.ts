@@ -33,12 +33,32 @@ function uuid(value: unknown, field: string) {
   return normalized;
 }
 
-function canAccessCompany(profile: DocumentFileProfile, company: { id: string; tenantId: string }) {
+function isBpoForCompany(profile: DocumentFileProfile, company: { id: string; tenantId: string }) {
   return profile.isPlatformAdmin ||
     profile.tenantMemberships.some(({ tenantId, role }) =>
       tenantId === company.tenantId && (role === "BPO_ADMIN" || role === "BPO_TEAM"),
     ) ||
-    profile.companyMemberships.some(({ companyId }) => companyId === company.id);
+    profile.companyMemberships.some(({ companyId, role }) =>
+      companyId === company.id && (role === "BPO_ADMIN" || role === "BPO_TEAM"),
+    );
+}
+
+function hasCompanyPermission(
+  profile: DocumentFileProfile,
+  company: { id: string; tenantId: string },
+  permission: string,
+) {
+  return profile.isPlatformAdmin ||
+    profile.tenantMemberships.some(({ tenantId, role }) =>
+      tenantId === company.tenantId && role === "BPO_ADMIN",
+    ) ||
+    profile.companyMemberships.some(({ companyId, role, permissions }) =>
+      companyId === company.id && (role === "BPO_ADMIN" || permissions?.includes(permission)),
+    );
+}
+
+function belongsToCompany(profile: DocumentFileProfile, companyId: string) {
+  return profile.companyMemberships.some((membership) => membership.companyId === companyId);
 }
 
 function decodeChunk(value: unknown) {
@@ -80,7 +100,9 @@ export async function storeDocumentFileChunk(profile: DocumentFileProfile, body:
     select: { id: true, tenantId: true },
   });
   if (!company) throw new DocumentFileError("Empresa não encontrada.", 404);
-  if (!canAccessCompany(profile, company)) throw new DocumentFileError("Sem acesso a esta empresa.", 403);
+  if (!hasCompanyPermission(profile, company, "documents.upload")) {
+    throw new DocumentFileError("Sem permissão para enviar documentos nesta empresa.", 403);
+  }
 
   return database.$transaction(async (tx) => {
     const existing = await tx.documentFile.findUnique({ where: { id: fileId } });
@@ -123,13 +145,120 @@ export async function storeDocumentFileChunk(profile: DocumentFileProfile, body:
   });
 }
 
-export async function readDocumentFile(_profile: DocumentFileProfile, fileIdInput: string) {
+async function canReadObjectKey(profile: DocumentFileProfile, objectKey: string) {
+  const database = getDatabaseClient();
+  const document = await database.document.findFirst({
+    where: { objectKey, deletedAt: null },
+    include: { company: { select: { id: true, tenantId: true } } },
+  });
+  if (document) {
+    return isBpoForCompany(profile, document.company) ||
+      (belongsToCompany(profile, document.companyId) &&
+        (document.uploadedById === profile.id || document.recipientId === profile.id));
+  }
+  const report = await database.report.findFirst({
+    where: { objectKey },
+    include: { company: { select: { id: true, tenantId: true } } },
+  });
+  if (report) {
+    return isBpoForCompany(profile, report.company) ||
+      (belongsToCompany(profile, report.companyId) &&
+        (report.generatedById === profile.id || report.recipientId === profile.id));
+  }
+  const messages = await database.supportMessage.findMany({
+    where: { attachments: { not: { equals: null } } },
+    include: {
+      ticket: { include: { company: { select: { id: true, tenantId: true } } } },
+    },
+  });
+  const message = messages.find((item) =>
+    Array.isArray(item.attachments) && item.attachments.some((attachment) =>
+      attachment && typeof attachment === "object" &&
+      (attachment as Record<string, unknown>).url === objectKey,
+    ),
+  );
+  return Boolean(message &&
+    (isBpoForCompany(profile, message.ticket.company) || message.ticket.requesterId === profile.id));
+}
+
+export async function validateDocumentFileReference(
+  profile: DocumentFileProfile,
+  companyId: string,
+  objectKey: string,
+) {
+  const match = objectKey.match(/^\/api\/document-files\/([0-9a-f-]{36})$/i);
+  if (!match) return;
+  const file = await getDatabaseClient().documentFile.findUnique({
+    where: { id: match[1] },
+    include: { _count: { select: { chunks: true } } },
+  });
+  if (
+    !file ||
+    file.companyId !== companyId ||
+    file.uploadedById !== profile.id ||
+    file._count.chunks !== file.totalChunks
+  ) {
+    throw new DocumentFileError("O arquivo informado não pertence a este envio.", 403);
+  }
+}
+
+export async function authorizeLegacyDocumentFile(profile: DocumentFileProfile, objectKey: string) {
+  if (!/^\/uploads\/[0-9]+-[0-9a-f-]{36}(\.[a-z0-9]{1,9})?$/i.test(objectKey)) {
+    throw new DocumentFileError("Arquivo inválido.", 400);
+  }
+  if (!await canReadObjectKey(profile, objectKey)) {
+    throw new DocumentFileError("Sem permissão para abrir este arquivo.", 403);
+  }
+}
+
+export async function authorizeLegacyFileUpload(profile: DocumentFileProfile, body: any) {
+  if (body?.purpose === "REPORT") {
+    const companyId = uuid(body?.companyId, "a empresa");
+    const company = await getDatabaseClient().company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { id: true, tenantId: true },
+    });
+    if (!company || !hasCompanyPermission(profile, company, "reports.generate")) {
+      throw new DocumentFileError("Sem permissão para armazenar este relatório.", 403);
+    }
+    return;
+  }
+  if (body?.purpose === "SUPPORT") {
+    const ticketId = uuid(body?.ticketId, "o chamado");
+    const ticket = await getDatabaseClient().supportTicket.findUnique({
+      where: { id: ticketId },
+      include: { company: { select: { id: true, tenantId: true } } },
+    });
+    if (!ticket || (!isBpoForCompany(profile, ticket.company) && ticket.requesterId !== profile.id)) {
+      throw new DocumentFileError("Sem permissão para anexar arquivos a este chamado.", 403);
+    }
+    return;
+  }
+  if (body?.purpose === "BACKUP") {
+    const isAdministrator = profile.isPlatformAdmin ||
+      profile.tenantMemberships.some(({ role }) => role === "BPO_ADMIN");
+    if (!isAdministrator) throw new DocumentFileError("Sem permissão para restaurar arquivos.", 403);
+    return;
+  }
+  throw new DocumentFileError("Finalidade do arquivo inválida.", 400);
+}
+
+export async function readDocumentFile(profile: DocumentFileProfile, fileIdInput: string) {
   const fileId = uuid(fileIdInput, "o arquivo");
   const file = await getDatabaseClient().documentFile.findUnique({
     where: { id: fileId },
     include: { chunks: { orderBy: { chunkIndex: "asc" } } },
   });
   if (!file) throw new DocumentFileError("Arquivo não encontrado.", 404);
+  const objectKey = `/api/document-files/${file.id}`;
+  const linked = await getDatabaseClient().document.count({ where: { objectKey, deletedAt: null } });
+  if (linked > 0) {
+    if (!await canReadObjectKey(profile, objectKey)) {
+      throw new DocumentFileError("Sem permissão para abrir este arquivo.", 403);
+    }
+  } else if (file.uploadedById !== profile.id) {
+    throw new DocumentFileError("Sem permissão para abrir este arquivo.", 403);
+  }
   if (file.chunks.length !== file.totalChunks) {
     throw new DocumentFileError("O envio deste arquivo ainda não foi concluído.", 409);
   }

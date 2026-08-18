@@ -86,7 +86,7 @@ export default function ServiceDeskView() {
     setSendError("");
     try {
       const attachments = attachment
-        ? [await uploadSupportAttachment(attachment)]
+        ? [await uploadSupportAttachment(attachment, selected.id)]
         : [];
       addSupportMessage(selected.id, message, attachments);
       setMessage("");

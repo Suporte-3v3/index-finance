@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "./generated/prisma/client.js";
 import { getDatabaseClient } from "./database.js";
 import { writeNotification } from "./notifications.js";
+import {
+  DocumentFileError,
+  validateDocumentFileReference,
+} from "./document-files.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 export interface DocumentProfile {
@@ -655,6 +659,16 @@ export async function createDocument(profile: DocumentProfile, body: any) {
     previewUrl?.startsWith("/uploads/") || previewUrl?.startsWith("/api/document-files/")
       ? previewUrl
       : `metadata/${randomUUID()}`;
+  if (objectKey.startsWith("/api/document-files/")) {
+    try {
+      await validateDocumentFileReference(profile, companyId, objectKey);
+    } catch (error) {
+      if (error instanceof DocumentFileError) {
+        throw new DocumentRecordApiError(error.message, error.status);
+      }
+      throw error;
+    }
+  }
   const sha256 = /^[0-9a-f]{64}$/i.test(body?.hash || "")
     ? body.hash.toLowerCase()
     : createHash("sha256").update(`${companyId}:${objectKey}:${randomUUID()}`).digest("hex");
