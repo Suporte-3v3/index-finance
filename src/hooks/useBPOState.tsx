@@ -1889,9 +1889,6 @@ export function BPOProvider({ children }: { children: ReactNode }) {
               document.id === result.document.id ? result.document : document,
             ),
           );
-          if (decision === "Aprovada") {
-            launchDocument(result.document.id);
-          }
         })
         .catch((error) => {
           console.error("Falha ao persistir decisão documental:", error);

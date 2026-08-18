@@ -47,7 +47,7 @@ const teamProfile = {
   companyMemberships: [{
     companyId,
     role: "BPO_TEAM" as const,
-    permissions: ["documents.upload", "documents.view", "approvals.request"],
+    permissions: ["documents.upload", "documents.view", "approvals.request", "accounts-payable.create"],
   }],
 };
 const outsiderProfile = {
@@ -105,7 +105,7 @@ try {
         }, {
           userId: teamId,
           role: "BPO_TEAM",
-          permissions: ["documents.upload", "documents.view", "approvals.request"],
+          permissions: ["documents.upload", "documents.view", "approvals.request", "accounts-payable.create"],
         }],
       },
     },
@@ -155,6 +155,37 @@ try {
   assert.equal(approved.approval.status, "Aprovada");
   assert.equal(approved.document.status, "Lançado");
   assert.equal(approved.approval.history.length, 1);
+  assert.equal(approved.document.entryType, "Conta a Pagar");
+  assert.ok(approved.document.relatedEntityId);
+  const approvedPayable = await database.accountPayable.findUniqueOrThrow({
+    where: { id: approved.document.relatedEntityId },
+  });
+  assert.equal(Number(approvedPayable.amount), baseDocument.amount);
+  assert.equal(approvedPayable.createdById, adminId);
+  assert.equal(approvedPayable.status, "UPCOMING");
+
+  const invalidApproval = await createDocument(adminProfile, {
+    ...baseDocument,
+    name: "documento-aprovacao-invalida.pdf",
+    amount: 0,
+    approvalRecipientId: clientId,
+  });
+  await assert.rejects(
+    decideDocumentApproval(clientProfile, invalidApproval.approval!.id, {
+      decision: "Aprovada",
+      comment: "Tentativa sem valor",
+    }),
+    (error) => error instanceof DocumentRecordApiError && error.status === 400,
+  );
+  const invalidApprovalAfterFailure = await database.approval.findUniqueOrThrow({
+    where: { id: invalidApproval.approval!.id },
+  });
+  const invalidDocumentAfterFailure = await database.document.findUniqueOrThrow({
+    where: { id: invalidApproval.document.id },
+  });
+  assert.equal(invalidApprovalAfterFailure.status, "PENDING");
+  assert.equal(invalidDocumentAfterFailure.status, "AWAITING_APPROVAL");
+  assert.equal(invalidDocumentAfterFailure.relatedEntityId, null);
 
   const submittedSource = await createDocument(adminProfile, {
     ...baseDocument,
@@ -176,14 +207,14 @@ try {
   assert.equal(changesRequested.document.status, "Aguardando Análise");
 
   const adminWorkspace = await listDocuments(adminProfile);
-  assert.equal(adminWorkspace.documents.length, 4);
-  assert.equal(adminWorkspace.documentApprovals.length, 2);
+  assert.equal(adminWorkspace.documents.length, 5);
+  assert.equal(adminWorkspace.documentApprovals.length, 3);
   const clientWorkspace = await listDocuments(clientProfile);
   assert.deepEqual(
     new Set(clientWorkspace.documents.map((item) => item.id)),
-    new Set([shared.document.id, directApproval.document.id, submitted.document.id]),
+    new Set([shared.document.id, directApproval.document.id, invalidApproval.document.id, submitted.document.id]),
   );
-  assert.equal(clientWorkspace.documentApprovals.length, 2);
+  assert.equal(clientWorkspace.documentApprovals.length, 3);
 
   const clientOwned = await createDocument(clientProfile, {
     ...baseDocument,
@@ -267,6 +298,8 @@ try {
   await database.approvalStep.deleteMany({ where: { approval: { companyId } } });
   await database.approval.deleteMany({ where: { companyId } });
   await database.document.deleteMany({ where: { companyId } });
+  await database.accountPayable.deleteMany({ where: { companyId } });
+  await database.accountReceivable.deleteMany({ where: { companyId } });
   await database.company.deleteMany({ where: { id: companyId } });
   await database.tenant.deleteMany({ where: { id: tenantId } });
   await database.user.deleteMany({ where: { id: { in: [adminId, teamId, clientId, outsiderId] } } });

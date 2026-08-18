@@ -179,6 +179,226 @@ function pack(extractedData: unknown, internal: InternalFields) {
   return { ...safe, __idex: internal } as Prisma.InputJsonValue;
 }
 
+const RECURRENCE_FOR_APPROVED_DOCUMENT = {
+  Nenhuma: "NONE",
+  Semanal: "WEEKLY",
+  Mensal: "MONTHLY",
+  Trimestral: "QUARTERLY",
+  Anual: "ANNUAL",
+  Parcelada: "INSTALLMENTS",
+} as const;
+
+function approvedDocumentMoney(value: unknown, field: string) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 999_999_999_999_999) {
+    throw new DocumentRecordApiError(`${field} inválido.`);
+  }
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+function approvedDocumentDate(value: unknown, fallback: Date, field: string) {
+  const normalized = typeof value === "string" && value ? value : fallback.toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new DocumentRecordApiError(`${field} inválida.`);
+  }
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+    throw new DocumentRecordApiError(`${field} inválida.`);
+  }
+  return parsed;
+}
+
+function addApprovalMonths(value: Date, months: number) {
+  const next = new Date(value);
+  const day = next.getUTCDate();
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(day, lastDay));
+  return next;
+}
+
+function approvedDocumentSlices(total: number, dueDate: Date, recurrence: string, countInput: unknown) {
+  if (recurrence !== "INSTALLMENTS") {
+    return [{ amount: total, dueDate, groupId: null, number: null, count: null }];
+  }
+  const count = Math.floor(Number(countInput));
+  if (!Number.isInteger(count) || count < 2 || count > 360) {
+    throw new DocumentRecordApiError("A quantidade de parcelas deve estar entre 2 e 360.");
+  }
+  const totalCents = Math.round(total * 100);
+  const baseCents = Math.floor(totalCents / count);
+  const remainder = totalCents - baseCents * count;
+  const groupId = randomUUID();
+  return Array.from({ length: count }, (_, index) => ({
+    amount: (baseCents + (index < remainder ? 1 : 0)) / 100,
+    dueDate: addApprovalMonths(dueDate, index),
+    groupId,
+    number: index + 1,
+    count,
+  }));
+}
+
+function approvalLaunchPermission(internal: InternalFields) {
+  return internal.entryType === "Conta a Receber"
+    ? "accounts-receivable.create"
+    : internal.entryType === "Transferência"
+      ? null
+      : "accounts-payable.create";
+}
+
+function requireApprovalLaunchPermission(
+  profile: DocumentProfile,
+  company: { id: string; tenantId: string },
+  internal: InternalFields,
+) {
+  const permission = approvalLaunchPermission(internal);
+  if (permission && !hasPermission(profile, company, permission)) {
+    throw new DocumentRecordApiError("Sem permissão para criar o lançamento financeiro desta aprovação.", 403);
+  }
+}
+
+async function postApprovedDocument(
+  tx: Prisma.TransactionClient,
+  document: any,
+  requesterId: string,
+) {
+  const { extractedData, internal } = unpack(document.extractedData);
+  const entryType = internal.entryType === "Conta a Receber"
+    ? "Conta a Receber"
+    : internal.entryType === "Transferência"
+      ? "Transferência"
+      : "Conta a Pagar";
+  const amount = approvedDocumentMoney(internal.amount, "Valor");
+  const dueDate = approvedDocumentDate(internal.dueDate, document.createdAt, "Data de vencimento");
+  const competenceMonth = typeof document.competenceMonth === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(document.competenceMonth)
+    ? document.competenceMonth
+    : dueDate.toISOString().slice(0, 7);
+  const description = document.description || document.aiSummary || document.name;
+  const category = typeof internal.expenseType === "string" && internal.expenseType.trim()
+    ? internal.expenseType.trim()
+    : document.category;
+  const costCenter = typeof internal.costCenter === "string" && internal.costCenter.trim()
+    ? internal.costCenter.trim()
+    : "A classificar";
+  const paymentMethod = typeof internal.paymentMethod === "string" && internal.paymentMethod.trim()
+    ? internal.paymentMethod.trim()
+    : "A definir";
+  const bankAccountId = typeof internal.bankAccountId === "string" && internal.bankAccountId
+    ? internal.bankAccountId
+    : null;
+  if (bankAccountId) {
+    const bank = await tx.bankAccount.findFirst({
+      where: { id: bankAccountId, companyId: document.companyId, active: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!bank) throw new DocumentRecordApiError("Conta bancária inválida para esta empresa.");
+  }
+
+  const launchedAt = new Date().toISOString();
+  const nextInternal = {
+    ...internal,
+    entryType,
+    launchedById: requesterId,
+    launchedAt,
+  };
+
+  if (entryType === "Transferência") {
+    const destinationBankAccountId = typeof internal.destinationBankAccountId === "string"
+      ? internal.destinationBankAccountId
+      : "";
+    if (!bankAccountId || !destinationBankAccountId || bankAccountId === destinationBankAccountId) {
+      throw new DocumentRecordApiError("Informe contas bancárias de origem e destino diferentes.");
+    }
+    const destination = await tx.bankAccount.findFirst({
+      where: { id: destinationBankAccountId, companyId: document.companyId, active: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!destination) throw new DocumentRecordApiError("Conta bancária de destino inválida.");
+    await tx.bankAccount.update({ where: { id: bankAccountId }, data: { balance: { decrement: amount } } });
+    await tx.bankAccount.update({ where: { id: destinationBankAccountId }, data: { balance: { increment: amount } } });
+    return { relatedEntityType: null, relatedEntityId: null, extractedData: pack(extractedData, nextInternal) };
+  }
+
+  const recurrence = RECURRENCE_FOR_APPROVED_DOCUMENT[
+    (internal.recurrence as keyof typeof RECURRENCE_FOR_APPROVED_DOCUMENT) || "Nenhuma"
+  ] || "NONE";
+  const slices = approvedDocumentSlices(amount, dueDate, recurrence, internal.installmentCount);
+  let relatedEntityId: string | null = null;
+
+  if (entryType === "Conta a Receber") {
+    const customer = typeof internal.supplier === "string" && internal.supplier.trim()
+      ? internal.supplier.trim()
+      : "Cliente a confirmar";
+    for (const slice of slices) {
+      const receivable = await tx.accountReceivable.create({
+        data: {
+          companyId: document.companyId,
+          description: `${description}${slice.count ? ` (Parcela ${slice.number}/${slice.count})` : ""}`,
+          customerName: customer,
+          categoryName: category,
+          costCenterName: costCenter,
+          competenceMonth: slice.count ? slice.dueDate.toISOString().slice(0, 7) : competenceMonth,
+          issueDate: approvedDocumentDate(undefined, document.createdAt, "Data de emissão"),
+          dueDate: slice.dueDate,
+          amount: slice.amount,
+          paymentMethod,
+          bankAccountId,
+          recurrence,
+          installmentGroupId: slice.groupId,
+          installmentNumber: slice.number,
+          installmentCount: slice.count,
+          documentNumber: typeof internal.documentNumber === "string" ? internal.documentNumber || null : null,
+          notes: typeof internal.notes === "string" ? internal.notes || null : "Lançamento aprovado pela Central de Documentos.",
+          attachmentObjectKey: document.objectKey,
+          attachmentName: document.name,
+          status: "OPEN",
+          responsibleId: requesterId,
+          createdById: requesterId,
+        },
+      });
+      relatedEntityId ||= receivable.id;
+    }
+    return { relatedEntityType: "AccountReceivable", relatedEntityId, extractedData: pack(extractedData, nextInternal) };
+  }
+
+  const supplier = typeof internal.supplier === "string" && internal.supplier.trim()
+    ? internal.supplier.trim()
+    : "Fornecedor a confirmar";
+  for (const slice of slices) {
+    const payable = await tx.accountPayable.create({
+      data: {
+        companyId: document.companyId,
+        description: `${description}${slice.count ? ` (Parcela ${slice.number}/${slice.count})` : ""}`,
+        supplierName: supplier,
+        categoryName: category,
+        costCenterName: costCenter,
+        competenceMonth: slice.count ? slice.dueDate.toISOString().slice(0, 7) : competenceMonth,
+        issueDate: approvedDocumentDate(undefined, document.createdAt, "Data de emissão"),
+        dueDate: slice.dueDate,
+        amount: slice.amount,
+        finalAmount: slice.amount,
+        paymentMethod,
+        bankAccountId,
+        recurrence,
+        installmentGroupId: slice.groupId,
+        installmentNumber: slice.number,
+        installmentCount: slice.count,
+        documentNumber: typeof internal.documentNumber === "string" ? internal.documentNumber || null : null,
+        notes: typeof internal.notes === "string" ? internal.notes || null : "Lançamento aprovado pela Central de Documentos.",
+        attachmentObjectKey: document.objectKey,
+        attachmentName: document.name,
+        status: "UPCOMING",
+        responsibleId: requesterId,
+        needsApproval: false,
+        createdById: requesterId,
+      },
+    });
+    relatedEntityId ||= payable.id;
+  }
+  return { relatedEntityType: "AccountPayable", relatedEntityId, extractedData: pack(extractedData, nextInternal) };
+}
+
 const documentInclude = {
   uploadedBy: { select: { name: true } },
   company: { select: { id: true, tenantId: true } },
@@ -436,6 +656,12 @@ export async function createDocument(profile: DocumentProfile, body: any) {
     origin: body?.origin || "Documento",
     ...(shared ? { sharedById: profile.id, sharedAt: new Date().toISOString() } : {}),
   });
+  if (approvalRecipientId) {
+    if (!isBpoForCompany(profile, company)) {
+      throw new DocumentRecordApiError("Somente a equipe BPO pode solicitar esta aprovação.", 403);
+    }
+    requireApprovalLaunchPermission(profile, company, internal);
+  }
   const database = getDatabaseClient();
   return database.$transaction(async (tx) => {
     const document = await tx.document.create({
@@ -563,6 +789,7 @@ export async function submitDocumentApproval(profile: DocumentProfile, documentI
     { ...body, sharedById: profile.id, sharedAt: new Date().toISOString() },
     unpacked.internal,
   );
+  requireApprovalLaunchPermission(profile, company, nextInternal);
   return database.$transaction(async (tx) => {
     const document = await tx.document.update({
       where: { id: existing.id },
@@ -617,6 +844,16 @@ export async function decideDocumentApproval(profile: DocumentProfile, approvalI
   if (role !== "CLIENT") throw new DocumentRecordApiError("Apenas o cliente destinatário pode decidir.", 403);
   const documentStatus = decision === "APPROVED" ? "POSTED" : decision === "REJECTED" ? "CANCELED" : "AWAITING_ANALYSIS";
   return database.$transaction(async (tx) => {
+    const documentBeforeDecision = await tx.document.findFirst({
+      where: { id: existing.relatedEntityId, deletedAt: null },
+      include: documentInclude,
+    });
+    if (!documentBeforeDecision || documentBeforeDecision.status !== "AWAITING_APPROVAL") {
+      throw new DocumentRecordApiError("Documento indisponível para esta decisão.", 409);
+    }
+    const financialPosting = decision === "APPROVED"
+      ? await postApprovedDocument(tx, documentBeforeDecision, existing.requesterId)
+      : null;
     await tx.approvalStep.create({
       data: { approvalId: existing.id, userId: profile.id, role, decision, comment: optionalText(body?.comment, 10_000) },
     });
@@ -627,7 +864,17 @@ export async function decideDocumentApproval(profile: DocumentProfile, approvalI
     });
     const document = await tx.document.update({
       where: { id: existing.relatedEntityId },
-      data: { status: documentStatus, canceledAt: documentStatus === "CANCELED" ? new Date() : null },
+      data: {
+        status: documentStatus,
+        canceledAt: documentStatus === "CANCELED" ? new Date() : null,
+        ...(financialPosting
+          ? {
+              relatedEntityType: financialPosting.relatedEntityType,
+              relatedEntityId: financialPosting.relatedEntityId,
+              extractedData: financialPosting.extractedData,
+            }
+          : {}),
+      },
       include: documentInclude,
     });
     await audit(tx, profile, existing.company, "DECIDIR_APROVACAO_DOCUMENTO", document.id, { status: "AWAITING_APPROVAL" }, { status: documentStatus, decision });
@@ -642,7 +889,7 @@ export async function decideDocumentApproval(profile: DocumentProfile, approvalI
     });
     const users = await userMap([existing.requesterId, existing.recipientId]);
     return { document: mapDocument(document, users), approval: mapApproval(approval, users) };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 type DeletedFinancialEntries = {
