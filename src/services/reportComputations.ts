@@ -122,9 +122,9 @@ const payableCashMovements = (
 ) => item.paymentHistory?.length
   ? item.paymentHistory
       .filter((payment) => inRange(payment.date, range.startDate, range.endDate))
-      .map((payment) => ({ date: payment.date, value: payment.amount }))
+      .map((payment) => ({ date: payment.date, value: payment.amount, bankAccountId: payment.bankAccountId }))
   : item.paymentDate && inRange(item.paymentDate, range.startDate, range.endDate)
-    ? [{ date: item.paymentDate, value: payablePaid(item) }]
+    ? [{ date: item.paymentDate, value: payablePaid(item), bankAccountId: item.bankAccountId }]
     : [];
 
 const receivableCashMovements = (
@@ -133,9 +133,9 @@ const receivableCashMovements = (
 ) => item.receiptHistory?.length
   ? item.receiptHistory
       .filter((receipt) => inRange(receipt.date, range.startDate, range.endDate))
-      .map((receipt) => ({ date: receipt.date, value: receipt.amount }))
+      .map((receipt) => ({ date: receipt.date, value: receipt.amount, bankAccountId: receipt.bankAccountId }))
   : item.receiptDate && inRange(item.receiptDate, range.startDate, range.endDate)
-    ? [{ date: item.receiptDate, value: item.receivedAmount }]
+    ? [{ date: item.receiptDate, value: item.receivedAmount, bankAccountId: item.bankAccountId }]
     : [];
 
 const payableReportValue = (
@@ -554,18 +554,39 @@ function computeCfBlock(
 
   switch (config.blockKey) {
     case "CF_BALANCE_SUMMARY": {
-      const finalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
-      const realizedIn = realizedReceivableEntries.reduce((sum, entry) => sum + entry.value, 0);
-      const realizedOut = realizedPayableEntries.reduce((sum, entry) => sum + entry.value, 0);
-      const initialBalance = finalBalance - (realizedIn - realizedOut);
+      const accountIds = new Set(accounts.map(({ id }) => id));
+      const completeRange = { startDate: "0000-01-01", endDate: "9999-12-31" };
+      const allPayableMovements = data.accountsPayable
+        .filter((item) => !isCanceledPayable(item.status))
+        .flatMap((item) => payableCashMovements(item, completeRange))
+        .filter((movement) => accountIds.has(movement.bankAccountId));
+      const allReceivableMovements = data.accountsReceivable
+        .filter((item) => !isCanceledReceivable(item.status))
+        .flatMap((item) => receivableCashMovements(item, completeRange))
+        .filter((movement) => accountIds.has(movement.bankAccountId));
+      const periodIn = allReceivableMovements
+        .filter((movement) => inRange(movement.date, range.startDate, range.endDate))
+        .reduce((sum, movement) => sum + movement.value, 0);
+      const periodOut = allPayableMovements
+        .filter((movement) => inRange(movement.date, range.startDate, range.endDate))
+        .reduce((sum, movement) => sum + movement.value, 0);
+      const laterIn = allReceivableMovements
+        .filter((movement) => movement.date > range.endDate)
+        .reduce((sum, movement) => sum + movement.value, 0);
+      const laterOut = allPayableMovements
+        .filter((movement) => movement.date > range.endDate)
+        .reduce((sum, movement) => sum + movement.value, 0);
+      const currentBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+      const finalBalance = currentBalance - laterIn + laterOut;
+      const initialBalance = finalBalance - periodIn + periodOut;
       return {
         kind: "kpis",
         title,
         items: [
           { label: "Saldo inicial do período", value: money(initialBalance) },
-          { label: "Total de entradas", value: money(realizedIn) },
-          { label: "Total de saídas", value: money(realizedOut) },
-          { label: "Resultado do período", value: money(realizedIn - realizedOut) },
+          { label: "Total de entradas", value: money(periodIn) },
+          { label: "Total de saídas", value: money(periodOut) },
+          { label: "Resultado do período", value: money(periodIn - periodOut) },
           { label: "Saldo final", value: money(finalBalance) },
         ],
       };

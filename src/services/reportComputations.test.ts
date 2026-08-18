@@ -132,6 +132,64 @@ test("resumo de fluxo de caixa inclui saldo inicial, entradas, saídas, resultad
   ]);
 });
 
+test("fluxo de caixa histórico remove do saldo atual movimentos posteriores ao período", () => {
+  const historical = receivable({
+    id: "ar-historical",
+    amount: 100,
+    receivedAmount: 100,
+    status: "Recebido",
+    receiptDate: "2026-07-10",
+    receiptHistory: [{
+      id: "receipt-historical",
+      date: "2026-07-10",
+      amount: 100,
+      bankAccountId: "bank-1",
+      bankAccountName: "Banco Idex",
+      interest: 0,
+      penalty: 0,
+      discount: 0,
+      registeredById: "user-1",
+      registeredByName: "Usuário",
+      createdAt: "2026-07-10T12:00:00.000Z",
+    }],
+  });
+  const later = receivable({
+    id: "ar-later",
+    dueDate: "2026-08-01",
+    amount: 300,
+    receivedAmount: 300,
+    status: "Recebido",
+    receiptDate: "2026-08-01",
+    receiptHistory: [{
+      id: "receipt-later",
+      date: "2026-08-01",
+      amount: 300,
+      bankAccountId: "bank-1",
+      bankAccountName: "Banco Idex",
+      interest: 0,
+      penalty: 0,
+      discount: 0,
+      registeredById: "user-1",
+      registeredByName: "Usuário",
+      createdAt: "2026-08-01T12:00:00.000Z",
+    }],
+  });
+  const section = computeReportSections(
+    "Fluxo de Caixa",
+    [{ instanceId: "summary", blockKey: "CF_BALANCE_SUMMARY", visualization: "table" }],
+    filters,
+    {
+      accountsPayable: [],
+      accountsReceivable: [historical, later],
+      bankAccounts: [{ ...bank, balance: 1300 }],
+    },
+  )[0];
+  assert.equal(section.kind, "kpis");
+  if (section.kind !== "kpis") return;
+  assert.match(section.items.find((item) => item.label === "Saldo inicial do período")?.value || "", /900,00/);
+  assert.match(section.items.find((item) => item.label === "Saldo final")?.value || "", /1\.000,00/);
+});
+
 test("relatório sem registros mantém resumo zerado com segurança", () => {
   const section = summary("Contas a Pagar", "AP_SUMMARY", [], []);
   assert.equal(section.kind, "kpis");
