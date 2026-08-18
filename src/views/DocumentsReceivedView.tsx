@@ -18,7 +18,7 @@ import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import ImportEntriesActions from "../components/ImportEntriesActions";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
-import { Badge, BadgeTone, BrazilianDateInput, BrazilianMonthInput, Button, Card, ConfirmDialog, MetricCard, Modal, useToast } from "../components/ui";
+import { Badge, BadgeTone, BrazilianDateInput, BrazilianMonthInput, Button, Card, ConfirmDialog, MetricCard, Modal, Pagination, useToast } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
 import { formatDate, formatDateTime } from "../services/dateFormatters";
 
@@ -79,6 +79,7 @@ const categoryOptions: Document["category"][] = [
   "Documento contábil",
   "Outros",
 ];
+const PAGE_SIZE = 20;
 const emptyLaunch = {
   entryType: "Conta a Pagar" as NonNullable<Document["entryType"]>,
   supplier: "",
@@ -130,6 +131,7 @@ export default function DocumentsReceivedView() {
   const [approvalRecipientId, setApprovalRecipientId] = useState("");
   const [documentsToDelete, setDocumentsToDelete] = useState<Document[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [page, setPage] = useState(1);
   const companyDocuments = useMemo(
     () =>
       documents.filter(
@@ -150,6 +152,8 @@ export default function DocumentsReceivedView() {
           .includes(term))
     );
   });
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const selected =
     companyDocuments.find((item) => item.id === selectedId) || filtered[0];
   const isManualLaunch = Boolean(
@@ -186,6 +190,10 @@ export default function DocumentsReceivedView() {
   useEffect(() => {
     if (!selectedId && filtered[0]) setSelectedId(filtered[0].id);
   }, [selectedId, filtered]);
+  useEffect(() => setPage(1), [query, statusFilter]);
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
   useEffect(() => {
     void refreshDocumentRecords().catch((error) => {
       console.error(
@@ -336,7 +344,7 @@ export default function DocumentsReceivedView() {
     showToast(
       "success",
       `${deletedIds.length} lançamento(s) excluído(s).`,
-      "Os registros foram removidos da fila de Lançamentos.",
+      "Os registros também foram removidos do Contas a Pagar ou Contas a Receber.",
     );
   };
   const launchBatch = (items: Document[]) => {
@@ -829,7 +837,7 @@ export default function DocumentsReceivedView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line dark:divide-line-dark">
-                {filtered.map((document) => (
+                {paginated.map((document) => (
                   <tr
                     key={document.id}
                     onClick={() => {
@@ -961,7 +969,7 @@ export default function DocumentsReceivedView() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {paginated.length === 0 && (
                   <tr>
                     <td
                       colSpan={10}
@@ -974,9 +982,12 @@ export default function DocumentsReceivedView() {
               </tbody>
             </table>
           </div>
-          <div className="p-3 border-t border-line dark:border-line-dark text-[10px] text-ink-soft dark:text-ink-soft-dark">
-            Mostrando {filtered.length} de {companyDocuments.length} registros
-          </div>
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            onChange={setPage}
+            totalLabel={`Mostrando ${paginated.length ? (page - 1) * PAGE_SIZE + 1 : 0}-${(page - 1) * PAGE_SIZE + paginated.length} de ${filtered.length} registros`}
+          />
         </Card>
 
         <Card padding={false} className="overflow-hidden xl:sticky xl:top-4">
@@ -1394,9 +1405,7 @@ export default function DocumentsReceivedView() {
             : `Excluir ${documentsToDelete.length} lançamentos?`
         }
         description={
-          documentsToDelete.some((item) => item.status === "Lançado")
-            ? "Os itens serão removidos da fila de Lançamentos. Registros já efetivados permanecem no Contas a Pagar ou Contas a Receber; para desfazê-los financeiramente, use a ação Cancelar lançamento antes da exclusão."
-            : "Os itens selecionados serão removidos da fila de Lançamentos e a exclusão ficará registrada nos logs."
+          "Os itens selecionados e os respectivos registros vinculados no Contas a Pagar ou Contas a Receber serão excluídos. Lançamentos com pagamentos ou recebimentos registrados não podem ser excluídos."
         }
         confirmLabel={documentsToDelete.length === 1 ? "Excluir lançamento" : "Excluir selecionados"}
       />

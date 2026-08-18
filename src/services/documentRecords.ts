@@ -50,14 +50,20 @@ export function updatePersistedDocument(id: string, updates: Record<string, unkn
   });
 }
 
+export interface DeletedDocumentRecords {
+  deletedIds: string[];
+  deletedPayableIds: string[];
+  deletedReceivableIds: string[];
+}
+
 export function deletePersistedDocument(id: string) {
-  return request<void>(`/api/document-records/${encodeURIComponent(id)}`, {
+  return request<DeletedDocumentRecords>(`/api/document-records/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
 
 export function deletePersistedDocuments(documentIds: string[]) {
-  return request<{ deletedIds: string[] }>("/api/document-records/batch-delete", {
+  return request<DeletedDocumentRecords>("/api/document-records/batch-delete", {
     method: "POST",
     body: JSON.stringify({ documentIds }),
   });

@@ -645,6 +645,146 @@ export async function decideDocumentApproval(profile: DocumentProfile, approvalI
   });
 }
 
+type DeletedFinancialEntries = {
+  deletedPayableIds: string[];
+  deletedReceivableIds: string[];
+};
+
+function linkedFinancialReference(document: {
+  relatedEntityId: string | null;
+  relatedEntityType: string | null;
+  extractedData: unknown;
+}) {
+  if (!document.relatedEntityId) return null;
+  const { internal } = unpack(document.extractedData);
+  const entryType = internal.entryType as string | undefined;
+  if (
+    document.relatedEntityType === "AccountReceivable" ||
+    entryType === "Conta a Receber"
+  ) {
+    return { id: document.relatedEntityId, type: "RECEIVABLE" as const };
+  }
+  if (
+    document.relatedEntityType === "AccountPayable" ||
+    entryType === "Conta a Pagar"
+  ) {
+    return { id: document.relatedEntityId, type: "PAYABLE" as const };
+  }
+  return null;
+}
+
+async function deleteLinkedFinancialEntries(
+  tx: Prisma.TransactionClient,
+  documents: Array<{
+    companyId: string;
+    relatedEntityId: string | null;
+    relatedEntityType: string | null;
+    extractedData: unknown;
+  }>,
+  now: Date,
+): Promise<DeletedFinancialEntries> {
+  const payableCompanies = new Map<string, string>();
+  const receivableCompanies = new Map<string, string>();
+  documents.forEach((document) => {
+    const reference = linkedFinancialReference(document);
+    if (!reference) return;
+    if (reference.type === "PAYABLE") payableCompanies.set(reference.id, document.companyId);
+    else receivableCompanies.set(reference.id, document.companyId);
+  });
+
+  const [linkedPayables, linkedReceivables] = await Promise.all([
+    tx.accountPayable.findMany({
+      where: { id: { in: [...payableCompanies.keys()] }, deletedAt: null },
+      select: { id: true, companyId: true, installmentGroupId: true },
+    }),
+    tx.accountReceivable.findMany({
+      where: { id: { in: [...receivableCompanies.keys()] }, deletedAt: null },
+      select: { id: true, companyId: true, installmentGroupId: true },
+    }),
+  ]);
+  if (
+    linkedPayables.some((item) => payableCompanies.get(item.id) !== item.companyId) ||
+    linkedReceivables.some((item) => receivableCompanies.get(item.id) !== item.companyId)
+  ) {
+    throw new DocumentRecordApiError("Vínculo financeiro inválido para um dos lançamentos.", 409);
+  }
+
+  const payableIds = [...payableCompanies.keys()];
+  const receivableIds = [...receivableCompanies.keys()];
+  const payableGroups = linkedPayables
+    .map((item) => item.installmentGroupId)
+    .filter((id): id is string => Boolean(id));
+  const receivableGroups = linkedReceivables
+    .map((item) => item.installmentGroupId)
+    .filter((id): id is string => Boolean(id));
+  const [payables, receivables] = await Promise.all([
+    tx.accountPayable.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { id: { in: payableIds } },
+          ...(payableGroups.length ? [{ installmentGroupId: { in: payableGroups } }] : []),
+        ],
+      },
+      select: { id: true, payments: { select: { id: true }, take: 1 } },
+    }),
+    tx.accountReceivable.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { id: { in: receivableIds } },
+          ...(receivableGroups.length ? [{ installmentGroupId: { in: receivableGroups } }] : []),
+        ],
+      },
+      select: { id: true, receipts: { select: { id: true }, take: 1 } },
+    }),
+  ]);
+  if (payables.some((item) => item.payments.length)) {
+    throw new DocumentRecordApiError(
+      "Não é possível excluir lançamentos com pagamentos registrados.",
+      409,
+    );
+  }
+  if (receivables.some((item) => item.receipts.length)) {
+    throw new DocumentRecordApiError(
+      "Não é possível excluir lançamentos com recebimentos registrados.",
+      409,
+    );
+  }
+
+  const deletedPayableIds = payables.map((item) => item.id);
+  const deletedReceivableIds = receivables.map((item) => item.id);
+  if (deletedPayableIds.length) {
+    await tx.accountPayable.updateMany({
+      where: { id: { in: deletedPayableIds } },
+      data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+    });
+    await tx.approval.updateMany({
+      where: {
+        relatedEntityType: "AccountPayable",
+        relatedEntityId: { in: deletedPayableIds },
+        status: "PENDING",
+      },
+      data: { status: "CANCELED" },
+    });
+  }
+  if (deletedReceivableIds.length) {
+    await tx.accountReceivable.updateMany({
+      where: { id: { in: deletedReceivableIds } },
+      data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+    });
+    await tx.approval.updateMany({
+      where: {
+        relatedEntityType: "AccountReceivable",
+        relatedEntityId: { in: deletedReceivableIds },
+        status: "PENDING",
+      },
+      data: { status: "CANCELED" },
+    });
+  }
+  return { deletedPayableIds, deletedReceivableIds };
+}
+
 export async function deleteDocument(profile: DocumentProfile, documentId: string) {
   const database = getDatabaseClient();
   const existing = await database.document.findFirst({
@@ -660,8 +800,10 @@ export async function deleteDocument(profile: DocumentProfile, documentId: strin
   ) {
     throw new DocumentRecordApiError("Sem permissão para excluir este documento.", 403);
   }
-  await database.$transaction(async (tx) => {
-    await tx.document.update({ where: { id: existing.id }, data: { deletedAt: new Date(), status: "CANCELED", canceledAt: new Date() } });
+  return database.$transaction(async (tx) => {
+    const now = new Date();
+    const financialEntries = await deleteLinkedFinancialEntries(tx, [existing], now);
+    await tx.document.update({ where: { id: existing.id }, data: { deletedAt: now, status: "CANCELED", canceledAt: now } });
     await tx.approval.updateMany({ where: { relatedEntityType: "Document", relatedEntityId: existing.id, status: "PENDING" }, data: { status: "CANCELED" } });
     await audit(tx, profile, company, "EXCLUIR_DOCUMENTO", existing.id, { name: existing.name }, null);
     await writeNotification(tx, {
@@ -670,6 +812,7 @@ export async function deleteDocument(profile: DocumentProfile, documentId: strin
       message: `${existing.name} foi excluído.`,
       type: "WARNING",
     });
+    return { deletedIds: [existing.id], ...financialEntries };
   });
 }
 
@@ -711,8 +854,9 @@ export async function deleteDocuments(profile: DocumentProfile, body: any) {
     }
   });
 
-  await database.$transaction(async (tx) => {
+  const financialEntries = await database.$transaction(async (tx) => {
     const now = new Date();
+    const deletedFinancialEntries = await deleteLinkedFinancialEntries(tx, documents, now);
     await tx.document.updateMany({
       where: { id: { in: documentIds }, deletedAt: null },
       data: { deletedAt: now, status: "CANCELED", canceledAt: now },
@@ -742,10 +886,11 @@ export async function deleteDocuments(profile: DocumentProfile, body: any) {
       await writeNotification(tx, {
         companyId: company.id,
         title: "Lançamentos excluídos",
-        message: `${count} lançamento(s) foram excluídos da fila.`,
+        message: `${count} lançamento(s) e seus títulos financeiros vinculados foram excluídos.`,
         type: "WARNING",
       });
     }
+    return deletedFinancialEntries;
   });
-  return { deletedIds: documentIds };
+  return { deletedIds: documentIds, ...financialEntries };
 }

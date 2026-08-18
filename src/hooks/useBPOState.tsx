@@ -2049,16 +2049,30 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       return false;
 
     try {
-      await deletePersistedDocument(id);
+      const result = await deletePersistedDocument(id);
+      const deletedDocumentIds = new Set(result.deletedIds);
+      const deletedPayableIds = new Set(result.deletedPayableIds);
+      const deletedReceivableIds = new Set(result.deletedReceivableIds);
+      const deletedRelatedIds = new Set([
+        ...result.deletedIds,
+        ...result.deletedPayableIds,
+        ...result.deletedReceivableIds,
+      ]);
       setApprovals((items) =>
         items.map((approval) =>
-          approval.relatedId === id && approval.status === "Pendente"
+          deletedRelatedIds.has(approval.relatedId) && approval.status === "Pendente"
             ? { ...approval, status: "Cancelada" }
             : approval,
         ),
       );
       setDocuments((previous) =>
-        previous.filter((document) => document.id !== id),
+        previous.filter((document) => !deletedDocumentIds.has(document.id)),
+      );
+      setAccountsPayable((previous) =>
+        previous.filter((item) => !deletedPayableIds.has(item.id)),
+      );
+      setAccountsReceivable((previous) =>
+        previous.filter((item) => !deletedReceivableIds.has(item.id)),
       );
       addNotification(
         "Documento Removido",
@@ -2089,15 +2103,28 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     try {
       const result = await deletePersistedDocuments(allowedIds);
       const deletedIds = new Set(result.deletedIds);
+      const deletedPayableIds = new Set(result.deletedPayableIds);
+      const deletedReceivableIds = new Set(result.deletedReceivableIds);
+      const deletedRelatedIds = new Set([
+        ...result.deletedIds,
+        ...result.deletedPayableIds,
+        ...result.deletedReceivableIds,
+      ]);
       setApprovals((items) =>
         items.map((approval) =>
-          deletedIds.has(approval.relatedId) && approval.status === "Pendente"
+          deletedRelatedIds.has(approval.relatedId) && approval.status === "Pendente"
             ? { ...approval, status: "Cancelada" }
             : approval,
         ),
       );
       setDocuments((previous) =>
         previous.filter((document) => !deletedIds.has(document.id)),
+      );
+      setAccountsPayable((previous) =>
+        previous.filter((item) => !deletedPayableIds.has(item.id)),
+      );
+      setAccountsReceivable((previous) =>
+        previous.filter((item) => !deletedReceivableIds.has(item.id)),
       );
       return result.deletedIds;
     } catch (error) {

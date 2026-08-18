@@ -453,18 +453,54 @@ export async function listFinancialEntries(profile: FinancialEntriesProfile) {
       ),
     )
     .map(({ id }) => id);
+  const deletedDocumentLinks = await getDatabaseClient().document.findMany({
+    where: {
+      companyId: { in: accessibleCompanies.map(({ id }) => id) },
+      deletedAt: { not: null },
+      relatedEntityId: { not: null },
+      relatedEntityType: { in: ["AccountPayable", "AccountReceivable"] },
+    },
+    select: { relatedEntityId: true, relatedEntityType: true },
+  });
+  const deletedPayableIds = deletedDocumentLinks
+    .filter((item) => item.relatedEntityType === "AccountPayable")
+    .map((item) => item.relatedEntityId)
+    .filter((id): id is string => Boolean(id));
+  const deletedReceivableIds = deletedDocumentLinks
+    .filter((item) => item.relatedEntityType === "AccountReceivable")
+    .map((item) => item.relatedEntityId)
+    .filter((id): id is string => Boolean(id));
   const [payables, receivables, paymentApprovals] = await Promise.all([
     getDatabaseClient().accountPayable.findMany({
-      where: { companyId: { in: payableCompanyIds }, deletedAt: null },
+      where: {
+        companyId: { in: payableCompanyIds },
+        deletedAt: null,
+        ...(deletedPayableIds.length ? { id: { notIn: deletedPayableIds } } : {}),
+      },
       include: payableInclude,
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
     }),
     getDatabaseClient().accountReceivable.findMany({
-      where: { companyId: { in: receivableCompanyIds }, deletedAt: null },
+      where: {
+        companyId: { in: receivableCompanyIds },
+        deletedAt: null,
+        ...(deletedReceivableIds.length ? { id: { notIn: deletedReceivableIds } } : {}),
+      },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
     }),
     getDatabaseClient().approval.findMany({
-      where: { companyId: { in: approvalCompanyIds }, type: "PAYMENT" },
+      where: {
+        companyId: { in: approvalCompanyIds },
+        type: "PAYMENT",
+        NOT: [
+          ...(deletedPayableIds.length
+            ? [{ relatedEntityType: "AccountPayable", relatedEntityId: { in: deletedPayableIds } }]
+            : []),
+          ...(deletedReceivableIds.length
+            ? [{ relatedEntityType: "AccountReceivable", relatedEntityId: { in: deletedReceivableIds } }]
+            : []),
+        ],
+      },
       include: approvalInclude,
       orderBy: { createdAt: "asc" },
     }),

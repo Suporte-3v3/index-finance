@@ -520,8 +520,7 @@ app.patch('/api/document-records/:documentId', requireAuthentication, requireCom
 });
 app.delete('/api/document-records/:documentId', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
   try {
-    await deleteDocumentRecord(response.locals.authProfile, request.params.documentId);
-    response.status(204).end();
+    response.json(await deleteDocumentRecord(response.locals.authProfile, request.params.documentId));
   } catch (error) {
     documentRecordError(response, error, 'Não foi possível excluir o documento.');
   }
