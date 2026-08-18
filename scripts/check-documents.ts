@@ -16,6 +16,7 @@ const {
   submitDocumentApproval,
   updateDocument,
 } = await import("../backend/document-records.js");
+const { readDocumentFile, storeDocumentFileChunk } = await import("../backend/document-files.js");
 
 const database = getDatabaseClient();
 const adminId = randomUUID();
@@ -111,9 +112,29 @@ try {
     },
   });
 
-  const privateDocument = await createDocument(adminProfile, baseDocument);
+  const storedFileId = randomUUID();
+  const storedContents = Buffer.from("arquivo persistente do assistente de documentos", "utf8");
+  const storedFile = await storeDocumentFileChunk(adminProfile, {
+    fileId: storedFileId,
+    companyId,
+    fileName: baseDocument.name,
+    mimeType: baseDocument.mimeType,
+    size: storedContents.byteLength,
+    chunkIndex: 0,
+    totalChunks: 1,
+    data: storedContents.toString("base64"),
+  });
+  assert.equal(storedFile.complete, true);
+  const downloadedFile = await readDocumentFile(adminProfile, storedFileId);
+  assert.equal(downloadedFile.data.toString("utf8"), storedContents.toString("utf8"));
+
+  const privateDocument = await createDocument(adminProfile, {
+    ...baseDocument,
+    previewUrl: storedFile.url,
+  });
   assert.match(privateDocument.document.id, /^[0-9a-f-]{36}$/i);
   assert.equal(privateDocument.document.status, "Aguardando Análise");
+  assert.equal(privateDocument.document.signedUrl, storedFile.url);
   assert.equal(privateDocument.document.amount, 250.5);
   assert.equal(privateDocument.document.processingConfidence, 87);
   const storedPrivateDocument = await database.document.findUniqueOrThrow({

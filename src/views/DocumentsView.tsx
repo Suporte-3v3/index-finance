@@ -106,14 +106,12 @@ function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-    reader.onerror = () =>
-      reject(new Error("Não foi possível preparar o arquivo para envio."));
-    reader.readAsDataURL(file);
-  });
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return window.btoa(binary);
 }
 
 function inferDocumentDetails(fileName: string) {
@@ -472,32 +470,56 @@ export default function DocumentsView() {
     }
   };
 
-  const storeOriginalFile = async (file: File, warnings: string[]) => {
+  const storeOriginalFile = async (
+    file: File,
+    warnings: string[],
+    companyId: string,
+  ) => {
     if (!persistentUploads) {
       warnings.push(
         "Neste deploy, somente os dados do envio são mantidos no navegador; o arquivo original não é armazenado.",
       );
       return undefined;
     }
-    const data = await readFileAsBase64(file);
-    const response = await fetch("/api/documents/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        data,
-        fileName: file.name,
-        mimeType: file.type,
-      }),
-    });
-    const result = (await response.json()) as {
-      url?: string;
-      error?: string;
-    };
-    if (!response.ok || !result.url)
-      throw new Error(
-        result.error || "Não foi possível armazenar o arquivo.",
+    const chunkSize = 2 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const fileId = window.crypto.randomUUID();
+    let storedUrl = "";
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+      const chunk = file.slice(
+        chunkIndex * chunkSize,
+        Math.min(file.size, (chunkIndex + 1) * chunkSize),
       );
-    return result.url;
+      const data = bytesToBase64(new Uint8Array(await chunk.arrayBuffer()));
+      const response = await fetch("/api/document-files", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId,
+          companyId,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          chunkIndex,
+          totalChunks,
+          data,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        complete?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "Não foi possível armazenar o arquivo.");
+      }
+      storedUrl = result.url;
+      if (chunkIndex === totalChunks - 1 && !result.complete) {
+        throw new Error("O envio do arquivo original não foi concluído.");
+      }
+    }
+    return storedUrl;
   };
 
   const resetBpoUploadFlow = () => {
@@ -533,7 +555,11 @@ export default function DocumentsView() {
     const file = queuedFile;
     const warnings: string[] = [];
     try {
-      const previewUrl = await storeOriginalFile(file, warnings);
+      const previewUrl = await storeOriginalFile(
+        file,
+        warnings,
+        selectedFlowCompanyId,
+      );
       const now = new Date();
       await uploadDocument({
         name: file.name,
@@ -585,6 +611,7 @@ export default function DocumentsView() {
       const previewUrl = await storeOriginalFile(
         pending.file,
         storageWarnings,
+        pending.companyId,
       );
       await uploadDocument({
         name: pending.file.name,

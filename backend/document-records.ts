@@ -431,7 +431,10 @@ function mapDocument(item: any, users: Map<string, { name: string; role?: Role }
     relatedEntityId: item.relatedEntityId || undefined,
     status: STATUS_FROM_DATABASE[item.status as keyof typeof STATUS_FROM_DATABASE],
     purpose: item.purpose,
-    signedUrl: item.objectKey.startsWith("/uploads/") ? item.objectKey : undefined,
+    signedUrl:
+      item.objectKey.startsWith("/uploads/") || item.objectKey.startsWith("/api/document-files/")
+        ? item.objectKey
+        : undefined,
     aiSummary: item.aiSummary || undefined,
     extractedData: Object.keys(extractedData).length ? extractedData : undefined,
     processingConfidence: confidenceFromDatabase(item.processingConfidence),
@@ -479,7 +482,10 @@ function mapApproval(item: any, users: Map<string, { name: string; role?: Role }
     dueDateApproval: item.approvalDeadline?.toISOString() || item.createdAt.toISOString(),
     status: APPROVAL_STATUS_FROM_DATABASE[item.status as keyof typeof APPROVAL_STATUS_FROM_DATABASE],
     justification: item.justification || undefined,
-    attachmentUrl: item.attachmentObjectKey?.startsWith("/uploads/") ? item.attachmentObjectKey : undefined,
+    attachmentUrl:
+      item.attachmentObjectKey?.startsWith("/uploads/") || item.attachmentObjectKey?.startsWith("/api/document-files/")
+        ? item.attachmentObjectKey
+        : undefined,
     createdAt: item.createdAt.toISOString(),
     history: item.steps.map((step: any) => ({
       id: step.id,
@@ -645,7 +651,10 @@ export async function createDocument(profile: DocumentProfile, body: any) {
       ? await validateRecipient(companyId, approvalRecipientId, true)
       : null;
   const previewUrl = optionalText(body?.previewUrl, 5_000_000);
-  const objectKey = previewUrl?.startsWith("/uploads/") ? previewUrl : `metadata/${randomUUID()}`;
+  const objectKey =
+    previewUrl?.startsWith("/uploads/") || previewUrl?.startsWith("/api/document-files/")
+      ? previewUrl
+      : `metadata/${randomUUID()}`;
   const sha256 = /^[0-9a-f]{64}$/i.test(body?.hash || "")
     ? body.hash.toLowerCase()
     : createHash("sha256").update(`${companyId}:${objectKey}:${randomUUID()}`).digest("hex");

@@ -11,7 +11,7 @@ export function GET(): Response {
       model: getGeminiModel(),
       maxFileSize: MAX_DOCUMENT_BYTES,
       environment: 'vercel',
-      persistentUploads: false,
+      persistentUploads: true,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   );

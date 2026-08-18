@@ -84,6 +84,11 @@ import {
   getGeminiModel,
   hasConfiguredGeminiKey,
 } from './backend/document-assistant.js';
+import {
+  DocumentFileError,
+  readDocumentFile,
+  storeDocumentFileChunk,
+} from './backend/document-files.js';
 import { AuditLogApiError, listAuditLogs } from './backend/audit-logs.js';
 import {
   NotificationApiError,
@@ -963,6 +968,33 @@ app.delete('/api/users/:userId', async (request, response) => {
 });
 
 app.use('/api/documents', requireAuthentication, requireCompletedPasswordChange);
+
+app.use('/api/document-files', requireAuthentication, requireCompletedPasswordChange);
+app.post('/api/document-files', async (request, response) => {
+  try {
+    response.json(await storeDocumentFileChunk(response.locals.authProfile, request.body));
+  } catch (error) {
+    const status = error instanceof DocumentFileError ? error.status : 500;
+    response.status(status).json({
+      error: error instanceof DocumentFileError ? error.message : 'Não foi possível armazenar o documento.',
+    });
+  }
+});
+app.get('/api/document-files/:fileId', async (request, response) => {
+  try {
+    const file = await readDocumentFile(response.locals.authProfile, request.params.fileId);
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader('Content-Length', String(file.data.byteLength));
+    response.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.send(file.data);
+  } catch (error) {
+    const status = error instanceof DocumentFileError ? error.status : 500;
+    response.status(status).json({
+      error: error instanceof DocumentFileError ? error.message : 'Não foi possível abrir o documento.',
+    });
+  }
+});
 
 app.post('/api/documents/upload', async (request, response) => {
   const { data, fileName } = request.body as { data?: string; fileName?: string };
