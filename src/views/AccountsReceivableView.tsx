@@ -101,6 +101,11 @@ export default function AccountsReceivableView({
         item.type === type &&
         item.active,
     );
+  const subCategoryOptions = (categoryName: string) => {
+    const parent = masterOptions("CATEGORY").find((item) => item.name === categoryName);
+    if (!parent) return [];
+    return masterOptions("SUBCATEGORY").filter((item) => item.parentId === parent.id);
+  };
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -135,6 +140,7 @@ export default function AccountsReceivableView({
   const [description, setDescription] = useState("");
   const [customer, setCustomer] = useState("");
   const [category, setCategory] = useState("");
+  const [subCategory, setSubCategory] = useState("");
   const [costCenter, setCostCenter] = useState("");
   const [competenceMonth, setCompetenceMonth] = useState("2026-07");
   const [issueDate, setIssueDate] = useState("2026-07-13");
@@ -230,6 +236,7 @@ export default function AccountsReceivableView({
     setDescription("");
     setCustomer("");
     setCategory("");
+    setSubCategory("");
     setCostCenter("");
     setCompetenceMonth("2026-07");
     setIssueDate("2026-07-13");
@@ -265,6 +272,7 @@ export default function AccountsReceivableView({
       description,
       customer,
       category,
+      subCategory: subCategory || undefined,
       costCenter,
       competenceMonth,
       issueDate,
@@ -548,7 +556,10 @@ export default function AccountsReceivableView({
                       required
                       labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
                       value={category}
-                      onChange={setCategory}
+                      onChange={(value) => {
+                        setCategory(value);
+                        setSubCategory("");
+                      }}
                       options={masterOptions("CATEGORY")}
                       onAdd={(name) => addMasterData("CATEGORY", name)}
                     />
@@ -563,6 +574,23 @@ export default function AccountsReceivableView({
                       onAdd={(name) => addMasterData("COST_CENTER", name)}
                     />
                   </div>
+
+                  <QuickAddSelect
+                    label="Subcategoria"
+                    labelClassName="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark block"
+                    value={subCategory}
+                    onChange={setSubCategory}
+                    options={subCategoryOptions(category)}
+                    onAdd={(name) =>
+                      addMasterData(
+                        "SUBCATEGORY",
+                        name,
+                        masterOptions("CATEGORY").find((item) => item.name === category)?.id,
+                      )
+                    }
+                    canAdd={Boolean(category)}
+                    placeholder={category ? "Selecione..." : "Escolha uma categoria primeiro"}
+                  />
                 </div>
               )}
 
@@ -921,6 +949,7 @@ export default function AccountsReceivableView({
                         <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-normal font-sans">
                           Nº Doc: {ar.documentNumber || "N/A"} | Categoria:{" "}
                           {ar.category}
+                          {ar.subCategory ? ` / ${ar.subCategory}` : ""}
                         </div>
                       </td>
                       <td className="p-4 text-zinc-600 dark:text-zinc-300 font-medium">
@@ -1070,6 +1099,16 @@ export default function AccountsReceivableView({
                                     {ar.paymentMethod}
                                   </span>
                                 </div>
+                                {ar.subCategory && (
+                                  <div>
+                                    <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
+                                      Subcategoria
+                                    </span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                                      {ar.subCategory}
+                                    </span>
+                                  </div>
+                                )}
                                 <div>
                                   <span className="text-ink-soft dark:text-ink-soft-dark font-medium block text-[9px] uppercase">
                                     Centro de Custo

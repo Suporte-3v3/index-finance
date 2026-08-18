@@ -270,6 +270,7 @@ function mapPayable(item: any) {
     description: item.description,
     supplier: item.supplierName,
     category: item.categoryName,
+    subCategory: item.subCategoryName || "",
     costCenter: item.costCenterName,
     competenceMonth: item.competenceMonth,
     issueDate: isoDate(item.issueDate)!,
@@ -322,6 +323,7 @@ function mapReceivable(item: any) {
     description: item.description,
     customer: item.customerName,
     category: item.categoryName,
+    subCategory: item.subCategoryName || "",
     costCenter: item.costCenterName,
     competenceMonth: item.competenceMonth,
     issueDate: isoDate(item.issueDate)!,
@@ -541,6 +543,7 @@ export async function createPayables(profile: FinancialEntriesProfile, body: any
           description,
           supplierName: requiredText(body?.supplier, "o fornecedor", 200),
           categoryName: requiredText(body?.category, "a categoria", 160),
+          subCategoryName: optionalText(body?.subCategory, 160),
           costCenterName: requiredText(body?.costCenter, "o centro de custo", 160),
           competenceMonth: slice.count ? slice.dueDate.toISOString().slice(0, 7) : inputCompetence,
           issueDate: date(body?.issueDate, "Data de emissão"),
@@ -616,6 +619,7 @@ export async function updatePayable(profile: FinancialEntriesProfile, payableId:
   if (body.description !== undefined) data.description = requiredText(body.description, "a descrição", 500);
   if (body.supplier !== undefined) data.supplierName = requiredText(body.supplier, "o fornecedor", 200);
   if (body.category !== undefined) data.categoryName = requiredText(body.category, "a categoria", 160);
+  if (body.subCategory !== undefined) data.subCategoryName = optionalText(body.subCategory, 160);
   if (body.costCenter !== undefined) data.costCenterName = requiredText(body.costCenter, "o centro de custo", 160);
   if (body.competenceMonth !== undefined) data.competenceMonth = competenceMonth(body.competenceMonth);
   if (body.issueDate !== undefined) data.issueDate = date(body.issueDate, "Data de emissão");
@@ -846,6 +850,7 @@ export async function createReceivables(profile: FinancialEntriesProfile, body: 
           description: `${requiredText(body?.description, "a descrição", 500)}${slice.count ? ` (Parcela ${slice.number}/${slice.count})` : ""}`,
           customerName: requiredText(body?.customer, "o cliente", 200),
           categoryName: requiredText(body?.category, "a categoria", 160),
+          subCategoryName: optionalText(body?.subCategory, 160),
           costCenterName: requiredText(body?.costCenter, "o centro de custo", 160),
           competenceMonth: slice.count ? slice.dueDate.toISOString().slice(0, 7) : inputCompetence,
           issueDate: date(body?.issueDate, "Data de emissão"),
@@ -897,6 +902,7 @@ export async function updateReceivable(profile: FinancialEntriesProfile, receiva
   if (body.description !== undefined) data.description = requiredText(body.description, "a descrição", 500);
   if (body.customer !== undefined) data.customerName = requiredText(body.customer, "o cliente", 200);
   if (body.category !== undefined) data.categoryName = requiredText(body.category, "a categoria", 160);
+  if (body.subCategory !== undefined) data.subCategoryName = optionalText(body.subCategory, 160);
   if (body.costCenter !== undefined) data.costCenterName = requiredText(body.costCenter, "o centro de custo", 160);
   if (body.competenceMonth !== undefined) data.competenceMonth = competenceMonth(body.competenceMonth);
   if (body.issueDate !== undefined) data.issueDate = date(body.issueDate, "Data de emissão");
@@ -1132,6 +1138,7 @@ export interface ImportEntriesResult {
 // que cada linha importada apareça normalmente naquela fila/histórico.
 type ImportReferenceSets = {
   CATEGORY: Set<string>;
+  SUBCATEGORY: Set<string>;
   COST_CENTER: Set<string>;
   PAYMENT_METHOD: Set<string>;
   SUPPLIER: Set<string>;
@@ -1148,7 +1155,7 @@ async function loadImportReferenceSets(companyId: string): Promise<ImportReferen
       where: {
         companyId,
         active: true,
-        type: { in: ["CATEGORY", "COST_CENTER", "PAYMENT_METHOD", "SUPPLIER", "CUSTOMER"] },
+        type: { in: ["CATEGORY", "SUBCATEGORY", "COST_CENTER", "PAYMENT_METHOD", "SUPPLIER", "CUSTOMER"] },
       },
       select: { type: true, name: true },
     }),
@@ -1159,6 +1166,7 @@ async function loadImportReferenceSets(companyId: string): Promise<ImportReferen
   ]);
   const references: ImportReferenceSets = {
     CATEGORY: new Set(),
+    SUBCATEGORY: new Set(),
     COST_CENTER: new Set(),
     PAYMENT_METHOD: new Set(),
     SUPPLIER: new Set(),
@@ -1190,6 +1198,7 @@ function validateImportedEntryReferences(
     }
   };
   requireReference(entry?.category, "CATEGORY", "categoria");
+  requireReference(entry?.subCategory, "SUBCATEGORY", "subcategoria");
   requireReference(entry?.costCenter, "COST_CENTER", "centro de custo");
   requireReference(entry?.paymentMethod, "PAYMENT_METHOD", "forma de pagamento");
   requireReference(

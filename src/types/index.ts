@@ -117,6 +117,7 @@ export interface AccountPayable {
   description: string;
   supplier: string;
   category: string;
+  subCategory?: string;
   costCenter: string;
   competenceMonth: string; // YYYY-MM
   issueDate: string;
@@ -166,6 +167,7 @@ export interface AccountReceivable {
   description: string;
   customer: string;
   category: string;
+  subCategory?: string;
   costCenter: string;
   competenceMonth: string; // YYYY-MM
   issueDate: string;

@@ -11,6 +11,7 @@ import {
 
 const reference: TemplateMasterData = {
   categories: ["Aluguel"],
+  subCategories: [],
   costCenters: ["Administrativo"],
   paymentMethods: ["Pix"],
   suppliers: ["Imobiliária Central"],
@@ -18,7 +19,7 @@ const reference: TemplateMasterData = {
   bankAccounts: [],
 };
 
-const header = Array.from({ length: 16 }, (_, index) => `Coluna ${index + 1}`);
+const header = Array.from({ length: 17 }, (_, index) => `Coluna ${index + 1}`);
 
 function validRow(issueDate: unknown = "01-08-2026", dueDate: unknown = "10-08-2026") {
   return [
@@ -26,6 +27,7 @@ function validRow(issueDate: unknown = "01-08-2026", dueDate: unknown = "10-08-2
     "Aluguel da sede",
     "Imobiliária Central",
     "Aluguel",
+    "",
     "Administrativo",
     "08-2026",
     issueDate,
@@ -91,8 +93,8 @@ test("bloqueia referências financeiras que ainda não estão cadastradas", () =
   const unknownReferenceRow = validRow();
   unknownReferenceRow[2] = "Fornecedor sem cadastro";
   unknownReferenceRow[3] = "Categoria sem cadastro";
-  unknownReferenceRow[4] = "Centro sem cadastro";
-  unknownReferenceRow[12] = "Forma sem cadastro";
+  unknownReferenceRow[5] = "Centro sem cadastro";
+  unknownReferenceRow[13] = "Forma sem cadastro";
 
   const [row] = parseImportRows([header, unknownReferenceRow], reference);
 
@@ -106,6 +108,7 @@ test("bloqueia referências financeiras que ainda não estão cadastradas", () =
 test("bloqueia referências quando a empresa ainda não possui nenhum cadastro", () => {
   const [row] = parseImportRows([header, validRow()], {
     categories: [],
+    subCategories: [],
     costCenters: [],
     paymentMethods: [],
     suppliers: [],
@@ -122,13 +125,13 @@ test("gera o modelo com cabeçalhos brasileiros e células de data formatadas", 
   const workbook = XLSX.read(base64, { type: "base64", cellDates: true, cellNF: true });
   const sheet = workbook.Sheets["Lançamentos"];
 
-  assert.equal(sheet.G1.v, "Data de Emissão (DD-MM-AAAA)");
-  assert.equal(sheet.H1.v, "Data de Vencimento (DD-MM-AAAA)");
-  assert.equal(sheet.F1.v, "Competência (MM-AAAA)");
-  assert.equal(sheet.G2.z, "dd-mm-yyyy");
+  assert.equal(sheet.H1.v, "Data de Emissão (DD-MM-AAAA)");
+  assert.equal(sheet.I1.v, "Data de Vencimento (DD-MM-AAAA)");
+  assert.equal(sheet.G1.v, "Competência (MM-AAAA)");
   assert.equal(sheet.H2.z, "dd-mm-yyyy");
-  assert.ok(sheet.G2.v instanceof Date);
+  assert.equal(sheet.I2.z, "dd-mm-yyyy");
   assert.ok(sheet.H2.v instanceof Date);
+  assert.ok(sheet.I2.v instanceof Date);
 });
 
 test("conversão de data brasileira não aceita calendário inválido", () => {

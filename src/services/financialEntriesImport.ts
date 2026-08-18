@@ -36,6 +36,7 @@ const HEADER_ROW: (string | number)[] = [
   "Descrição",
   "Fornecedor/Cliente",
   "Categoria",
+  "Subcategoria",
   "Centro de Custo",
   "Competência (MM-AAAA)",
   "Data de Emissão (DD-MM-AAAA)",
@@ -56,6 +57,7 @@ const EXAMPLE_ROWS: (string | number | Date)[][] = [
     "Aluguel da sede (EXEMPLO - apague esta linha)",
     "Imobiliária Central",
     "Aluguel",
+    "",
     "Administrativo",
     "08-2026",
     new Date(2026, 7, 1),
@@ -74,6 +76,7 @@ const EXAMPLE_ROWS: (string | number | Date)[][] = [
     "Venda de serviços (EXEMPLO - apague esta linha)",
     "Cliente Modelo Ltda",
     "Serviços prestados",
+    "",
     "Comercial",
     "08-2026",
     new Date(2026, 7, 2),
@@ -98,6 +101,7 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Descrição", "Sim", "Texto livre, até 500 caracteres"],
   ["Fornecedor/Cliente", "Sim", "Veja a aba \"Valores Válidos\" e use um fornecedor ou cliente já cadastrado"],
   ["Categoria", "Sim", "Veja a aba \"Valores Válidos\" para os nomes já cadastrados"],
+  ["Subcategoria", "Não", "Veja a aba \"Valores Válidos\". Deixe em branco se a categoria não tiver subcategorias"],
   ["Centro de Custo", "Sim", "Veja a aba \"Valores Válidos\""],
   ["Competência (MM-AAAA)", "Sim", "Ex.: 08-2026"],
   ["Data de Emissão (DD-MM-AAAA)", "Sim", "Ex.: 01-08-2026"],
@@ -118,6 +122,7 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
 
 export interface TemplateMasterData {
   categories: string[];
+  subCategories: string[];
   costCenters: string[];
   paymentMethods: string[];
   suppliers: string[];
@@ -141,6 +146,7 @@ export function buildImportTemplateMasterData(
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
   return {
     categories: namesOf("CATEGORY"),
+    subCategories: namesOf("SUBCATEGORY"),
     costCenters: namesOf("COST_CENTER"),
     paymentMethods: namesOf("PAYMENT_METHOD"),
     suppliers: namesOf("SUPPLIER"),
@@ -156,13 +162,14 @@ export async function buildImportTemplateWorkbookBase64(reference: TemplateMaste
     cellDates: true,
     dateNF: "dd-mm-yyyy",
   });
-  for (const address of ["G2", "H2", "G3", "H3"]) {
+  for (const address of ["H2", "I2", "H3", "I3"]) {
     if (entriesSheet[address]) entriesSheet[address].z = "dd-mm-yyyy";
   }
   entriesSheet["!cols"] = [
     { wch: 14 },
     { wch: 42 },
     { wch: 28 },
+    { wch: 24 },
     { wch: 24 },
     { wch: 24 },
     { wch: 22 },
@@ -177,7 +184,7 @@ export async function buildImportTemplateWorkbookBase64(reference: TemplateMaste
     { wch: 20 },
     { wch: 42 },
   ];
-  entriesSheet["!autofilter"] = { ref: `A1:P${EXAMPLE_ROWS.length + 1}` };
+  entriesSheet["!autofilter"] = { ref: `A1:Q${EXAMPLE_ROWS.length + 1}` };
 
   XLSX.utils.book_append_sheet(
     workbook,
@@ -196,6 +203,9 @@ export async function buildImportTemplateWorkbookBase64(reference: TemplateMaste
     [],
     ["Categorias"],
     ...(reference.categories.length ? reference.categories.map((name) => [name]) : [["(nenhuma cadastrada ainda)"]]),
+    [],
+    ["Subcategorias"],
+    ...(reference.subCategories.length ? reference.subCategories.map((name) => [name]) : [["(nenhuma cadastrada ainda)"]]),
     [],
     ["Centros de Custo"],
     ...(reference.costCenters.length ? reference.costCenters.map((name) => [name]) : [["(nenhum cadastrado ainda)"]]),
@@ -251,6 +261,7 @@ export interface ParsedImportRow {
     description: string;
     partyName: string;
     category: string;
+    subCategory?: string;
     costCenter: string;
     competenceMonth: string;
     issueDate: string;
@@ -324,6 +335,7 @@ export function validateImportRow(
   const fieldWarnings: ParsedImportRow["fieldWarnings"] = {};
   const normalizeReference = (value: string) => value.trim().toLocaleLowerCase("pt-BR");
   const categorySet = new Set(reference.categories.map(normalizeReference));
+  const subCategorySet = new Set(reference.subCategories.map(normalizeReference));
   const costCenterSet = new Set(reference.costCenters.map(normalizeReference));
   const paymentMethodSet = new Set(reference.paymentMethods.map(normalizeReference));
   const supplierSet = new Set(reference.suppliers.map(normalizeReference));
@@ -347,6 +359,10 @@ export function validateImportRow(
   if (!row.fields.category) addFieldMessage(fieldErrors, "category", "Categoria é obrigatória.");
   else if (!categorySet.has(normalizeReference(row.fields.category))) {
     addFieldMessage(fieldErrors, "category", "Categoria não cadastrada. Cadastre-a antes de importar os lançamentos.");
+  }
+
+  if (row.fields.subCategory && !subCategorySet.has(normalizeReference(row.fields.subCategory))) {
+    addFieldMessage(fieldErrors, "subCategory", "Subcategoria não cadastrada. Cadastre-a antes de importar os lançamentos.");
   }
 
   if (!row.fields.costCenter) addFieldMessage(fieldErrors, "costCenter", "Centro de custo é obrigatório.");
@@ -411,19 +427,20 @@ export function parseImportRows(
     const description = cell(row, 1);
     const partyName = cell(row, 2);
     const category = cell(row, 3);
-    const costCenter = cell(row, 4);
-    const competenceMonth = cell(row, 5);
-    const issueDate = normalizeDateCell(row[6]);
-    const dueDate = normalizeDateCell(row[7]);
+    const subCategory = cell(row, 4);
+    const costCenter = cell(row, 5);
+    const competenceMonth = cell(row, 6);
+    const issueDate = normalizeDateCell(row[7]);
+    const dueDate = normalizeDateCell(row[8]);
 
-    const amountRaw = cell(row, 8);
+    const amountRaw = cell(row, 9);
     const amount = parseMoney(amountRaw);
-    const interest = cell(row, 9) ? parseMoney(cell(row, 9)) : 0;
-    const penalty = cell(row, 10) ? parseMoney(cell(row, 10)) : 0;
-    const discount = cell(row, 11) ? parseMoney(cell(row, 11)) : 0;
+    const interest = cell(row, 10) ? parseMoney(cell(row, 10)) : 0;
+    const penalty = cell(row, 11) ? parseMoney(cell(row, 11)) : 0;
+    const discount = cell(row, 12) ? parseMoney(cell(row, 12)) : 0;
 
-    const paymentMethod = cell(row, 12);
-    const bankAccountLabelRaw = cell(row, 13);
+    const paymentMethod = cell(row, 13);
+    const bankAccountLabelRaw = cell(row, 14);
     let bankAccountId: string | undefined;
     if (bankAccountLabelRaw) {
       bankAccountId = bankAccountByLabel.get(bankAccountLabelRaw.toLocaleLowerCase("pt-BR")) ?? bankAccountLabelRaw;
@@ -436,6 +453,7 @@ export function parseImportRows(
         description,
         partyName,
         category,
+        subCategory: subCategory || undefined,
         costCenter,
         competenceMonth,
         issueDate,
@@ -446,8 +464,8 @@ export function parseImportRows(
         discount,
         paymentMethod,
         bankAccountId,
-        documentNumber: cell(row, 14) || undefined,
-        notes: cell(row, 15) || undefined,
+        documentNumber: cell(row, 15) || undefined,
+        notes: cell(row, 16) || undefined,
       },
       errors: [],
       warnings: [],
@@ -513,6 +531,7 @@ export function toImportPayload(row: ParsedImportRow) {
     description: row.fields.description,
     ...(isPayable ? { supplier: row.fields.partyName } : { customer: row.fields.partyName }),
     category: row.fields.category,
+    subCategory: row.fields.subCategory,
     costCenter: row.fields.costCenter,
     competenceMonth,
     issueDate,

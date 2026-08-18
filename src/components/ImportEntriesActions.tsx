@@ -240,7 +240,7 @@ export default function ImportEntriesActions() {
       <Card>
         <CardHeader
           title="1. Baixar planilha modelo"
-          description="O modelo já vem com fornecedores, clientes, categorias, centros de custo, formas de pagamento e contas bancárias cadastrados para esta empresa."
+          description="O modelo já vem com fornecedores, clientes, categorias, subcategorias, centros de custo, formas de pagamento e contas bancárias cadastrados para esta empresa."
         />
         <div className="mt-4">
           <Button
@@ -452,6 +452,17 @@ export default function ImportEntriesActions() {
                                 />
                                 <datalist id={`import-categories-${row.row}`}>
                                   {reference?.categories.map((name) => <option key={name} value={name} />)}
+                                </datalist>
+                              </EditableField>
+                              <EditableField label="Subcategoria" errors={errorsFor("subCategory")} warnings={warningsFor("subCategory")}>
+                                <input
+                                  list={`import-subcategories-${row.row}`}
+                                  className={editInputClass(errorsFor("subCategory").length > 0)}
+                                  value={row.fields.subCategory ?? ""}
+                                  onChange={(event) => updateField(row.row, "subCategory", event.target.value || undefined)}
+                                />
+                                <datalist id={`import-subcategories-${row.row}`}>
+                                  {reference?.subCategories.map((name) => <option key={name} value={name} />)}
                                 </datalist>
                               </EditableField>
                               <EditableField label="Centro de custo" errors={errorsFor("costCenter")} warnings={warningsFor("costCenter")}>

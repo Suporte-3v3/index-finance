@@ -491,6 +491,7 @@ model AccountPayable {
   description         String         @db.VarChar(500)
   supplierName        String         @map("supplier_name") @db.VarChar(200)
   categoryName        String         @map("category_name") @db.VarChar(160)
+  subCategoryName     String?        @map("sub_category_name") @db.VarChar(160)
   costCenterName      String         @map("cost_center_name") @db.VarChar(160)
   competenceMonth     String         @map("competence_month") @db.Char(7)
   issueDate           DateTime       @map("issue_date") @db.Date
@@ -563,6 +564,7 @@ model AccountReceivable {
   description         String           @db.VarChar(500)
   customerName        String           @map("customer_name") @db.VarChar(200)
   categoryName        String           @map("category_name") @db.VarChar(160)
+  subCategoryName     String?          @map("sub_category_name") @db.VarChar(160)
   costCenterName      String           @map("cost_center_name") @db.VarChar(160)
   competenceMonth     String           @map("competence_month") @db.Char(7)
   issueDate           DateTime         @map("issue_date") @db.Date

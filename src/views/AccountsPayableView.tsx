@@ -116,6 +116,11 @@ export default function AccountsPayableView({
         item.type === type &&
         item.active,
     );
+  const subCategoryOptions = (categoryName: string) => {
+    const parent = masterOptions("CATEGORY").find((item) => item.name === categoryName);
+    if (!parent) return [];
+    return masterOptions("SUBCATEGORY").filter((item) => item.parentId === parent.id);
+  };
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -130,6 +135,7 @@ export default function AccountsPayableView({
   const [editDescription, setEditDescription] = useState("");
   const [editSupplier, setEditSupplier] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editSubCategory, setEditSubCategory] = useState("");
   const [editCostCenter, setEditCostCenter] = useState("");
   const [editCompetenceMonth, setEditCompetenceMonth] = useState("");
   const [editIssueDate, setEditIssueDate] = useState("");
@@ -176,6 +182,7 @@ export default function AccountsPayableView({
   const [description, setDescription] = useState("");
   const [supplier, setSupplier] = useState("");
   const [category, setCategory] = useState("");
+  const [subCategory, setSubCategory] = useState("");
   const [costCenter, setCostCenter] = useState("");
   const [competenceMonth, setCompetenceMonth] = useState("2026-07");
   const [issueDate, setIssueDate] = useState("2026-07-13");
@@ -296,6 +303,7 @@ export default function AccountsPayableView({
     setDescription("");
     setSupplier("");
     setCategory("");
+    setSubCategory("");
     setCostCenter("");
     setCompetenceMonth("2026-07");
     setIssueDate("2026-07-13");
@@ -342,6 +350,7 @@ export default function AccountsPayableView({
       description,
       supplier,
       category,
+      subCategory: subCategory || undefined,
       costCenter,
       competenceMonth,
       issueDate,
@@ -384,6 +393,7 @@ export default function AccountsPayableView({
       setEditDescription(ap.description);
       setEditSupplier(ap.supplier);
       setEditCategory(ap.category);
+      setEditSubCategory(ap.subCategory || "");
       setEditCostCenter(ap.costCenter);
       setEditCompetenceMonth(ap.competenceMonth);
       setEditIssueDate(ap.issueDate);
@@ -438,6 +448,7 @@ export default function AccountsPayableView({
       description: editDescription,
       supplier: editSupplier,
       category: editCategory,
+      subCategory: editSubCategory || undefined,
       costCenter: editCostCenter,
       competenceMonth: editCompetenceMonth,
       issueDate: editIssueDate,
@@ -752,7 +763,10 @@ export default function AccountsPayableView({
                       label="Categoria de Plano"
                       required
                       value={category}
-                      onChange={setCategory}
+                      onChange={(value) => {
+                        setCategory(value);
+                        setSubCategory("");
+                      }}
                       options={masterOptions("CATEGORY")}
                       onAdd={(name) => addMasterData("CATEGORY", name)}
                     />
@@ -766,6 +780,22 @@ export default function AccountsPayableView({
                       onAdd={(name) => addMasterData("COST_CENTER", name)}
                     />
                   </div>
+
+                  <QuickAddSelect
+                    label="Subcategoria"
+                    value={subCategory}
+                    onChange={setSubCategory}
+                    options={subCategoryOptions(category)}
+                    onAdd={(name) =>
+                      addMasterData(
+                        "SUBCATEGORY",
+                        name,
+                        masterOptions("CATEGORY").find((item) => item.name === category)?.id,
+                      )
+                    }
+                    canAdd={Boolean(category)}
+                    placeholder={category ? "Selecione..." : "Escolha uma categoria primeiro"}
+                  />
                 </div>
               )}
 
@@ -1124,6 +1154,7 @@ export default function AccountsPayableView({
                         )}
                         <div className="text-[10px] text-ink-soft dark:text-ink-soft-dark font-normal">
                           Nº: {ap.documentNumber || "N/A"} | Cat: {ap.category}
+                          {ap.subCategory ? ` / ${ap.subCategory}` : ""}
                         </div>
                       </td>
                       <td className="p-4 text-zinc-600 dark:text-zinc-300 font-medium">
@@ -1298,6 +1329,9 @@ export default function AccountsPayableView({
                       ["Vencimento", formatDate(selected.dueDate)],
                       ["Emissão", formatDate(selected.issueDate)],
                       ["Categoria", selected.category],
+                      ...(selected.subCategory
+                        ? ([["Subcategoria", selected.subCategory]] as [string, string][])
+                        : []),
                       ["Centro de Custo", selected.costCenter],
                       ["Forma de Pagamento", selected.paymentMethod],
                       ["Valor Original", formatBRL(selected.amount)],
@@ -1374,7 +1408,10 @@ export default function AccountsPayableView({
                       label="Categoria"
                       required
                       value={editCategory}
-                      onChange={setEditCategory}
+                      onChange={(value) => {
+                        setEditCategory(value);
+                        setEditSubCategory("");
+                      }}
                       options={masterOptions("CATEGORY")}
                       onAdd={(name) => addMasterData("CATEGORY", name)}
                     />
@@ -1387,6 +1424,21 @@ export default function AccountsPayableView({
                       onAdd={(name) => addMasterData("COST_CENTER", name)}
                     />
                   </div>
+                  <QuickAddSelect
+                    label="Subcategoria"
+                    value={editSubCategory}
+                    onChange={setEditSubCategory}
+                    options={subCategoryOptions(editCategory)}
+                    onAdd={(name) =>
+                      addMasterData(
+                        "SUBCATEGORY",
+                        name,
+                        masterOptions("CATEGORY").find((item) => item.name === editCategory)?.id,
+                      )
+                    }
+                    canAdd={Boolean(editCategory)}
+                    placeholder={editCategory ? "Selecione..." : "Escolha uma categoria primeiro"}
+                  />
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-ink-soft dark:text-ink-soft-dark uppercase block">Emissão</label>
