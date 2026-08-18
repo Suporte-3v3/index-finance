@@ -17,8 +17,8 @@ import {
 export type ReportOrientation = "auto" | "portrait" | "landscape";
 
 const COLORS = {
-  navy: [36, 116, 181] as const,
-  institutional: [11, 47, 87] as const,
+  navy: [11, 47, 87] as const,
+  institutional: [7, 24, 43] as const,
   technology: [7, 24, 43] as const,
   red: [212, 9, 50] as const,
   gold: [215, 185, 128] as const,

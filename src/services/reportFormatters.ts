@@ -61,6 +61,7 @@ export const safeReportText = (value: unknown): string => {
   if (typeof value === "number" && !Number.isFinite(value)) return "-";
   const text = String(value).trim();
   if (!text || /^(undefined|null|nan)$/i.test(text)) return "-";
-  return formatBrazilianDate(text);
+  const isDateValue = /^(?:\d{4}-\d{2}(?:-\d{2})?|\d{2}[-/]\d{2}[-/]\d{4})$/.test(text);
+  return isDateValue ? formatBrazilianDate(text) : text;
 };
 

@@ -17,6 +17,14 @@ test("formata datas, moeda e percentuais no padrão brasileiro", () => {
   assert.equal(formatBrazilianPercent(12.345), "12,35%");
 });
 
+test("mantém contagens e identificadores numéricos como texto", () => {
+  assert.equal(safeReportText("1"), "1");
+  assert.equal(safeReportText("74"), "74");
+  assert.equal(safeReportText("00167319000170"), "00167319000170");
+  assert.equal(safeReportText("2026-08-17"), "17-08-2026");
+  assert.equal(safeReportText("2026-08"), "08-2026");
+});
+
 test("remove acentos, espaços e caracteres especiais do nome do arquivo", () => {
   assert.equal(sanitizeFileNameSegment("DRE Gerencial / São João"), "dre-gerencial-sao-joao");
   assert.equal(
