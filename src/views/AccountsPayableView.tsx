@@ -18,6 +18,7 @@ import {
   ConfirmDialog,
   BrazilianDateInput,
   BrazilianMonthInput,
+  useToast,
 } from "../components/ui";
 import {
   Plus,
@@ -40,6 +41,7 @@ import {
   Landmark,
   History,
   Info,
+  Trash2,
 } from "lucide-react";
 
 const formatBRL = (value: number) =>
@@ -91,6 +93,7 @@ export default function AccountsPayableView({
 }: {
   onNavigate?: () => void;
 }) {
+  const { showToast } = useToast();
   const {
     activeCompany,
     bankAccounts,
@@ -100,6 +103,7 @@ export default function AccountsPayableView({
     payAccountPayable,
     scheduleAccountPayable,
     cancelAccountPayable,
+    deleteAccountPayables,
     currentUser,
     hasPermission,
     masterData,
@@ -155,6 +159,9 @@ export default function AccountsPayableView({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     if (!isFormOpen) return;
@@ -266,6 +273,13 @@ export default function AccountsPayableView({
 
     return matchesSearch && matchesStatus;
   });
+  const canBulkDelete = hasPermission("accounts-payable.cancel");
+  const deletablePayables = canBulkDelete
+    ? filteredPayables.filter((item) => !(item.paymentHistory && item.paymentHistory.length > 0))
+    : [];
+  const selectedPayables = deletablePayables.filter((item) => selectedIds.has(item.id));
+  const allDeletableSelected =
+    deletablePayables.length > 0 && deletablePayables.every((item) => selectedIds.has(item.id));
 
   const canEdit = (ap: AccountPayable) =>
     hasPermission("accounts-payable.update") &&
@@ -489,6 +503,40 @@ export default function AccountsPayableView({
     if (selectedId === id) closePanel();
   };
 
+  const toggleBulkSelection = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllDeletable = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      deletablePayables.forEach((item) =>
+        allDeletableSelected ? next.delete(item.id) : next.add(item.id),
+      );
+      return next;
+    });
+  };
+
+  const confirmBulkDelete = async () => {
+    if (!selectedPayables.length) return;
+    setBulkDeleting(true);
+    const ids = selectedPayables.map((item) => item.id);
+    const result = await deleteAccountPayables(ids);
+    setBulkDeleting(false);
+    if (!result.success) {
+      showToast("error", "Não foi possível excluir as contas a pagar.", result.error);
+      return;
+    }
+    setSelectedIds(new Set());
+    setBulkDeleteOpen(false);
+    if (selectedId && ids.includes(selectedId)) closePanel();
+    showToast("success", `${ids.length} conta(s) a pagar excluída(s).`, "Os lançamentos vinculados também foram removidos.");
+  };
+
   const handleAttachSimulated = async () => {
     if (!selected) return;
     const result = await updateAccountPayable(selected.id, {
@@ -588,6 +636,26 @@ export default function AccountsPayableView({
           </div>
         </div>
       </Card>
+
+      {selectedPayables.length > 0 && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border-brand-red-600/25">
+          <p className="text-xs font-semibold text-ink dark:text-ink-dark">
+            {selectedPayables.length} conta(s) selecionada(s)
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="text" onClick={() => setSelectedIds(new Set())}>
+              Limpar seleção
+            </Button>
+            <Button
+              size="sm"
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              Excluir selecionadas
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Step-by-Step Step Form Modal */}
       {isFormOpen && (
@@ -991,6 +1059,17 @@ export default function AccountsPayableView({
             <table className="w-full min-w-[820px] text-left border-collapse">
               <thead>
                 <tr className="bg-zinc-50 dark:bg-surface-dark/60 border-b border-line dark:border-line-dark">
+                  <th className="p-4 w-10">
+                    <button
+                      type="button"
+                      disabled={!canBulkDelete}
+                      onClick={toggleAllDeletable}
+                      title={canBulkDelete ? "Selecionar contas sem pagamentos registrados" : "Sem permissão para excluir contas"}
+                      className={`h-4 w-4 rounded border ${canBulkDelete ? "cursor-pointer" : "cursor-not-allowed opacity-50"} ${allDeletableSelected ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
+                    >
+                      {allDeletableSelected && <Check className="h-3.5 w-3.5 text-white" />}
+                    </button>
+                  </th>
                   <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                     Lançamento
                   </th>
@@ -1025,6 +1104,17 @@ export default function AccountsPayableView({
                       className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer ${isSelected ? "bg-zinc-50/70 dark:bg-zinc-800/40" : ""}`}
                       onClick={() => handleRowClick(ap)}
                     >
+                      <td className="p-4" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={!canBulkDelete || Boolean(ap.paymentHistory?.length)}
+                          title={!canBulkDelete ? "Sem permissão para excluir contas" : ap.paymentHistory?.length ? "Conta com pagamento registrado não pode ser excluída" : "Selecionar conta"}
+                          onClick={() => toggleBulkSelection(ap.id)}
+                          className={`h-4 w-4 rounded border ${!canBulkDelete || ap.paymentHistory?.length ? "cursor-not-allowed bg-canvas opacity-50 dark:bg-white/5" : "cursor-pointer"} ${selectedIds.has(ap.id) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
+                        >
+                          {selectedIds.has(ap.id) && <Check className="h-3.5 w-3.5 text-white" />}
+                        </button>
+                      </td>
                       <td className="p-4 font-semibold text-ink dark:text-ink-dark">
                         {ap.description}
                         {ap.installmentCount && (
@@ -1109,7 +1199,7 @@ export default function AccountsPayableView({
                 {filteredPayables.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic"
                     >
                       Nenhuma conta a pagar encontrada correspondente aos termos
@@ -1655,6 +1745,16 @@ export default function AccountsPayableView({
         title="Cancelar este lançamento?"
         description="O registro histórico será preservado para auditoria."
         confirmLabel="Cancelar lançamento"
+        cancelLabel="Voltar"
+      />
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
+        loading={bulkDeleting}
+        title={`Excluir ${selectedPayables.length} conta(s) a pagar?`}
+        description="As contas selecionadas e os registros correspondentes na tela de Lançamentos serão excluídos. Contas com pagamentos registrados não podem ser excluídas."
+        confirmLabel="Excluir selecionadas"
         cancelLabel="Voltar"
       />
     </div>

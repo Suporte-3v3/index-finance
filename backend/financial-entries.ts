@@ -676,6 +676,63 @@ export async function cancelPayable(profile: FinancialEntriesProfile, payableId:
   });
 }
 
+export async function deletePayables(profile: FinancialEntriesProfile, body: any) {
+  const receivedIds = Array.isArray(body?.ids) ? body.ids : [];
+  if (!receivedIds.length) throw new FinancialEntriesApiError("Selecione pelo menos uma conta a pagar.");
+  if (receivedIds.length > 500) throw new FinancialEntriesApiError("O limite é de 500 contas por exclusão em lote.");
+  const ids = [...new Set<string>(receivedIds.map((id: unknown, index: number) => uuid(id, `Conta da linha ${index + 1}`)!))];
+  const database = getDatabaseClient();
+  const payables = await database.accountPayable.findMany({
+    where: { id: { in: ids }, deletedAt: null },
+    include: { ...payableInclude, company: { select: { id: true, tenantId: true } } },
+  });
+  if (payables.length !== ids.length) throw new FinancialEntriesApiError("Uma ou mais contas a pagar não foram encontradas.", 404);
+  if (payables.some((item) => item.payments.length)) {
+    throw new FinancialEntriesApiError("Contas com pagamentos registrados não podem ser excluídas.", 409);
+  }
+  for (const companyId of new Set(payables.map((item) => item.companyId))) {
+    await requireCompany(profile, companyId, "accounts-payable.cancel");
+  }
+  return database.$transaction(async (transaction) => {
+    const linkedDocuments = await transaction.document.findMany({
+      where: {
+        relatedEntityType: "AccountPayable",
+        relatedEntityId: { in: ids },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const documentIds = linkedDocuments.map((item) => item.id);
+    const now = new Date();
+    await transaction.accountPayable.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+    });
+    await transaction.approval.updateMany({
+      where: {
+        OR: [
+          { relatedEntityType: "AccountPayable", relatedEntityId: { in: ids } },
+          ...(documentIds.length
+            ? [{ relatedEntityType: "Document", relatedEntityId: { in: documentIds } }]
+            : []),
+        ],
+        status: "PENDING",
+      },
+      data: { status: "CANCELED" },
+    });
+    if (documentIds.length) {
+      await transaction.document.updateMany({
+        where: { id: { in: documentIds }, deletedAt: null },
+        data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+      });
+    }
+    for (const payable of payables) {
+      await audit(transaction, profile, payable.company, "EXCLUIR_CONTA_PAGAR", "AccountPayable", payable.id, mapPayable(payable), null);
+    }
+    return { deletedIds: ids, deletedDocumentIds: documentIds };
+  });
+}
+
 export async function schedulePayable(profile: FinancialEntriesProfile, payableId: string) {
   const database = getDatabaseClient();
   const existing = await database.accountPayable.findFirst({
@@ -887,6 +944,66 @@ export async function cancelReceivable(profile: FinancialEntriesProfile, receiva
       type: "WARNING",
     });
     return mapReceivable(updated);
+  });
+}
+
+export async function deleteReceivables(profile: FinancialEntriesProfile, body: any) {
+  const receivedIds = Array.isArray(body?.ids) ? body.ids : [];
+  if (!receivedIds.length) throw new FinancialEntriesApiError("Selecione pelo menos uma conta a receber.");
+  if (receivedIds.length > 500) throw new FinancialEntriesApiError("O limite é de 500 contas por exclusão em lote.");
+  const ids = [...new Set<string>(receivedIds.map((id: unknown, index: number) => uuid(id, `Conta da linha ${index + 1}`)!))];
+  const database = getDatabaseClient();
+  const receivables = await database.accountReceivable.findMany({
+    where: { id: { in: ids }, deletedAt: null },
+    include: {
+      receipts: { select: { id: true }, take: 1 },
+      company: { select: { id: true, tenantId: true } },
+    },
+  });
+  if (receivables.length !== ids.length) throw new FinancialEntriesApiError("Uma ou mais contas a receber não foram encontradas.", 404);
+  if (receivables.some((item) => item.receipts.length)) {
+    throw new FinancialEntriesApiError("Contas com recebimentos registrados não podem ser excluídas.", 409);
+  }
+  for (const companyId of new Set(receivables.map((item) => item.companyId))) {
+    await requireCompany(profile, companyId, "accounts-receivable.cancel");
+  }
+  return database.$transaction(async (transaction) => {
+    const linkedDocuments = await transaction.document.findMany({
+      where: {
+        relatedEntityType: "AccountReceivable",
+        relatedEntityId: { in: ids },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const documentIds = linkedDocuments.map((item) => item.id);
+    const now = new Date();
+    await transaction.accountReceivable.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+    });
+    await transaction.approval.updateMany({
+      where: {
+        OR: [
+          { relatedEntityType: "AccountReceivable", relatedEntityId: { in: ids } },
+          ...(documentIds.length
+            ? [{ relatedEntityType: "Document", relatedEntityId: { in: documentIds } }]
+            : []),
+        ],
+        status: "PENDING",
+      },
+      data: { status: "CANCELED" },
+    });
+    if (documentIds.length) {
+      await transaction.document.updateMany({
+        where: { id: { in: documentIds }, deletedAt: null },
+        data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+      });
+    }
+    for (const receivable of receivables) {
+      await audit(transaction, profile, receivable.company, "EXCLUIR_CONTA_RECEBER", "AccountReceivable", receivable.id, mapReceivable(receivable), null);
+    }
+    return { deletedIds: ids, deletedDocumentIds: documentIds };
   });
 }
 

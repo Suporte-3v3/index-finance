@@ -104,6 +104,8 @@ import {
   createPersistedPayables,
   createPersistedReceivables,
   decidePersistedPaymentApproval,
+  deletePersistedPayables,
+  deletePersistedReceivables,
   fetchFinancialEntries,
   payPersistedPayable,
   receivePersistedReceivable,
@@ -351,6 +353,7 @@ interface BPOContextType {
     updates: Partial<AccountPayable>,
   ) => Promise<{ success: boolean; error?: string }>;
   cancelAccountPayable: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteAccountPayables: (ids: string[]) => Promise<{ success: boolean; error?: string }>;
   payAccountPayable: (data: {
     id: string;
     date: string;
@@ -382,6 +385,7 @@ interface BPOContextType {
     updates: Partial<AccountReceivable>,
   ) => Promise<{ success: boolean; error?: string }>;
   cancelAccountReceivable: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteAccountReceivables: (ids: string[]) => Promise<{ success: boolean; error?: string }>;
   receiveAccountReceivable: (id: string, amount: number, date: string) => Promise<{ success: boolean; error?: string }>;
   importFinancialEntries: (
     companyId: string,
@@ -1649,6 +1653,27 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const deleteAccountPayables = async (ids: string[]) => {
+    if (!hasPermission("accounts-payable.cancel")) {
+      return { success: false, error: "Você não tem permissão para excluir contas a pagar." };
+    }
+    try {
+      const result = await deletePersistedPayables(ids);
+      const deletedIds = new Set(result.deletedIds);
+      const deletedDocumentIds = new Set(result.deletedDocumentIds);
+      setAccountsPayable((current) => current.filter((item) => !deletedIds.has(item.id)));
+      setDocuments((current) => current.filter((item) => !deletedDocumentIds.has(item.id)));
+      setApprovals((current) => current.map((approval) =>
+        (deletedIds.has(approval.relatedId) || deletedDocumentIds.has(approval.relatedId)) && approval.status === "Pendente"
+          ? { ...approval, status: "Cancelada" }
+          : approval,
+      ));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Não foi possível excluir as contas a pagar." };
+    }
+  };
+
   const payAccountPayable: BPOContextType["payAccountPayable"] = async (data) => {
     const existing = accountsPayable.find((p) => p.id === data.id);
     if (!existing) return { success: false, error: "Título não encontrado." };
@@ -1730,6 +1755,27 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Não foi possível cancelar o título." };
+    }
+  };
+
+  const deleteAccountReceivables = async (ids: string[]) => {
+    if (!hasPermission("accounts-receivable.cancel")) {
+      return { success: false, error: "Você não tem permissão para excluir contas a receber." };
+    }
+    try {
+      const result = await deletePersistedReceivables(ids);
+      const deletedIds = new Set(result.deletedIds);
+      const deletedDocumentIds = new Set(result.deletedDocumentIds);
+      setAccountsReceivable((current) => current.filter((item) => !deletedIds.has(item.id)));
+      setDocuments((current) => current.filter((item) => !deletedDocumentIds.has(item.id)));
+      setApprovals((current) => current.map((approval) =>
+        (deletedIds.has(approval.relatedId) || deletedDocumentIds.has(approval.relatedId)) && approval.status === "Pendente"
+          ? { ...approval, status: "Cancelada" }
+          : approval,
+      ));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Não foi possível excluir as contas a receber." };
     }
   };
 
@@ -4578,11 +4624,13 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         addAccountPayable,
         updateAccountPayable,
         cancelAccountPayable,
+        deleteAccountPayables,
         payAccountPayable,
         scheduleAccountPayable,
         addAccountReceivable,
         updateAccountReceivable,
         cancelAccountReceivable,
+        deleteAccountReceivables,
         receiveAccountReceivable,
         importFinancialEntries,
         decideApproval,

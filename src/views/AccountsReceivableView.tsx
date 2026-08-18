@@ -17,6 +17,7 @@ import {
   ConfirmDialog,
   BrazilianDateInput,
   BrazilianMonthInput,
+  useToast,
 } from "../components/ui";
 import {
   Plus,
@@ -34,6 +35,8 @@ import {
   Ban,
   ArrowUpRight,
   ExternalLink,
+  Check,
+  Trash2,
 } from "lucide-react";
 
 const AR_METRIC_VISUALS = [
@@ -77,6 +80,7 @@ export default function AccountsReceivableView({
 }: {
   onNavigate?: () => void;
 }) {
+  const { showToast } = useToast();
   const {
     activeCompany,
     bankAccounts,
@@ -84,6 +88,7 @@ export default function AccountsReceivableView({
     addAccountReceivable,
     receiveAccountReceivable,
     cancelAccountReceivable,
+    deleteAccountReceivables,
     currentUser,
     hasPermission,
     masterData,
@@ -111,6 +116,9 @@ export default function AccountsReceivableView({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2>(1);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     if (!isFormOpen && !receivingId) return;
@@ -209,6 +217,13 @@ export default function AccountsReceivableView({
 
     return matchesSearch && matchesStatus;
   });
+  const canBulkDelete = hasPermission("accounts-receivable.cancel");
+  const deletableReceivables = canBulkDelete
+    ? filteredReceivables.filter((item) => item.receivedAmount === 0)
+    : [];
+  const selectedReceivables = deletableReceivables.filter((item) => selectedIds.has(item.id));
+  const allDeletableSelected =
+    deletableReceivables.length > 0 && deletableReceivables.every((item) => selectedIds.has(item.id));
 
 
   const resetForm = () => {
@@ -313,6 +328,40 @@ export default function AccountsReceivableView({
     setCancelTargetId(null);
   };
 
+  const toggleBulkSelection = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllDeletable = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      deletableReceivables.forEach((item) =>
+        allDeletableSelected ? next.delete(item.id) : next.add(item.id),
+      );
+      return next;
+    });
+  };
+
+  const confirmBulkDelete = async () => {
+    if (!selectedReceivables.length) return;
+    setBulkDeleting(true);
+    const ids = selectedReceivables.map((item) => item.id);
+    const result = await deleteAccountReceivables(ids);
+    setBulkDeleting(false);
+    if (!result.success) {
+      showToast("error", "Não foi possível excluir as contas a receber.", result.error);
+      return;
+    }
+    setSelectedIds(new Set());
+    setBulkDeleteOpen(false);
+    if (expandedId && ids.includes(expandedId)) setExpandedId(null);
+    showToast("success", `${ids.length} conta(s) a receber excluída(s).`, "Os lançamentos vinculados também foram removidos.");
+  };
+
   return (
     <div id="accounts-receivable-root" className="space-y-4">
       {/* Header */}
@@ -393,6 +442,26 @@ export default function AccountsReceivableView({
           </div>
         </div>
       </Card>
+
+      {selectedReceivables.length > 0 && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border-brand-red-600/25">
+          <p className="text-xs font-semibold text-ink dark:text-ink-dark">
+            {selectedReceivables.length} conta(s) selecionada(s)
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="text" onClick={() => setSelectedIds(new Set())}>
+              Limpar seleção
+            </Button>
+            <Button
+              size="sm"
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              Excluir selecionadas
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Creation Step Form Modal */}
       {isFormOpen && (
@@ -775,6 +844,17 @@ export default function AccountsReceivableView({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-zinc-50 dark:bg-surface-dark/60 border-b border-line dark:border-line-dark">
+                <th className="p-4 w-10">
+                  <button
+                    type="button"
+                    disabled={!canBulkDelete}
+                    onClick={toggleAllDeletable}
+                    title={canBulkDelete ? "Selecionar contas sem recebimentos registrados" : "Sem permissão para excluir contas"}
+                    className={`h-4 w-4 rounded border ${canBulkDelete ? "cursor-pointer" : "cursor-not-allowed opacity-50"} ${allDeletableSelected ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
+                  >
+                    {allDeletableSelected && <Check className="h-3.5 w-3.5 text-white" />}
+                  </button>
+                </th>
                 <th className="p-4 w-6"></th>
                 <th className="p-4 text-xs font-semibold text-ink-soft dark:text-ink-soft-dark uppercase tracking-wider">
                   Descrição Lançamento
@@ -813,6 +893,17 @@ export default function AccountsReceivableView({
                       className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer ${isExpanded ? "bg-zinc-50/30 dark:bg-zinc-800/30" : ""} ${isOverdue ? "shadow-[inset_3px_0_0_0_#C8102E] dark:shadow-[inset_3px_0_0_0_#E20D35]" : ""}`}
                       onClick={() => setExpandedId(isExpanded ? null : ar.id)}
                     >
+                      <td className="p-4" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={!canBulkDelete || ar.receivedAmount > 0}
+                          title={!canBulkDelete ? "Sem permissão para excluir contas" : ar.receivedAmount > 0 ? "Conta com recebimento registrado não pode ser excluída" : "Selecionar conta"}
+                          onClick={() => toggleBulkSelection(ar.id)}
+                          className={`h-4 w-4 rounded border ${!canBulkDelete || ar.receivedAmount > 0 ? "cursor-not-allowed bg-canvas opacity-50 dark:bg-white/5" : "cursor-pointer"} ${selectedIds.has(ar.id) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
+                        >
+                          {selectedIds.has(ar.id) && <Check className="h-3.5 w-3.5 text-white" />}
+                        </button>
+                      </td>
                       <td className="p-4 text-center">
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4 text-ink-soft dark:text-ink-soft-dark" />
@@ -911,7 +1002,7 @@ export default function AccountsReceivableView({
                     {isExpanded && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="p-4 bg-zinc-50/50 dark:bg-surface-dark/40 border-t border-b border-line dark:border-line-dark"
                         >
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-zinc-600 dark:text-zinc-300 font-sans">
@@ -1075,7 +1166,7 @@ export default function AccountsReceivableView({
               {filteredReceivables.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="p-8 text-center text-ink-soft dark:text-ink-soft-dark italic"
                   >
                     Nenhuma conta a receber correspondente à busca.
@@ -1094,6 +1185,16 @@ export default function AccountsReceivableView({
         title="Cancelar este recebível?"
         description="O registro histórico será preservado para auditoria."
         confirmLabel="Cancelar recebível"
+        cancelLabel="Voltar"
+      />
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
+        loading={bulkDeleting}
+        title={`Excluir ${selectedReceivables.length} conta(s) a receber?`}
+        description="As contas selecionadas e os registros correspondentes na tela de Lançamentos serão excluídos. Contas com recebimentos registrados não podem ser excluídas."
+        confirmLabel="Excluir selecionadas"
         cancelLabel="Voltar"
       />
     </div>

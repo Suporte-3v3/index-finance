@@ -49,6 +49,8 @@ import {
   createPayables,
   createReceivables,
   decidePaymentApproval,
+  deletePayables,
+  deleteReceivables,
   importFinancialEntries,
   listFinancialEntries,
   payPayable,
@@ -416,6 +418,13 @@ app.post('/api/payables', async (request, response) => {
     financialEntriesError(response, error, 'Não foi possível cadastrar a conta a pagar.');
   }
 });
+app.post('/api/payables/batch-delete', async (request, response) => {
+  try {
+    response.json(await deletePayables(response.locals.authProfile, request.body));
+  } catch (error) {
+    financialEntriesError(response, error, 'Não foi possível excluir as contas a pagar selecionadas.');
+  }
+});
 app.patch('/api/payables/:payableId', async (request, response) => {
   try {
     response.json(await updatePayable(response.locals.authProfile, request.params.payableId, request.body));
@@ -451,6 +460,13 @@ app.post('/api/receivables', async (request, response) => {
     response.status(201).json(await createReceivables(response.locals.authProfile, request.body));
   } catch (error) {
     financialEntriesError(response, error, 'Não foi possível cadastrar a conta a receber.');
+  }
+});
+app.post('/api/receivables/batch-delete', async (request, response) => {
+  try {
+    response.json(await deleteReceivables(response.locals.authProfile, request.body));
+  } catch (error) {
+    financialEntriesError(response, error, 'Não foi possível excluir as contas a receber selecionadas.');
   }
 });
 app.patch('/api/receivables/:receivableId', async (request, response) => {

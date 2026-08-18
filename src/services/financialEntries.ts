@@ -57,6 +57,13 @@ export function cancelPersistedPayable(id: string) {
   });
 }
 
+export function deletePersistedPayables(ids: string[]) {
+  return request<{ deletedIds: string[]; deletedDocumentIds: string[] }>("/api/payables/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export function schedulePersistedPayable(id: string) {
   return request<AccountPayable>(`/api/payables/${encodeURIComponent(id)}/schedule`, {
     method: "POST",
@@ -95,6 +102,13 @@ export function cancelPersistedReceivable(id: string) {
   return request<AccountReceivable>(`/api/receivables/${encodeURIComponent(id)}/cancel`, {
     method: "POST",
     body: "{}",
+  });
+}
+
+export function deletePersistedReceivables(ids: string[]) {
+  return request<{ deletedIds: string[]; deletedDocumentIds: string[] }>("/api/receivables/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
   });
 }
 
