@@ -7,6 +7,10 @@ import React from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { getCompanyClientModules } from "../config/clientModules";
 import {
+  isActiveDashboardPayable,
+  isActiveDashboardReceivable,
+} from "../services/dashboardMetrics";
+import {
   Card,
   SectionLabel,
   MetricCard,
@@ -91,10 +95,10 @@ export default function DashboardView({
     (ba) => ba.companyId === activeCompany.id,
   );
   const companyPayables = accountsPayable.filter(
-    (ap) => ap.companyId === activeCompany.id,
+    (ap) => ap.companyId === activeCompany.id && isActiveDashboardPayable(ap),
   );
   const companyReceivables = accountsReceivable.filter(
-    (ar) => ar.companyId === activeCompany.id,
+    (ar) => ar.companyId === activeCompany.id && isActiveDashboardReceivable(ar),
   );
   const companyApprovals = approvals.filter(
     (apv) =>

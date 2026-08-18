@@ -3,6 +3,11 @@ import test from "node:test";
 import * as XLSX from "xlsx";
 import type { ReportDocumentData } from "./reportFiles";
 import { createExcel } from "./reportExcel";
+import type { ReportRecord } from "../types";
+import {
+  hasDownloadableReportFile,
+  persistedReportFileUrl,
+} from "./reportDownload";
 
 test("Excel dos relatórios usa datas reais no padrão DD-MM-AAAA", () => {
   const document: ReportDocumentData = {
@@ -34,4 +39,22 @@ test("Excel dos relatórios usa datas reais no padrão DD-MM-AAAA", () => {
   assert.ok(entries.A3.v instanceof Date);
   assert.equal(entries.A3.z, "dd-mm-yyyy");
   assert.equal(entries.C3.v, "08-2026");
+});
+
+test("reconhece relatório histórico com arquivo persistido", () => {
+  const report: ReportRecord = {
+    id: "report-1",
+    companyId: "company-1",
+    name: "Histórico",
+    type: "Contas a Pagar",
+    filters: "Sem filtros",
+    generatedAt: "2026-08-18T12:00:00.000Z",
+    generatedById: "user-1",
+    generatedByName: "Teste",
+    fileName: "historico.pdf",
+    fileUrl: "/uploads/historico.pdf",
+    fileSize: "10 KB",
+  };
+  assert.equal(hasDownloadableReportFile(report), true);
+  assert.equal(persistedReportFileUrl(report), "/uploads/historico.pdf");
 });

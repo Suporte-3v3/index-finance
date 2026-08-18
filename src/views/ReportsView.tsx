@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { useBPOState } from "../hooks/useBPOState";
 import { downloadReportFile } from "../services/reportFiles";
+import { hasDownloadableReportFile } from "../services/reportDownload";
 import { formatDateTime } from "../services/dateFormatters";
 import { REPORT_MODEL_INFO, REPORT_MODEL_TYPES } from "../config/reportBlocks";
 import { ReportModelType, ReportRecord, ReportTemplate } from "../types";
@@ -309,7 +310,9 @@ export default function ReportsView() {
             </Tr>
           </TableHead>
           <TableBody>
-            {companyReports.map((rep) => (
+            {companyReports.map((rep) => {
+              const canDownload = hasDownloadableReportFile(rep);
+              return (
               <Tr key={rep.id}>
                 <Td className="font-semibold flex items-center gap-2">
                   <FileText className="h-4 w-4 text-ink-soft dark:text-ink-soft-dark shrink-0" />
@@ -332,15 +335,16 @@ export default function ReportsView() {
                 <Td align="right">
                   <button
                     onClick={() => handleDownload(rep)}
-                    disabled={!rep.fileContent}
-                    title={rep.fileContent ? `Baixar ${rep.fileName}` : "Relatório legado sem arquivo armazenado"}
+                    disabled={!canDownload}
+                    title={canDownload ? `Baixar ${rep.fileName}` : "Relatório sem arquivo armazenado"}
                     className="text-xs bg-canvas dark:bg-white/5 hover:bg-brand-navy-900 dark:hover:bg-brand-navy-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed text-ink dark:text-ink-dark px-3 py-1.5 rounded-lg font-semibold border border-line dark:border-line-dark transition-colors cursor-pointer inline-flex items-center gap-1"
                   >
                     <Download className="h-3.5 w-3.5" /> Baixar ({rep.fileSize})
                   </button>
                 </Td>
               </Tr>
-            ))}
+              );
+            })}
             {companyReports.length === 0 && (
               <Tr>
                 <Td colSpan={7}>

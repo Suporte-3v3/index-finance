@@ -1662,7 +1662,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       const deletedIds = new Set(result.deletedIds);
       const deletedDocumentIds = new Set(result.deletedDocumentIds);
       setAccountsPayable((current) => current.filter((item) => !deletedIds.has(item.id)));
-      setDocuments((current) => current.filter((item) => !deletedDocumentIds.has(item.id)));
+      const relinkedDocuments = new Map(
+        result.relinkedDocuments.map((document) => [document.id, document.relatedEntityId]),
+      );
+      setDocuments((current) => current
+        .filter((item) => !deletedDocumentIds.has(item.id))
+        .map((item) => relinkedDocuments.has(item.id)
+          ? { ...item, relatedEntityId: relinkedDocuments.get(item.id) }
+          : item));
       setApprovals((current) => current.map((approval) =>
         (deletedIds.has(approval.relatedId) || deletedDocumentIds.has(approval.relatedId)) && approval.status === "Pendente"
           ? { ...approval, status: "Cancelada" }
@@ -1767,7 +1774,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       const deletedIds = new Set(result.deletedIds);
       const deletedDocumentIds = new Set(result.deletedDocumentIds);
       setAccountsReceivable((current) => current.filter((item) => !deletedIds.has(item.id)));
-      setDocuments((current) => current.filter((item) => !deletedDocumentIds.has(item.id)));
+      const relinkedDocuments = new Map(
+        result.relinkedDocuments.map((document) => [document.id, document.relatedEntityId]),
+      );
+      setDocuments((current) => current
+        .filter((item) => !deletedDocumentIds.has(item.id))
+        .map((item) => relinkedDocuments.has(item.id)
+          ? { ...item, relatedEntityId: relinkedDocuments.get(item.id) }
+          : item));
       setApprovals((current) => current.map((approval) =>
         (deletedIds.has(approval.relatedId) || deletedDocumentIds.has(approval.relatedId)) && approval.status === "Pendente"
           ? { ...approval, status: "Cancelada" }
@@ -2120,6 +2134,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       setAccountsReceivable((previous) =>
         previous.filter((item) => !deletedReceivableIds.has(item.id)),
       );
+      if (result.adjustedBankAccounts.length) {
+        const adjustedBalances = new Map(
+          result.adjustedBankAccounts.map((account) => [account.id, account.balance]),
+        );
+        setBankAccounts((previous) =>
+          previous.map((account) =>
+            adjustedBalances.has(account.id)
+              ? { ...account, balance: adjustedBalances.get(account.id)! }
+              : account,
+          ),
+        );
+      }
       addNotification(
         "Documento Removido",
         "Um documento foi excluído do repositório da empresa.",
@@ -2172,6 +2198,18 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       setAccountsReceivable((previous) =>
         previous.filter((item) => !deletedReceivableIds.has(item.id)),
       );
+      if (result.adjustedBankAccounts.length) {
+        const adjustedBalances = new Map(
+          result.adjustedBankAccounts.map((account) => [account.id, account.balance]),
+        );
+        setBankAccounts((previous) =>
+          previous.map((account) =>
+            adjustedBalances.has(account.id)
+              ? { ...account, balance: adjustedBalances.get(account.id)! }
+              : account,
+          ),
+        );
+      }
       return result.deletedIds;
     } catch (error) {
       console.error("Falha ao excluir lançamentos em massa:", error);

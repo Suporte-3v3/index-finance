@@ -59,6 +59,14 @@ function asJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
 }
 
+function formatFileSize(value: bigint | null) {
+  if (value == null) return "—";
+  const bytes = Number(value);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
 function accessibleTenantIds(profile: ReportAccessProfile) {
   return profile.tenantMemberships
     .filter(({ role }) => role === "BPO_ADMIN" || role === "BPO_TEAM")
@@ -95,8 +103,8 @@ function mapReport(item: any) {
     format: item.format || undefined,
     fileName: item.fileName || undefined,
     mimeType: item.mimeType || undefined,
-    objectKey: item.objectKey || undefined,
-    fileSizeBytes: item.fileSizeBytes != null ? item.fileSizeBytes.toString() : undefined,
+    fileUrl: item.objectKey || undefined,
+    fileSize: formatFileSize(item.fileSizeBytes),
     templateId: item.templateId || undefined,
     templateName: item.templateName || undefined,
     recipientId: item.recipientId || undefined,

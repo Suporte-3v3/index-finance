@@ -54,6 +54,7 @@ export interface DeletedDocumentRecords {
   deletedIds: string[];
   deletedPayableIds: string[];
   deletedReceivableIds: string[];
+  adjustedBankAccounts: Array<{ id: string; balance: number }>;
 }
 
 export function deletePersistedDocument(id: string) {

@@ -637,6 +637,19 @@ export default function DocumentsView() {
     }
   };
 
+  const canDeleteDocument = (document: Document) => {
+    const isBpo = ["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role);
+    if (!hasPermission("documents.upload") || (!isBpo && document.uploadedById !== currentUser.id)) {
+      return false;
+    }
+    if (!document.relatedEntityId) {
+      return document.entryType !== "Transferência" || isBpo;
+    }
+    return document.entryType === "Conta a Receber"
+      ? hasPermission("accounts-receivable.cancel")
+      : hasPermission("accounts-payable.cancel");
+  };
+
   const handleDelete = (document: Document) => {
     if (
       window.confirm(
@@ -1391,7 +1404,7 @@ export default function DocumentsView() {
                         />
                         {historyTab === "sent" &&
                           document.uploadedById === currentUser.id &&
-                          hasPermission("documents.upload") && (
+                          canDeleteDocument(document) && (
                           <IconButton
                             icon={<Trash2 />}
                             label="Excluir"

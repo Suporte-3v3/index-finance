@@ -2,6 +2,7 @@ import { ReportExportFormat, ReportRecord } from "../types";
 import { createIdexReportPdf, ReportOrientation } from "./idexReportTemplate";
 import { buildReportFileBaseName } from "./reportFormatters";
 import { createExcel } from "./reportExcel";
+import { persistedReportFileUrl } from "./reportDownload";
 
 export type ReportCell = string | number;
 
@@ -104,16 +105,17 @@ export function createReportArtifact(
 }
 
 export function downloadReportFile(report: ReportRecord): boolean {
-  if (!report.fileContent || !report.fileName || !report.mimeType) return false;
+  if (!report.fileName) return false;
   try {
-    const bytes = base64ToBytes(report.fileContent);
-    const blob = new Blob([bytes], { type: report.mimeType });
-    const url = URL.createObjectURL(blob);
+    const url = report.fileContent && report.mimeType
+      ? URL.createObjectURL(new Blob([base64ToBytes(report.fileContent)], { type: report.mimeType }))
+      : persistedReportFileUrl(report);
+    if (!url) return false;
     const link = document.createElement("a");
     link.href = url;
     link.download = report.fileName;
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    if (report.fileContent) window.setTimeout(() => URL.revokeObjectURL(url), 0);
     return true;
   } catch {
     return false;

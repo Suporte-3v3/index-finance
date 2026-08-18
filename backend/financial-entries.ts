@@ -704,9 +704,50 @@ export async function deletePayables(profile: FinancialEntriesProfile, body: any
         relatedEntityId: { in: ids },
         deletedAt: null,
       },
-      select: { id: true },
+      select: { id: true, relatedEntityId: true },
     });
-    const documentIds = linkedDocuments.map((item) => item.id);
+    const payableById = new Map(payables.map((item) => [item.id, item]));
+    const selectedGroupIds = [
+      ...new Set(
+        payables
+          .map((item) => item.installmentGroupId)
+          .filter((groupId): groupId is string => Boolean(groupId)),
+      ),
+    ];
+    const remainingInstallments = selectedGroupIds.length
+      ? await transaction.accountPayable.findMany({
+          where: {
+            installmentGroupId: { in: selectedGroupIds },
+            id: { notIn: ids },
+            deletedAt: null,
+          },
+          select: { id: true, installmentGroupId: true, installmentNumber: true },
+          orderBy: { installmentNumber: "asc" },
+        })
+      : [];
+    const replacementByGroup = new Map<string, string>();
+    for (const installment of remainingInstallments) {
+      if (installment.installmentGroupId && !replacementByGroup.has(installment.installmentGroupId)) {
+        replacementByGroup.set(installment.installmentGroupId, installment.id);
+      }
+    }
+    const relinkedDocuments: Array<{ id: string; relatedEntityId: string }> = [];
+    const documentIds: string[] = [];
+    for (const document of linkedDocuments) {
+      const payable = document.relatedEntityId ? payableById.get(document.relatedEntityId) : undefined;
+      const replacementId = payable?.installmentGroupId
+        ? replacementByGroup.get(payable.installmentGroupId)
+        : undefined;
+      if (replacementId) {
+        await transaction.document.update({
+          where: { id: document.id },
+          data: { relatedEntityId: replacementId },
+        });
+        relinkedDocuments.push({ id: document.id, relatedEntityId: replacementId });
+      } else {
+        documentIds.push(document.id);
+      }
+    }
     const now = new Date();
     await transaction.accountPayable.updateMany({
       where: { id: { in: ids }, deletedAt: null },
@@ -733,7 +774,7 @@ export async function deletePayables(profile: FinancialEntriesProfile, body: any
     for (const payable of payables) {
       await audit(transaction, profile, payable.company, "EXCLUIR_CONTA_PAGAR", "AccountPayable", payable.id, mapPayable(payable), null);
     }
-    return { deletedIds: ids, deletedDocumentIds: documentIds };
+    return { deletedIds: ids, deletedDocumentIds: documentIds, relinkedDocuments };
   });
 }
 
@@ -980,9 +1021,50 @@ export async function deleteReceivables(profile: FinancialEntriesProfile, body: 
         relatedEntityId: { in: ids },
         deletedAt: null,
       },
-      select: { id: true },
+      select: { id: true, relatedEntityId: true },
     });
-    const documentIds = linkedDocuments.map((item) => item.id);
+    const receivableById = new Map(receivables.map((item) => [item.id, item]));
+    const selectedGroupIds = [
+      ...new Set(
+        receivables
+          .map((item) => item.installmentGroupId)
+          .filter((groupId): groupId is string => Boolean(groupId)),
+      ),
+    ];
+    const remainingInstallments = selectedGroupIds.length
+      ? await transaction.accountReceivable.findMany({
+          where: {
+            installmentGroupId: { in: selectedGroupIds },
+            id: { notIn: ids },
+            deletedAt: null,
+          },
+          select: { id: true, installmentGroupId: true, installmentNumber: true },
+          orderBy: { installmentNumber: "asc" },
+        })
+      : [];
+    const replacementByGroup = new Map<string, string>();
+    for (const installment of remainingInstallments) {
+      if (installment.installmentGroupId && !replacementByGroup.has(installment.installmentGroupId)) {
+        replacementByGroup.set(installment.installmentGroupId, installment.id);
+      }
+    }
+    const relinkedDocuments: Array<{ id: string; relatedEntityId: string }> = [];
+    const documentIds: string[] = [];
+    for (const document of linkedDocuments) {
+      const receivable = document.relatedEntityId ? receivableById.get(document.relatedEntityId) : undefined;
+      const replacementId = receivable?.installmentGroupId
+        ? replacementByGroup.get(receivable.installmentGroupId)
+        : undefined;
+      if (replacementId) {
+        await transaction.document.update({
+          where: { id: document.id },
+          data: { relatedEntityId: replacementId },
+        });
+        relinkedDocuments.push({ id: document.id, relatedEntityId: replacementId });
+      } else {
+        documentIds.push(document.id);
+      }
+    }
     const now = new Date();
     await transaction.accountReceivable.updateMany({
       where: { id: { in: ids }, deletedAt: null },
@@ -1009,7 +1091,7 @@ export async function deleteReceivables(profile: FinancialEntriesProfile, body: 
     for (const receivable of receivables) {
       await audit(transaction, profile, receivable.company, "EXCLUIR_CONTA_RECEBER", "AccountReceivable", receivable.id, mapReceivable(receivable), null);
     }
-    return { deletedIds: ids, deletedDocumentIds: documentIds };
+    return { deletedIds: ids, deletedDocumentIds: documentIds, relinkedDocuments };
   });
 }
 

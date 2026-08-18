@@ -648,6 +648,17 @@ export async function decideDocumentApproval(profile: DocumentProfile, approvalI
 type DeletedFinancialEntries = {
   deletedPayableIds: string[];
   deletedReceivableIds: string[];
+  adjustedBankAccounts: Array<{ id: string; balance: number }>;
+};
+
+type DeletableDocument = {
+  id: string;
+  companyId: string;
+  relatedEntityId: string | null;
+  relatedEntityType: string | null;
+  extractedData: unknown;
+  status: string;
+  company: { id: string; tenantId: string };
 };
 
 function linkedFinancialReference(document: {
@@ -673,14 +684,125 @@ function linkedFinancialReference(document: {
   return null;
 }
 
+function transferToReverse(document: DeletableDocument) {
+  const { internal } = unpack(document.extractedData);
+  if (internal.entryType !== "Transferência" || document.status !== "POSTED") return null;
+  const sourceAccountId = internal.bankAccountId;
+  const destinationAccountId = internal.destinationBankAccountId;
+  const amount = Number(internal.amount);
+  if (
+    typeof sourceAccountId !== "string" ||
+    typeof destinationAccountId !== "string" ||
+    sourceAccountId === destinationAccountId ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new DocumentRecordApiError(
+      "A transferência não possui dados suficientes para reverter os saldos com segurança.",
+      409,
+    );
+  }
+  return { sourceAccountId, destinationAccountId, amount };
+}
+
+function requireLinkedDeletionPermissions(
+  profile: DocumentProfile,
+  documents: DeletableDocument[],
+) {
+  for (const document of documents) {
+    const reference = linkedFinancialReference(document);
+    if (
+      reference?.type === "PAYABLE" &&
+      !hasPermission(profile, document.company, "accounts-payable.cancel")
+    ) {
+      throw new DocumentRecordApiError(
+        "Sem permissão para excluir a conta a pagar vinculada a este documento.",
+        403,
+      );
+    }
+    if (
+      reference?.type === "RECEIVABLE" &&
+      !hasPermission(profile, document.company, "accounts-receivable.cancel")
+    ) {
+      throw new DocumentRecordApiError(
+        "Sem permissão para excluir a conta a receber vinculada a este documento.",
+        403,
+      );
+    }
+    if (transferToReverse(document) && !isBpoForCompany(profile, document.company)) {
+      throw new DocumentRecordApiError(
+        "Sem permissão para excluir uma transferência entre contas.",
+        403,
+      );
+    }
+  }
+}
+
+async function reverseLinkedTransfers(
+  tx: Prisma.TransactionClient,
+  profile: DocumentProfile,
+  documents: DeletableDocument[],
+) {
+  const adjusted = new Map<string, { id: string; balance: number }>();
+  for (const document of documents) {
+    const transfer = transferToReverse(document);
+    if (!transfer) continue;
+    const accounts = await tx.bankAccount.findMany({
+      where: {
+        id: { in: [transfer.sourceAccountId, transfer.destinationAccountId] },
+        companyId: document.companyId,
+      },
+      select: { id: true, balance: true },
+    });
+    if (accounts.length !== 2) {
+      throw new DocumentRecordApiError(
+        "Não foi possível localizar as contas da transferência para reverter os saldos.",
+        409,
+      );
+    }
+    const sourceBefore = accounts.find((item) => item.id === transfer.sourceAccountId)!;
+    const destinationBefore = accounts.find((item) => item.id === transfer.destinationAccountId)!;
+    const source = await tx.bankAccount.update({
+      where: { id: transfer.sourceAccountId },
+      data: { balance: { increment: transfer.amount } },
+      select: { id: true, balance: true },
+    });
+    const destination = await tx.bankAccount.update({
+      where: { id: transfer.destinationAccountId },
+      data: { balance: { decrement: transfer.amount } },
+      select: { id: true, balance: true },
+    });
+    adjusted.set(source.id, { id: source.id, balance: Number(source.balance) });
+    adjusted.set(destination.id, { id: destination.id, balance: Number(destination.balance) });
+    await audit(
+      tx,
+      profile,
+      document.company,
+      "EXCLUIR_TRANSFERENCIA_ENTRE_CONTAS",
+      document.id,
+      {
+        sourceAccountId: source.id,
+        sourceBalance: Number(sourceBefore.balance),
+        destinationAccountId: destination.id,
+        destinationBalance: Number(destinationBefore.balance),
+        amount: transfer.amount,
+      },
+      {
+        sourceAccountId: source.id,
+        sourceBalance: Number(source.balance),
+        destinationAccountId: destination.id,
+        destinationBalance: Number(destination.balance),
+        reversed: true,
+      },
+    );
+  }
+  return [...adjusted.values()];
+}
+
 async function deleteLinkedFinancialEntries(
   tx: Prisma.TransactionClient,
-  documents: Array<{
-    companyId: string;
-    relatedEntityId: string | null;
-    relatedEntityType: string | null;
-    extractedData: unknown;
-  }>,
+  profile: DocumentProfile,
+  documents: DeletableDocument[],
   now: Date,
 ): Promise<DeletedFinancialEntries> {
   const payableCompanies = new Map<string, string>();
@@ -782,7 +904,8 @@ async function deleteLinkedFinancialEntries(
       data: { status: "CANCELED" },
     });
   }
-  return { deletedPayableIds, deletedReceivableIds };
+  const adjustedBankAccounts = await reverseLinkedTransfers(tx, profile, documents);
+  return { deletedPayableIds, deletedReceivableIds, adjustedBankAccounts };
 }
 
 export async function deleteDocument(profile: DocumentProfile, documentId: string) {
@@ -800,9 +923,10 @@ export async function deleteDocument(profile: DocumentProfile, documentId: strin
   ) {
     throw new DocumentRecordApiError("Sem permissão para excluir este documento.", 403);
   }
+  requireLinkedDeletionPermissions(profile, [existing]);
   return database.$transaction(async (tx) => {
     const now = new Date();
-    const financialEntries = await deleteLinkedFinancialEntries(tx, [existing], now);
+    const financialEntries = await deleteLinkedFinancialEntries(tx, profile, [existing], now);
     await tx.document.update({ where: { id: existing.id }, data: { deletedAt: now, status: "CANCELED", canceledAt: now } });
     await tx.approval.updateMany({ where: { relatedEntityType: "Document", relatedEntityId: existing.id, status: "PENDING" }, data: { status: "CANCELED" } });
     await audit(tx, profile, company, "EXCLUIR_DOCUMENTO", existing.id, { name: existing.name }, null);
@@ -853,10 +977,11 @@ export async function deleteDocuments(profile: DocumentProfile, body: any) {
       throw new DocumentRecordApiError("Sem permissão para excluir um dos lançamentos selecionados.", 403);
     }
   });
+  requireLinkedDeletionPermissions(profile, documents);
 
   const financialEntries = await database.$transaction(async (tx) => {
     const now = new Date();
-    const deletedFinancialEntries = await deleteLinkedFinancialEntries(tx, documents, now);
+    const deletedFinancialEntries = await deleteLinkedFinancialEntries(tx, profile, documents, now);
     await tx.document.updateMany({
       where: { id: { in: documentIds }, deletedAt: null },
       data: { deletedAt: now, status: "CANCELED", canceledAt: now },
