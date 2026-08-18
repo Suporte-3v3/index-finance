@@ -17,7 +17,8 @@ import {
 export type ReportOrientation = "auto" | "portrait" | "landscape";
 
 const COLORS = {
-  navy: [11, 47, 87] as const,
+  // Azul claro solicitado para a identidade visual dos relatórios (#EAF1F8).
+  navy: [234, 241, 248] as const,
   institutional: [7, 24, 43] as const,
   technology: [7, 24, 43] as const,
   red: [212, 9, 50] as const,
@@ -131,7 +132,7 @@ const drawHeader = (pdf: jsPDF, doc: ReportDocumentData, logoSource: string) => 
     // ainda não tenha terminado de carregar em um navegador muito antigo.
   }
 
-  pdf.setTextColor(...asColor(COLORS.white));
+  pdf.setTextColor(...asColor(COLORS.ink));
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(11);
   pdf.text("Idex Finance", MARGIN_X + 26, 8);
@@ -187,7 +188,7 @@ const ensureSpace = (pdf: jsPDF, y: number, required: number) => {
 const drawSectionTitle = (pdf: jsPDF, title: string, y: number) => {
   pdf.setFillColor(...asColor(COLORS.institutional));
   pdf.roundedRect(MARGIN_X, y, 2, 6, 0.6, 0.6, "F");
-  pdf.setTextColor(...asColor(COLORS.navy));
+  pdf.setTextColor(...asColor(COLORS.institutional));
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(9);
   pdf.text(title, MARGIN_X + 4, y + 4.4);
@@ -198,7 +199,7 @@ const drawIdentification = (pdf: jsPDF, doc: ReportDocumentData) => {
   const width = pdf.internal.pageSize.getWidth();
   const contentWidth = width - MARGIN_X * 2;
   let y = CONTENT_TOP;
-  pdf.setTextColor(...asColor(COLORS.navy));
+  pdf.setTextColor(...asColor(COLORS.institutional));
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(15);
   const titleLines = pdf.splitTextToSize(doc.title, contentWidth);
@@ -265,7 +266,7 @@ const drawFilters = (pdf: jsPDF, doc: ReportDocumentData, startY: number) => {
   pdf.setFillColor(...asColor(COLORS.canvas));
   pdf.setDrawColor(...asColor(COLORS.border));
   pdf.roundedRect(MARGIN_X, y, contentWidth, panelHeight, 1.5, 1.5, "FD");
-  pdf.setTextColor(...asColor(COLORS.navy));
+  pdf.setTextColor(...asColor(COLORS.institutional));
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(7.5);
   pdf.text("FILTROS APLICADOS", MARGIN_X + 4, y + 5);
@@ -315,7 +316,7 @@ const drawSummary = (
     pdf.setFontSize(6.2);
     pdf.text(pdf.splitTextToSize(item.label.toUpperCase(), cardWidth - 6).slice(0, 2), x + 3, cardY + 4);
     const value = safeReportText(item.value);
-    pdf.setTextColor(...asColor(isNegative(value) ? COLORS.red : COLORS.navy));
+    pdf.setTextColor(...asColor(isNegative(value) ? COLORS.red : COLORS.institutional));
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9.2);
     pdf.text(pdf.splitTextToSize(value, cardWidth - 6).slice(0, 1), x + 3, cardY + 12);
@@ -371,7 +372,7 @@ const drawTable = (
     },
     headStyles: {
       fillColor: asColor(COLORS.navy),
-      textColor: asColor(COLORS.white),
+      textColor: asColor(COLORS.institutional),
       fontStyle: "bold",
       lineColor: asColor(COLORS.institutional),
       minCellHeight: 8,
@@ -431,7 +432,7 @@ const drawChart = (
       : value < 0 ? COLORS.red : COLORS.technology;
     pdf.setFillColor(...asColor(palette));
     pdf.roundedRect(barX, rowY + 1, barWidth, 4, 0.8, 0.8, "F");
-    pdf.setTextColor(...asColor(value < 0 ? COLORS.red : COLORS.navy));
+    pdf.setTextColor(...asColor(value < 0 ? COLORS.red : COLORS.institutional));
     pdf.setFont("helvetica", "bold");
     pdf.text(formatBrazilianCurrency(value), MARGIN_X + width, rowY + 4, { align: "right" });
   });
@@ -466,12 +467,12 @@ const drawTotals = (
       pdf.setFillColor(...asColor(COLORS.navy));
       pdf.rect(MARGIN_X, itemY - 4.5, boxWidth, 7, "F");
     }
-    pdf.setTextColor(...asColor(isLast ? COLORS.white : COLORS.ink));
+    pdf.setTextColor(...asColor(isLast ? COLORS.institutional : COLORS.ink));
     pdf.setFont("helvetica", isLast ? "bold" : "normal");
     pdf.setFontSize(7.5);
     pdf.text(item.label, MARGIN_X + 4, itemY);
     const value = safeReportText(item.value);
-    pdf.setTextColor(...asColor(isLast ? COLORS.white : isNegative(value) ? COLORS.red : COLORS.navy));
+    pdf.setTextColor(...asColor(isLast ? COLORS.institutional : isNegative(value) ? COLORS.red : COLORS.institutional));
     pdf.setFont("helvetica", "bold");
     pdf.text(value, width - MARGIN_X - 4, itemY, { align: "right" });
   });
