@@ -62,6 +62,7 @@ import {
   createDocument as createDocumentRecord,
   decideDocumentApproval,
   deleteDocument as deleteDocumentRecord,
+  deleteDocuments as deleteDocumentRecords,
   listDocuments as listDocumentRecords,
   submitDocumentApproval,
   updateDocument as updateDocumentRecord,
@@ -523,6 +524,13 @@ app.delete('/api/document-records/:documentId', requireAuthentication, requireCo
     response.status(204).end();
   } catch (error) {
     documentRecordError(response, error, 'Não foi possível excluir o documento.');
+  }
+});
+app.post('/api/document-records/batch-delete', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await deleteDocumentRecords(response.locals.authProfile, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível excluir os lançamentos selecionados.');
   }
 });
 app.post('/api/document-records/:documentId/request-approval', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {

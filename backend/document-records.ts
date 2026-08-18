@@ -652,8 +652,12 @@ export async function deleteDocument(profile: DocumentProfile, documentId: strin
     include: documentInclude,
   });
   if (!existing) throw new DocumentRecordApiError("Documento não encontrado.", 404);
-  const company = await requireCompany(profile, existing.companyId, "documents.upload");
-  if (!isBpoForCompany(profile, company) && existing.uploadedById !== profile.id) {
+  const company = existing.company;
+  const isBpo = isBpoForCompany(profile, company);
+  if (
+    !isBpo &&
+    (!hasPermission(profile, company, "documents.upload") || existing.uploadedById !== profile.id)
+  ) {
     throw new DocumentRecordApiError("Sem permissão para excluir este documento.", 403);
   }
   await database.$transaction(async (tx) => {
@@ -667,4 +671,81 @@ export async function deleteDocument(profile: DocumentProfile, documentId: strin
       type: "WARNING",
     });
   });
+}
+
+export async function deleteDocuments(profile: DocumentProfile, body: any) {
+  const receivedIds = Array.isArray(body?.documentIds) ? body.documentIds : [];
+  if (!receivedIds.length) {
+    throw new DocumentRecordApiError("Selecione pelo menos um lançamento para excluir.");
+  }
+  if (receivedIds.length > 500) {
+    throw new DocumentRecordApiError("O limite é de 500 lançamentos por exclusão em massa.");
+  }
+  const documentIds: string[] = [
+    ...new Set<string>(
+      receivedIds.map((id: unknown, index: number) => uuid(id, `Documento da linha ${index + 1}`)!),
+    ),
+  ];
+  const database = getDatabaseClient();
+  const documents = await database.document.findMany({
+    where: { id: { in: documentIds }, deletedAt: null },
+    include: {
+      uploadedBy: { select: { name: true } },
+      company: { select: { id: true, tenantId: true } },
+    },
+  });
+  if (documents.length !== documentIds.length) {
+    throw new DocumentRecordApiError(
+      "Um ou mais lançamentos não foram encontrados. Atualize a tela e tente novamente.",
+      404,
+    );
+  }
+  documents.forEach((document) => {
+    const company = document.company;
+    const isBpo = isBpoForCompany(profile, company);
+    if (
+      !isBpo &&
+      (!hasPermission(profile, company, "documents.upload") || document.uploadedById !== profile.id)
+    ) {
+      throw new DocumentRecordApiError("Sem permissão para excluir um dos lançamentos selecionados.", 403);
+    }
+  });
+
+  await database.$transaction(async (tx) => {
+    const now = new Date();
+    await tx.document.updateMany({
+      where: { id: { in: documentIds }, deletedAt: null },
+      data: { deletedAt: now, status: "CANCELED", canceledAt: now },
+    });
+    await tx.approval.updateMany({
+      where: {
+        relatedEntityType: "Document",
+        relatedEntityId: { in: documentIds },
+        status: "PENDING",
+      },
+      data: { status: "CANCELED" },
+    });
+    for (const document of documents) {
+      await audit(
+        tx,
+        profile,
+        document.company,
+        "EXCLUIR_DOCUMENTO",
+        document.id,
+        { name: document.name },
+        null,
+      );
+    }
+    const companies = new Map(documents.map((document) => [document.company.id, document.company]));
+    for (const company of companies.values()) {
+      const count = documents.filter((document) => document.companyId === company.id).length;
+      await writeNotification(tx, {
+        companyId: company.id,
+        title: "Lançamentos excluídos",
+        message: `${count} lançamento(s) foram excluídos da fila.`,
+        type: "WARNING",
+      });
+    }
+  });
+  return { deletedIds: documentIds };
 }

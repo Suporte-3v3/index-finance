@@ -56,6 +56,13 @@ export function deletePersistedDocument(id: string) {
   });
 }
 
+export function deletePersistedDocuments(documentIds: string[]) {
+  return request<{ deletedIds: string[] }>("/api/document-records/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ documentIds }),
+  });
+}
+
 export function requestPersistedDocumentApproval(
   id: string,
   recipientId: string,

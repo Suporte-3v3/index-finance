@@ -8,6 +8,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useBPOState } from "../hooks/useBPOState";
@@ -17,7 +18,7 @@ import DocumentDownloadButton from "../components/DocumentDownloadButton";
 import ImportEntriesActions from "../components/ImportEntriesActions";
 import QuickAddSelect from "../components/QuickAddSelect";
 import CurrencyInput from "../components/CurrencyInput";
-import { Badge, BadgeTone, BrazilianDateInput, BrazilianMonthInput, Button, Card, MetricCard, Modal } from "../components/ui";
+import { Badge, BadgeTone, BrazilianDateInput, BrazilianMonthInput, Button, Card, ConfirmDialog, MetricCard, Modal, useToast } from "../components/ui";
 import { MetricTone } from "../components/ui/MetricCard";
 import { formatDate, formatDateTime } from "../services/dateFormatters";
 
@@ -98,6 +99,7 @@ const emptyLaunch = {
 };
 
 export default function DocumentsReceivedView() {
+  const { showToast } = useToast();
   const {
     activeCompany,
     currentUser,
@@ -112,6 +114,7 @@ export default function DocumentsReceivedView() {
     launchDocument,
     submitDocumentForApproval,
     cancelDocument,
+    deleteDocuments,
     createStandaloneLaunch,
     addMasterData,
   } = useBPOState();
@@ -125,6 +128,8 @@ export default function DocumentsReceivedView() {
   const [newLaunchOpen, setNewLaunchOpen] = useState(false);
   const [newLaunch, setNewLaunch] = useState(emptyLaunch);
   const [approvalRecipientId, setApprovalRecipientId] = useState("");
+  const [documentsToDelete, setDocumentsToDelete] = useState<Document[]>([]);
+  const [deleting, setDeleting] = useState(false);
   const companyDocuments = useMemo(
     () =>
       documents.filter(
@@ -285,11 +290,9 @@ export default function DocumentsReceivedView() {
     setNewLaunchOpen(false);
     setNewLaunch(emptyLaunch);
   };
-  const eligibleDocuments = filtered.filter(
+  const selectedDocuments = filtered.filter((item) => selectedIds.has(item.id));
+  const selectedEligible = selectedDocuments.filter(
     (item) => item.status === "Aguardando Análise",
-  );
-  const selectedEligible = companyDocuments.filter(
-    (item) => selectedIds.has(item.id) && item.status === "Aguardando Análise",
   );
   const toggleSelection = (id: string) =>
     setSelectedIds((current) => {
@@ -297,17 +300,45 @@ export default function DocumentsReceivedView() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  const toggleAllEligible = () =>
+  const toggleAllFiltered = () =>
     setSelectedIds((current) => {
       const next = new Set(current);
       const allSelected =
-        eligibleDocuments.length > 0 &&
-        eligibleDocuments.every((item) => next.has(item.id));
-      eligibleDocuments.forEach((item) =>
+        filtered.length > 0 && filtered.every((item) => next.has(item.id));
+      filtered.forEach((item) =>
         allSelected ? next.delete(item.id) : next.add(item.id),
       );
       return next;
     });
+
+  const confirmDeleteDocuments = async () => {
+    if (!documentsToDelete.length) return;
+    setDeleting(true);
+    const ids = documentsToDelete.map((item) => item.id);
+    const deletedIds = await deleteDocuments(ids);
+    setDeleting(false);
+    if (deletedIds.length !== ids.length) {
+      showToast(
+        "error",
+        "Não foi possível excluir os lançamentos.",
+        "Atualize a tela, confira suas permissões e tente novamente.",
+      );
+      return;
+    }
+    const deletedSet = new Set(deletedIds);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      deletedIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (selectedId && deletedSet.has(selectedId)) setSelectedId(null);
+    setDocumentsToDelete([]);
+    showToast(
+      "success",
+      `${deletedIds.length} lançamento(s) excluído(s).`,
+      "Os registros foram removidos da fila de Lançamentos.",
+    );
+  };
   const launchBatch = (items: Document[]) => {
     if (!items.length) return;
     const total = items.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -701,44 +732,59 @@ export default function DocumentsReceivedView() {
             <button className="border border-line dark:border-line-dark text-ink dark:text-ink-dark hover:bg-canvas dark:hover:bg-white/5 rounded-lg px-3 text-xs flex items-center gap-1.5 cursor-pointer">
               <Filter className="h-3.5 w-3.5" /> Filtros
             </button>
-            {selectedEligible.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <select
-                  aria-label="Cliente aprovador dos lançamentos selecionados"
-                  value={approvalRecipientId}
-                  onChange={(event) =>
-                    setApprovalRecipientId(event.target.value)
-                  }
-                  className="border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]"
-                >
-                  <option value="">Cliente aprovador</option>
-                  {approvalRecipients.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
+            {selectedDocuments.length > 0 && (
+              <div className="flex w-full flex-wrap items-center gap-2 border-t border-line pt-3 dark:border-line-dark">
+                <Badge tone="navy">{selectedDocuments.length} selecionado(s)</Badge>
+                {selectedEligible.length > 0 && (
+                  <>
+                    <select
+                      aria-label="Cliente aprovador dos lançamentos selecionados"
+                      value={approvalRecipientId}
+                      onChange={(event) =>
+                        setApprovalRecipientId(event.target.value)
+                      }
+                      className="border border-line dark:border-line-dark rounded-lg px-3 py-2 text-xs bg-surface dark:bg-surface-dark text-ink dark:text-ink-dark dark:[color-scheme:dark]"
+                    >
+                      <option value="">Cliente aprovador</option>
+                      {approvalRecipients.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!approvalRecipientId}
+                      title={
+                        approvalRecipientId
+                          ? "Enviar selecionados para aprovação"
+                          : "Selecione o cliente aprovador"
+                      }
+                      icon={<Send className="h-3.5 w-3.5" />}
+                      onClick={() => approveBatch(selectedEligible)}
+                    >
+                      Enviar para aprovação ({selectedEligible.length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-brand-green-600! hover:bg-emerald-600!"
+                      icon={<Check className="h-3.5 w-3.5" />}
+                      onClick={() => launchBatch(selectedEligible)}
+                    >
+                      Lançar selecionados ({selectedEligible.length})
+                    </Button>
+                  </>
+                )}
                 <Button
                   size="sm"
-                  variant="secondary"
-                  disabled={!approvalRecipientId}
-                  title={
-                    approvalRecipientId
-                      ? "Enviar selecionados para aprovação"
-                      : "Selecione o cliente aprovador"
-                  }
-                  icon={<Send className="h-3.5 w-3.5" />}
-                  onClick={() => approveBatch(selectedEligible)}
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => setDocumentsToDelete(selectedDocuments)}
                 >
-                  Enviar para aprovação ({selectedEligible.length})
+                  Excluir selecionados ({selectedDocuments.length})
                 </Button>
-                <Button
-                  size="sm"
-                  className="bg-brand-green-600! hover:bg-emerald-600!"
-                  icon={<Check className="h-3.5 w-3.5" />}
-                  onClick={() => launchBatch(selectedEligible)}
-                >
-                  Lançar selecionados ({selectedEligible.length})
+                <Button size="sm" variant="text" onClick={() => setSelectedIds(new Set())}>
+                  Limpar seleção
                 </Button>
               </div>
             )}
@@ -761,12 +807,12 @@ export default function DocumentsReceivedView() {
                 <tr>
                   <th className="p-3 w-8">
                     <button
-                      onClick={toggleAllEligible}
-                      title="Selecionar todos os lançamentos aptos"
-                      className={`block h-4 w-4 rounded border cursor-pointer ${eligibleDocuments.length > 0 && eligibleDocuments.every((item) => selectedIds.has(item.id)) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
+                      onClick={toggleAllFiltered}
+                      title="Selecionar todos os lançamentos exibidos"
+                      className={`block h-4 w-4 rounded border cursor-pointer ${filtered.length > 0 && filtered.every((item) => selectedIds.has(item.id)) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
                     >
-                      {eligibleDocuments.length > 0 &&
-                        eligibleDocuments.every((item) =>
+                      {filtered.length > 0 &&
+                        filtered.every((item) =>
                           selectedIds.has(item.id),
                         ) && <Check className="h-3.5 w-3.5 text-white" />}
                     </button>
@@ -794,17 +840,12 @@ export default function DocumentsReceivedView() {
                   >
                     <td className="p-3">
                       <button
-                        disabled={document.status !== "Aguardando Análise"}
                         onClick={(event) => {
                           event.stopPropagation();
                           toggleSelection(document.id);
                         }}
-                        title={
-                          document.status === "Aguardando Análise"
-                            ? "Selecionar para lançamento em lote"
-                            : "Este registro não está apto para lançamento"
-                        }
-                        className={`block h-4 w-4 rounded border disabled:cursor-not-allowed ${selectedIds.has(document.id) ? "bg-brand-navy-900 border-brand-navy-900" : document.status === "Aguardando Análise" ? "bg-surface dark:bg-surface-dark border-line dark:border-line-dark cursor-pointer" : "bg-canvas dark:bg-white/5 border-line dark:border-line-dark"}`}
+                        title="Selecionar lançamento"
+                        className={`block h-4 w-4 rounded border cursor-pointer ${selectedIds.has(document.id) ? "bg-brand-navy-900 border-brand-navy-900" : "bg-surface dark:bg-surface-dark border-line dark:border-line-dark"}`}
                       >
                         {selectedIds.has(document.id) && (
                           <Check className="h-3.5 w-3.5 text-white" />
@@ -825,14 +866,28 @@ export default function DocumentsReceivedView() {
                           <p className="text-[9px] text-ink-soft dark:text-ink-soft-dark">
                             {document.category}
                           </p>
-                          {document.mimeType !== "application/x-manual-entry" && (
-                            <DocumentDownloadButton
-                              url={document.signedUrl}
-                              name={document.name}
-                              iconOnly
-                              className="mt-1 text-brand-green-600 dark:text-emerald-300 hover:bg-brand-green-50 dark:hover:bg-brand-green-600/10"
-                            />
-                          )}
+                          <div className="mt-1 flex items-center gap-1">
+                            {document.mimeType !== "application/x-manual-entry" && (
+                              <DocumentDownloadButton
+                                url={document.signedUrl}
+                                name={document.name}
+                                iconOnly
+                                className="text-brand-green-600 dark:text-emerald-300 hover:bg-brand-green-50 dark:hover:bg-brand-green-600/10"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              title="Excluir lançamento"
+                              aria-label={`Excluir ${document.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDocumentsToDelete([document]);
+                              }}
+                              className="rounded-md p-1 text-brand-red-600 transition-colors hover:bg-brand-red-50 dark:hover:bg-brand-red-600/10"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -1300,6 +1355,16 @@ export default function DocumentsReceivedView() {
                     Este documento não possui ações pendentes para o BPO.
                   </p>
                 )}
+                <Button
+                  fullWidth
+                  size="sm"
+                  variant="outline"
+                  className="mt-3 border-brand-red-600/30 text-brand-red-600 hover:bg-brand-red-50 dark:hover:bg-brand-red-600/10"
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => setDocumentsToDelete([selected])}
+                >
+                  Excluir da fila de Lançamentos
+                </Button>
               </div>
               <div className="border-t border-line dark:border-line-dark p-4">
                 <button className="w-full flex justify-between text-[10px] font-semibold text-ink dark:text-ink-dark cursor-pointer">
@@ -1318,6 +1383,23 @@ export default function DocumentsReceivedView() {
           )}
         </Card>
       </div>
+      <ConfirmDialog
+        open={documentsToDelete.length > 0}
+        onClose={() => setDocumentsToDelete([])}
+        onConfirm={() => void confirmDeleteDocuments()}
+        loading={deleting}
+        title={
+          documentsToDelete.length === 1
+            ? "Excluir este lançamento?"
+            : `Excluir ${documentsToDelete.length} lançamentos?`
+        }
+        description={
+          documentsToDelete.some((item) => item.status === "Lançado")
+            ? "Os itens serão removidos da fila de Lançamentos. Registros já efetivados permanecem no Contas a Pagar ou Contas a Receber; para desfazê-los financeiramente, use a ação Cancelar lançamento antes da exclusão."
+            : "Os itens selecionados serão removidos da fila de Lançamentos e a exclusão ficará registrada nos logs."
+        }
+        confirmLabel={documentsToDelete.length === 1 ? "Excluir lançamento" : "Excluir selecionados"}
+      />
     </div>
   );
 }

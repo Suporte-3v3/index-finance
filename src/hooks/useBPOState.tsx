@@ -119,6 +119,7 @@ import {
   createPersistedDocument,
   decidePersistedDocumentApproval,
   deletePersistedDocument,
+  deletePersistedDocuments,
   fetchDocumentRecords,
   requestPersistedDocumentApproval,
   updatePersistedDocument,
@@ -416,7 +417,8 @@ interface BPOContextType {
     approvalRecipientId?: string;
   }) => Promise<void>;
   refreshDocumentRecords: () => Promise<void>;
-  deleteDocument: (id: string) => void;
+  deleteDocument: (id: string) => Promise<boolean>;
+  deleteDocuments: (ids: string[]) => Promise<string[]>;
   updateDocument: (id: string, updates: Partial<Document>) => boolean;
   launchDocument: (id: string, updates?: Partial<Document>) => void;
   submitDocumentForApproval: (
@@ -2036,38 +2038,72 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const deleteDocument = (id: string) => {
+  const deleteDocument = async (id: string) => {
     const existing = documents.find((document) => document.id === id);
+    const isBpoUser = ["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role);
     if (
       !existing ||
       existing.companyId !== activeCompany?.id ||
-      existing.uploadedById !== currentUser.id
+      (!isBpoUser && existing.uploadedById !== currentUser.id)
     )
-      return;
+      return false;
 
-    void deletePersistedDocument(id)
-      .then(() => {
-        setApprovals((items) =>
-          items.map((approval) =>
-            approval.relatedId === id && approval.status === "Pendente"
-              ? { ...approval, status: "Cancelada" }
-              : approval,
-          ),
-        );
-        setDocuments((previous) =>
-          previous.filter((document) => document.id !== id),
-        );
-        addNotification(
-          "Documento Removido",
-          "Um documento foi excluído do repositório da empresa.",
-          "INFO",
-          currentUser.id,
-          existing.companyId,
-        );
-      })
-      .catch((error) => {
-        console.error("Falha ao remover documento do banco:", error);
-      });
+    try {
+      await deletePersistedDocument(id);
+      setApprovals((items) =>
+        items.map((approval) =>
+          approval.relatedId === id && approval.status === "Pendente"
+            ? { ...approval, status: "Cancelada" }
+            : approval,
+        ),
+      );
+      setDocuments((previous) =>
+        previous.filter((document) => document.id !== id),
+      );
+      addNotification(
+        "Documento Removido",
+        "Um documento foi excluído do repositório da empresa.",
+        "INFO",
+        currentUser.id,
+        existing.companyId,
+      );
+      return true;
+    } catch (error) {
+      console.error("Falha ao remover documento do banco:", error);
+      return false;
+    }
+  };
+
+  const deleteDocuments = async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids)];
+    const allowedIds = uniqueIds.filter((id) => {
+      const document = documents.find((item) => item.id === id);
+      return Boolean(
+        document &&
+        document.companyId === activeCompany?.id &&
+        ["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role),
+      );
+    });
+    if (!allowedIds.length || allowedIds.length !== uniqueIds.length) return [];
+
+    try {
+      const result = await deletePersistedDocuments(allowedIds);
+      const deletedIds = new Set(result.deletedIds);
+      setApprovals((items) =>
+        items.map((approval) =>
+          deletedIds.has(approval.relatedId) && approval.status === "Pendente"
+            ? { ...approval, status: "Cancelada" }
+            : approval,
+        ),
+      );
+      setDocuments((previous) =>
+        previous.filter((document) => !deletedIds.has(document.id)),
+      );
+      return result.deletedIds;
+    } catch (error) {
+      console.error("Falha ao excluir lançamentos em massa:", error);
+      return [];
+    }
   };
 
   // --- BANK RECONCILIATION ---
@@ -4526,6 +4562,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         uploadDocument,
         refreshDocumentRecords,
         deleteDocument,
+        deleteDocuments,
         updateDocument,
         launchDocument,
         submitDocumentForApproval,
