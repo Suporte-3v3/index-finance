@@ -12,6 +12,7 @@ const {
   createDocument,
   decideDocumentApproval,
   deleteDocument,
+  launchDocument,
   listDocuments,
   submitDocumentApproval,
   updateDocument,
@@ -156,6 +157,17 @@ try {
   assert.equal(updated.description, "Documento atualizado no PostgreSQL");
   assert.equal(updated.amount, 300);
   assert.equal(updated.processingConfidence, 92);
+  const launchedByBpo = await launchDocument(adminProfile, privateDocument.document.id, {
+    entryType: "Conta a Pagar",
+    costCenter: "Administrativo",
+    paymentMethod: "Boleto",
+  });
+  assert.equal(launchedByBpo.status, "Lançado");
+  assert.ok(launchedByBpo.relatedEntityId);
+  assert.equal(
+    (await database.accountPayable.findUniqueOrThrow({ where: { id: launchedByBpo.relatedEntityId } })).status,
+    "UPCOMING",
+  );
 
   const sharedFileId = randomUUID();
   const sharedContents = Buffer.from("arquivo compartilhado com o cliente", "utf8");

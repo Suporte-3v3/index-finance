@@ -16,6 +16,7 @@ import {
   IconButton,
   Modal,
   Tabs,
+  useToast,
 } from "../components/ui";
 import {
   Check,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react";
 
 export default function ApprovalsView() {
+  const { showToast } = useToast();
   const {
     activeCompany,
     approvals,
@@ -51,6 +53,7 @@ export default function ApprovalsView() {
     "Aprovada" | "Rejeitada" | "Ajuste solicitado" | null
   >(null);
   const [comment, setComment] = useState("");
+  const [decisionPending, setDecisionPending] = useState(false);
   const [previewApprovalId, setPreviewApprovalId] = useState<string | null>(
     null,
   );
@@ -86,7 +89,7 @@ export default function ApprovalsView() {
     setComment("");
   };
 
-  const handleDecisionSubmit = (e: React.FormEvent) => {
+  const handleDecisionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!decisionApprovalId || !decisionType) return;
 
@@ -95,7 +98,20 @@ export default function ApprovalsView() {
       return;
     }
 
-    decideApproval(decisionApprovalId, decisionType, comment);
+    setDecisionPending(true);
+    const result = await decideApproval(decisionApprovalId, decisionType, comment);
+    setDecisionPending(false);
+    if (!result.success) {
+      showToast("error", "Não foi possível registrar a decisão.", result.error);
+      return;
+    }
+    showToast(
+      "success",
+      decisionType === "Aprovada" ? "Aprovação concluída." : "Decisão registrada.",
+      decisionType === "Aprovada" && decisionIsDocument
+        ? "O lançamento financeiro foi criado e vinculado ao documento."
+        : undefined,
+    );
     setDecisionApprovalId(null);
     setDecisionType(null);
     setComment("");
@@ -211,6 +227,7 @@ export default function ApprovalsView() {
             <Button
               type="submit"
               form="approval-decision-form"
+              disabled={decisionPending}
               className={
                 decisionType === "Aprovada"
                   ? "bg-brand-green-600! hover:bg-emerald-600!"

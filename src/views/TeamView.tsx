@@ -97,7 +97,7 @@ export default function TeamView() {
 
     const permissionsByRole: Record<UserRole, string[]> = {
       BPO_ADMIN: [],
-      BPO_TEAM: ['accounts-payable.view', 'accounts-payable.create', 'accounts-receivable.view', 'documents.upload', 'documents.download'],
+      BPO_TEAM: ['accounts-payable.view', 'accounts-payable.create', 'accounts-receivable.view', 'approvals.request', 'documents.upload', 'documents.download'],
       ACCOUNTANT: ['dashboard.view', 'documents.download', 'reports.view', 'reports.generate'],
       CLIENT: ['dashboard.view', 'approvals.approve', 'documents.upload', 'documents.download', 'reports.view', 'reports.generate']
     };

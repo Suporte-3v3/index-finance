@@ -66,6 +66,7 @@ import {
   decideDocumentApproval,
   deleteDocument as deleteDocumentRecord,
   deleteDocuments as deleteDocumentRecords,
+  launchDocument as launchDocumentRecord,
   listDocuments as listDocumentRecords,
   submitDocumentApproval,
   updateDocument as updateDocumentRecord,
@@ -573,6 +574,13 @@ app.post('/api/document-records/:documentId/request-approval', requireAuthentica
     response.json(await submitDocumentApproval(response.locals.authProfile, request.params.documentId, request.body));
   } catch (error) {
     documentRecordError(response, error, 'Não foi possível solicitar a aprovação.');
+  }
+});
+app.post('/api/document-records/:documentId/launch', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await launchDocumentRecord(response.locals.authProfile, request.params.documentId, request.body));
+  } catch (error) {
+    documentRecordError(response, error, 'Não foi possível lançar o documento.');
   }
 });
 app.post('/api/document-approvals/:approvalId/decision', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {

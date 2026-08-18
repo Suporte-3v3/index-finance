@@ -813,10 +813,17 @@ export async function submitDocumentApproval(profile: DocumentProfile, documentI
     unpacked.internal,
   );
   requireApprovalLaunchPermission(profile, company, nextInternal);
+  const documentUpdates: Record<string, unknown> = {};
+  if (body.category !== undefined) documentUpdates.category = text(body.category, "a categoria", 80);
+  if (body.name !== undefined) documentUpdates.name = text(body.name, "o nome", 255);
+  if (body.description !== undefined) documentUpdates.description = optionalText(body.description, 20_000);
+  if (body.competenceMonth !== undefined) documentUpdates.competenceMonth = competence(body.competenceMonth);
+  if (body.aiSummary !== undefined) documentUpdates.aiSummary = optionalText(body.aiSummary, 20_000);
   return database.$transaction(async (tx) => {
     const document = await tx.document.update({
       where: { id: existing.id },
       data: {
+        ...documentUpdates,
         recipientId,
         status: "AWAITING_APPROVAL",
         extractedData: pack(body?.extractedData ?? unpacked.extractedData, nextInternal),
@@ -850,6 +857,72 @@ export async function submitDocumentApproval(profile: DocumentProfile, documentI
     const users = await userMap([profile.id, recipientId]);
     return { document: mapDocument(document, users), approval: mapApproval(approval, users) };
   });
+}
+
+export async function launchDocument(profile: DocumentProfile, documentId: string, body: any) {
+  const database = getDatabaseClient();
+  const existing = await database.document.findFirst({
+    where: { id: uuid(documentId, "Documento")!, deletedAt: null },
+    include: documentInclude,
+  });
+  if (!existing) throw new DocumentRecordApiError("Documento não encontrado.", 404);
+  const company = await requireCompany(profile, existing.companyId, "documents.upload");
+  if (!isBpoForCompany(profile, company)) {
+    throw new DocumentRecordApiError("Somente a equipe BPO pode lançar este documento.", 403);
+  }
+  if (existing.status !== "AWAITING_ANALYSIS" || existing.purpose === "VIEW_ONLY") {
+    throw new DocumentRecordApiError("Documento indisponível para lançamento.", 409);
+  }
+  const unpacked = unpack(existing.extractedData);
+  const nextInternal = internalFromBody(body, unpacked.internal);
+  requireApprovalLaunchPermission(profile, company, nextInternal);
+  const prepared = {
+    ...existing,
+    category: body.category === undefined ? existing.category : text(body.category, "a categoria", 80),
+    name: body.name === undefined ? existing.name : text(body.name, "o nome", 255),
+    description: body.description === undefined ? existing.description : optionalText(body.description, 20_000),
+    competenceMonth: body.competenceMonth === undefined ? existing.competenceMonth : competence(body.competenceMonth),
+    aiSummary: body.aiSummary === undefined ? existing.aiSummary : optionalText(body.aiSummary, 20_000),
+    extractedData: pack(body.extractedData ?? unpacked.extractedData, nextInternal),
+  };
+
+  return database.$transaction(async (tx) => {
+    const current = await tx.document.findFirst({
+      where: { id: existing.id, deletedAt: null, status: "AWAITING_ANALYSIS" },
+      include: documentInclude,
+    });
+    if (!current) throw new DocumentRecordApiError("Documento indisponível para lançamento.", 409);
+    const posting = await postApprovedDocument(tx, prepared, profile.id);
+    const document = await tx.document.update({
+      where: { id: existing.id },
+      data: {
+        category: prepared.category,
+        name: prepared.name,
+        description: prepared.description,
+        competenceMonth: prepared.competenceMonth,
+        aiSummary: prepared.aiSummary,
+        extractedData: posting.extractedData,
+        status: "POSTED",
+        relatedEntityType: posting.relatedEntityType,
+        relatedEntityId: posting.relatedEntityId,
+      },
+      include: documentInclude,
+    });
+    await audit(tx, profile, company, "LANCAR_DOCUMENTO", document.id, { status: existing.status }, {
+      status: document.status,
+      relatedEntityType: document.relatedEntityType,
+      relatedEntityId: document.relatedEntityId,
+    });
+    await writeNotification(tx, {
+      companyId: company.id,
+      title: "Documento lançado",
+      message: `${document.name} foi lançado no financeiro.`,
+      type: "SUCCESS",
+    });
+    const { internal } = unpack(document.extractedData);
+    const users = await userMap([document.uploadedById, document.recipientId, internal.launchedById as string]);
+    return mapDocument(document, users);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function decideDocumentApproval(profile: DocumentProfile, approvalId: string, body: any) {

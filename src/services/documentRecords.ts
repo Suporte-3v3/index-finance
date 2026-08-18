@@ -81,6 +81,13 @@ export function requestPersistedDocumentApproval(
   );
 }
 
+export function launchPersistedDocument(id: string, updates: Record<string, unknown>) {
+  return request<Document>(`/api/document-records/${encodeURIComponent(id)}/launch`, {
+    method: "POST",
+    body: JSON.stringify(updates),
+  });
+}
+
 export function decidePersistedDocumentApproval(
   id: string,
   decision: "Aprovada" | "Rejeitada" | "Ajuste solicitado",

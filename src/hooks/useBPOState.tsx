@@ -123,6 +123,7 @@ import {
   deletePersistedDocument,
   deletePersistedDocuments,
   fetchDocumentRecords,
+  launchPersistedDocument,
   requestPersistedDocumentApproval,
   updatePersistedDocument,
 } from "../services/documentRecords";
@@ -396,7 +397,7 @@ interface BPOContextType {
     approvalId: string,
     decision: "Aprovada" | "Rejeitada" | "Ajuste solicitado",
     comment: string,
-  ) => void;
+  ) => Promise<{ success: boolean; error?: string }>;
 
   uploadDocument: (data: {
     name: string;
@@ -424,12 +425,15 @@ interface BPOContextType {
   deleteDocument: (id: string) => Promise<boolean>;
   deleteDocuments: (ids: string[]) => Promise<string[]>;
   updateDocument: (id: string, updates: Partial<Document>) => boolean;
-  launchDocument: (id: string, updates?: Partial<Document>) => void;
+  launchDocument: (
+    id: string,
+    updates?: Partial<Document>,
+  ) => Promise<{ success: boolean; error?: string }>;
   submitDocumentForApproval: (
     id: string,
     updates?: Partial<Document>,
     recipientId?: string,
-  ) => boolean;
+  ) => Promise<{ success: boolean; error?: string }>;
   cancelDocument: (id: string) => boolean;
   createStandaloneLaunch: (
     data: Partial<Document> &
@@ -1847,148 +1851,40 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   };
 
   // --- APPROVALS FLOW ---
-  const decideApproval = (
+  const decideApproval: BPOContextType["decideApproval"] = async (
     approvalId: string,
     decision: "Aprovada" | "Rejeitada" | "Ajuste solicitado",
     comment: string,
   ) => {
     const persistedTarget = approvals.find((approval) => approval.id === approvalId);
-    if (
-      persistedTarget?.type === "PAGAMENTO" &&
-      canDecideApproval(persistedTarget)
-    ) {
-      void decidePersistedPaymentApproval(approvalId, decision, comment)
-        .then((result) => {
-          setApprovals((current) =>
-            current.map((approval) =>
-              approval.id === approvalId ? result.approval : approval,
-            ),
-          );
-          setAccountsPayable((current) =>
-            current.map((payable) =>
-              payable.id === result.payable.id ? result.payable : payable,
-            ),
-          );
-        })
-        .catch((error) => {
-          console.error("Falha ao persistir decisão de aprovação:", error);
-        });
-    } else if (
-      persistedTarget?.type === "DOCUMENTO" &&
-      canDecideApproval(persistedTarget)
-    ) {
-      void decidePersistedDocumentApproval(approvalId, decision, comment)
-        .then((result) => {
-          setApprovals((current) =>
-            current.map((approval) =>
-              approval.id === approvalId ? result.approval : approval,
-            ),
-          );
-          setDocuments((current) =>
-            current.map((document) =>
-              document.id === result.document.id ? result.document : document,
-            ),
-          );
-        })
-        .catch((error) => {
-          console.error("Falha ao persistir decisão documental:", error);
-        });
+    if (!persistedTarget || !canDecideApproval(persistedTarget)) {
+      return { success: false, error: "Esta aprovação não está disponível para sua decisão." };
     }
-
-    setApprovals((prev) => {
-      const existing = prev.find((a) => a.id === approvalId);
-      if (!existing) return prev;
-      if (!canDecideApproval(existing)) return prev;
-
-      const step = {
-        id: `step-${Date.now()}`,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        role: currentUser.role,
-        decision,
-        comment,
-        timestamp: new Date().toISOString(),
-        ipAddress: "186.20.103.54",
-        userAgent: navigator.userAgent,
-      };
-
-      const updated: Approval = {
-        ...existing,
-        status: decision,
-        justification: comment,
-        history: [...existing.history, step],
-      };
-
-      if (existing.type === "DOCUMENTO") {
-        setDocuments((items) =>
-          items.map((document) =>
-            document.id === existing.relatedId
-              ? {
-                  ...document,
-                  status:
-                    decision === "Aprovada"
-                      ? "Lançado"
-                      : decision === "Rejeitada"
-                        ? "Cancelado"
-                        : "Aguardando Análise",
-                }
-              : document,
-          ),
+    try {
+      if (persistedTarget.type === "PAGAMENTO") {
+        const result = await decidePersistedPaymentApproval(approvalId, decision, comment);
+        setApprovals((current) =>
+          current.map((approval) => approval.id === approvalId ? result.approval : approval),
+        );
+        setAccountsPayable((current) =>
+          current.map((payable) => payable.id === result.payable.id ? result.payable : payable),
         );
       } else {
-        setAccountsPayable((payables) =>
-          payables.map((ap) => {
-            if (ap.id === existing.relatedId) {
-              const finalStatus =
-                decision === "Aprovada" ? "A vencer" : "Rejeitada";
-              return {
-                ...ap,
-                status: finalStatus,
-                updatedAt: new Date().toISOString(),
-              };
-            }
-            return ap;
-          }),
+        const result = await decidePersistedDocumentApproval(approvalId, decision, comment);
+        setApprovals((current) =>
+          current.map((approval) => approval.id === approvalId ? result.approval : approval),
+        );
+        setDocuments((current) =>
+          current.map((document) => document.id === result.document.id ? result.document : document),
         );
       }
-
-      createAuditLog(
-        existing.type === "DOCUMENTO"
-          ? decision === "Aprovada"
-            ? "APROVAR_DOCUMENTO"
-            : decision === "Rejeitada"
-              ? "REJEITAR_DOCUMENTO"
-              : "SOLICITAR_AJUSTE_DOCUMENTO"
-          : decision === "Aprovada"
-            ? "APROVAR_PAGAMENTO"
-            : "REJEITAR_PAGAMENTO",
-        existing.type === "DOCUMENTO" ? "Document" : "Approval",
-        approvalId,
-        existing.companyId,
-        existing,
-        updated,
-      );
-
-      addNotification(
-        existing.type === "DOCUMENTO"
-          ? decision === "Aprovada"
-            ? "Lançamento Aprovado"
-            : decision === "Rejeitada"
-              ? "Lançamento Rejeitado"
-              : "Ajuste Solicitado"
-          : decision === "Aprovada"
-            ? "Pagamento Aprovado"
-            : "Pagamento Rejeitado",
-        existing.type === "DOCUMENTO"
-          ? `O lançamento "${existing.attachmentName || existing.description}" foi ${decision === "Aprovada" ? "aprovado e lançado" : decision === "Rejeitada" ? "rejeitado e encerrado" : "devolvido ao BPO para ajuste"} por ${currentUser.name}.`
-          : `Aprovação "${existing.description}" de R$ ${existing.amount.toLocaleString("pt-BR")} foi ${decision.toLowerCase()} por ${currentUser.name}.`,
-        decision === "Aprovada" ? "SUCCESS" : "WARNING",
-        existing.type === "DOCUMENTO" ? existing.requesterId : undefined,
-        existing.companyId,
-      );
-
-      return prev.map((a) => (a.id === approvalId ? updated : a));
-    });
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Não foi possível registrar a decisão.",
+      };
+    }
   };
 
   // --- DOCUMENTS MANAGEMENT ---
@@ -4124,98 +4020,50 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const launchDocument = (id: string, updates: Partial<Document> = {}) => {
+  const launchDocument: BPOContextType["launchDocument"] = async (
+    id,
+    updates = {},
+  ) => {
     const current = documents.find((item) => item.id === id);
     if (
       !current ||
       current.purpose === "VIEW_ONLY" ||
       current.status === "Compartilhado"
     )
-      return;
+      return { success: false, error: "Documento indisponível para lançamento." };
     const document = { ...current, ...updates };
-    if (document.entryType === "Transferência") {
-      if (
-        !document.bankAccountId ||
-        !document.destinationBankAccountId ||
-        document.bankAccountId === document.destinationBankAccountId
-      )
-        return;
-      setBankAccounts((prev) =>
-        prev.map((account) =>
-          account.id === document.bankAccountId
-            ? { ...account, balance: account.balance - (document.amount || 0) }
-            : account.id === document.destinationBankAccountId
-              ? {
-                  ...account,
-                  balance: account.balance + (document.amount || 0),
-                }
-              : account,
-        ),
-      );
-      persistBankBalanceChanges(
-        [
-          { accountId: document.bankAccountId, delta: -(document.amount || 0) },
-          {
-            accountId: document.destinationBankAccountId,
-            delta: document.amount || 0,
-          },
-        ],
-        {
-          action: "TRANSFERENCIA_ENTRE_CONTAS",
-          entityType: "BankTransfer",
-          entityId: id,
-        },
-      );
-      const launchedAt = new Date().toISOString();
-      void updatePersistedDocument(id, {
-        ...updates,
-        status: "Lançado",
-        entryType: "Transferência",
-        launchedById: currentUser.id,
-        launchedAt,
-      })
-        .then((saved) => {
-          setDocuments((currentDocuments) =>
-            currentDocuments.map((item) =>
-              item.id === saved.id ? saved : item,
-            ),
-          );
-        })
-        .catch((error) => {
-          console.error("Falha ao persistir transferência do documento:", error);
-        });
-      setDocuments((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                ...updates,
-                status: "Lançado",
-                launchedById: currentUser.id,
-                launchedByName: currentUser.name,
-                launchedAt,
-              }
-            : item,
-        ),
-      );
-      createAuditLog(
-        "TRANSFERENCIA_ENTRE_CONTAS",
-        "BankTransfer",
-        id,
-        document.companyId,
-        null,
-        document,
-      );
-      return;
+    if (document.entryType === "Conta a Receber" && !hasPermission("accounts-receivable.create")) {
+      return { success: false, error: "Você não tem permissão para criar contas a receber." };
     }
-    if (document.entryType === "Conta a Receber") {
-      persistReceivablesFromDocument(document, id, updates);
-      return;
+    if (document.entryType !== "Conta a Receber" && document.entryType !== "Transferência" && !hasPermission("accounts-payable.create")) {
+      return { success: false, error: "Você não tem permissão para criar contas a pagar." };
     }
-    createPayableFromDocument(id, updates);
+    try {
+      const saved = await launchPersistedDocument(id, updates);
+      setDocuments((currentDocuments) =>
+        currentDocuments.map((item) => item.id === saved.id ? saved : item),
+      );
+      const [entries, setup] = await Promise.all([
+        fetchFinancialEntries(),
+        fetchFinancialSetup(),
+      ]);
+      setAccountsPayable(entries.accountsPayable);
+      setAccountsReceivable(entries.accountsReceivable);
+      setApprovals((currentApprovals) => [
+        ...currentApprovals.filter((approval) => approval.type !== "PAGAMENTO"),
+        ...entries.paymentApprovals,
+      ]);
+      setBankAccounts(setup.bankAccounts);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Não foi possível lançar o documento.",
+      };
+    }
   };
 
-  const submitDocumentForApproval = (
+  const submitDocumentForApproval: BPOContextType["submitDocumentForApproval"] = async (
     id: string,
     updates: Partial<Document> = {},
     recipientId?: string,
@@ -4241,34 +4089,45 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       !["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role) ||
       !recipient
     )
-      return false;
-    void requestPersistedDocumentApproval(id, recipient.id, { ...updates })
-      .then((result) => {
-        setApprovals((previous) => [...previous, result.approval]);
-        setDocuments((previous) =>
-          previous.map((item) =>
-            item.id === result.document.id ? result.document : item,
-          ),
-        );
-        addNotification(
-          "Documento recebido do BPO",
-          `${currentUser.name} enviou "${document.name}" para sua aprovação.`,
-          "ALERT",
-          recipient.id,
-          document.companyId,
-        );
-        addNotification(
-          "Documento enviado para aprovação",
-          `O pré-lançamento de "${document.name}" foi enviado para ${recipient.name}.`,
-          "SUCCESS",
-          currentUser.id,
-          document.companyId,
-        );
-      })
-      .catch((error) => {
-        console.error("Falha ao solicitar aprovação documental:", error);
-      });
-    return true;
+      return { success: false, error: "Documento ou destinatário inválido para aprovação." };
+    if (!hasPermission("approvals.request")) {
+      return { success: false, error: "Você não tem permissão para solicitar aprovações." };
+    }
+    const launchPermission = document.entryType === "Conta a Receber"
+      ? "accounts-receivable.create"
+      : document.entryType === "Transferência"
+        ? null
+        : "accounts-payable.create";
+    if (launchPermission && !hasPermission(launchPermission)) {
+      return { success: false, error: "Você não tem permissão para criar o lançamento após a aprovação." };
+    }
+    try {
+      const result = await requestPersistedDocumentApproval(id, recipient.id, { ...updates });
+      setApprovals((previous) => [...previous, result.approval]);
+      setDocuments((previous) =>
+        previous.map((item) => item.id === result.document.id ? result.document : item),
+      );
+      addNotification(
+        "Documento recebido do BPO",
+        `${currentUser.name} enviou "${document.name}" para sua aprovação.`,
+        "ALERT",
+        recipient.id,
+        document.companyId,
+      );
+      addNotification(
+        "Documento enviado para aprovação",
+        `O pré-lançamento de "${document.name}" foi enviado para ${recipient.name}.`,
+        "SUCCESS",
+        currentUser.id,
+        document.companyId,
+      );
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Não foi possível solicitar a aprovação.",
+      };
+    }
   };
 
   const cancelDocument = (id: string) => {

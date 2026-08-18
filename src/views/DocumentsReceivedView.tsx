@@ -118,6 +118,7 @@ export default function DocumentsReceivedView() {
     deleteDocuments,
     createStandaloneLaunch,
     addMasterData,
+    hasPermission,
   } = useBPOState();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -131,6 +132,7 @@ export default function DocumentsReceivedView() {
   const [approvalRecipientId, setApprovalRecipientId] = useState("");
   const [documentsToDelete, setDocumentsToDelete] = useState<Document[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
   const [page, setPage] = useState(1);
   const companyDocuments = useMemo(
     () =>
@@ -217,6 +219,14 @@ export default function DocumentsReceivedView() {
       user.role === "CLIENT" &&
       user.companies?.includes(activeCompany.id),
   );
+  const canLaunchFinancially = (document: Document) =>
+    document.entryType === "Conta a Receber"
+      ? hasPermission("accounts-receivable.create")
+      : document.entryType === "Transferência"
+        ? ["BPO_ADMIN", "BPO_TEAM"].includes(currentUser.role)
+        : hasPermission("accounts-payable.create");
+  const canRequestDocumentApproval = (document: Document) =>
+    hasPermission("approvals.request") && canLaunchFinancially(document);
   const options = (type: import("../types").MasterDataType) =>
     masterData.filter(
       (item) =>
@@ -264,18 +274,40 @@ export default function DocumentsReceivedView() {
     }
     setDraft({});
   };
-  const act = (action: "launch" | "approval" | "cancel") => {
+  const act = async (action: "launch" | "approval" | "cancel") => {
     if (!selected) return;
-    if (Object.keys(draft).length) updateDocument(selected.id, draft);
-    if (action === "launch") launchDocument(selected.id, draft);
+    setActionPending(true);
+    if (action === "launch") {
+      const result = await launchDocument(selected.id, draft);
+      setActionPending(false);
+      if (!result.success) {
+        showToast("error", "Não foi possível lançar o documento.", result.error);
+        return;
+      }
+      showToast("success", "Documento lançado.", "O registro financeiro foi criado e vinculado.");
+    }
     if (action === "approval") {
       if (!approvalRecipientId) {
+        setActionPending(false);
         alert("Selecione o cliente que aprovará o lançamento.");
         return;
       }
-      submitDocumentForApproval(selected.id, draft, approvalRecipientId);
+      const result = await submitDocumentForApproval(selected.id, draft, approvalRecipientId);
+      setActionPending(false);
+      if (!result.success) {
+        showToast("error", "Não foi possível solicitar a aprovação.", result.error);
+        return;
+      }
+      showToast("success", "Aprovação solicitada.", "O cliente recebeu o lançamento para conferência.");
     }
-    if (action === "cancel") cancelDocument(selected.id);
+    if (action === "cancel") {
+      const cancelled = cancelDocument(selected.id);
+      setActionPending(false);
+      if (!cancelled) {
+        showToast("error", "Não foi possível cancelar o documento.", "Confira o status e suas permissões.");
+        return;
+      }
+    }
     setDraft({});
   };
   const counts = (status: Document["status"]) =>
@@ -347,19 +379,30 @@ export default function DocumentsReceivedView() {
       "Os registros também foram removidos do Contas a Pagar ou Contas a Receber.",
     );
   };
-  const launchBatch = (items: Document[]) => {
+  const launchBatch = async (items: Document[]) => {
     if (!items.length) return;
     const total = items.reduce((sum, item) => sum + (item.amount || 0), 0);
     const message = `Você está prestes a lançar ${items.length} ${items.length === 1 ? "registro" : "registros"} no financeiro, no total de R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Esta ação não poderá ser desfeita. Deseja continuar?`;
     if (!window.confirm(message)) return;
-    items.forEach((item) => launchDocument(item.id));
+    setActionPending(true);
+    const results = await Promise.all(items.map((item) => launchDocument(item.id)));
+    setActionPending(false);
+    const successfulIds = items
+      .filter((_item, index) => results[index].success)
+      .map((item) => item.id);
+    const failed = results.filter((result) => !result.success);
     setSelectedIds((current) => {
       const next = new Set(current);
-      items.forEach((item) => next.delete(item.id));
+      successfulIds.forEach((id) => next.delete(id));
       return next;
     });
+    if (failed.length) {
+      showToast("error", `${failed.length} lançamento(s) não foram concluídos.`, failed[0].error);
+    } else {
+      showToast("success", `${successfulIds.length} lançamento(s) concluído(s).`, "Os registros financeiros foram vinculados.");
+    }
   };
-  const approveBatch = (items: Document[]) => {
+  const approveBatch = async (items: Document[]) => {
     if (!items.length) return;
     const recipient = approvalRecipients.find(
       (user) => user.id === approvalRecipientId,
@@ -370,10 +413,25 @@ export default function DocumentsReceivedView() {
     }
     const message = `Você enviará ${items.length} ${items.length === 1 ? "lançamento" : "lançamentos"} para aprovação de ${recipient.name}. Deseja continuar?`;
     if (!window.confirm(message)) return;
-    items.forEach((item) =>
+    setActionPending(true);
+    const results = await Promise.all(items.map((item) =>
       submitDocumentForApproval(item.id, {}, recipient.id),
-    );
-    setSelectedIds(new Set());
+    ));
+    setActionPending(false);
+    const successfulIds = items
+      .filter((_item, index) => results[index].success)
+      .map((item) => item.id);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      successfulIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    const failed = results.filter((result) => !result.success);
+    if (failed.length) {
+      showToast("error", `${failed.length} solicitação(ões) falharam.`, failed[0].error);
+    } else {
+      showToast("success", `${successfulIds.length} solicitação(ões) enviadas.`, "Os clientes já podem conferir os lançamentos.");
+    }
   };
 
   return (
@@ -763,7 +821,11 @@ export default function DocumentsReceivedView() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={!approvalRecipientId}
+                      disabled={
+                        actionPending ||
+                        !approvalRecipientId ||
+                        !selectedEligible.every(canRequestDocumentApproval)
+                      }
                       title={
                         approvalRecipientId
                           ? "Enviar selecionados para aprovação"
@@ -776,6 +838,7 @@ export default function DocumentsReceivedView() {
                     </Button>
                     <Button
                       size="sm"
+                      disabled={actionPending || !selectedEligible.every(canLaunchFinancially)}
                       className="bg-brand-green-600! hover:bg-emerald-600!"
                       icon={<Check className="h-3.5 w-3.5" />}
                       onClick={() => launchBatch(selectedEligible)}
@@ -1316,20 +1379,28 @@ export default function DocumentsReceivedView() {
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         onClick={() => act("launch")}
-                        className="bg-brand-green-600 hover:bg-emerald-600 text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
+                        disabled={actionPending || !canLaunchFinancially(selected)}
+                        title={!canLaunchFinancially(selected) ? "Sem permissão para criar este tipo de lançamento" : undefined}
+                        className="bg-brand-green-600 hover:bg-emerald-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" /> Lançar
                       </button>
                       <button
                         onClick={() => act("approval")}
-                        disabled={!approvalRecipientId}
+                        disabled={
+                          actionPending ||
+                          !approvalRecipientId ||
+                          !canRequestDocumentApproval(selected)
+                        }
+                        title={!canRequestDocumentApproval(selected) ? "Sem permissão para solicitar esta aprovação" : undefined}
                         className="bg-brand-navy-900 hover:bg-brand-navy-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed dark:disabled:text-ink-soft-dark text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <Send className="h-3.5 w-3.5" /> Aprovação
                       </button>
                       <button
                         onClick={() => act("cancel")}
-                        className="bg-brand-red-600 hover:bg-brand-red-500 text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
+                        disabled={actionPending}
+                        className="bg-brand-red-600 hover:bg-brand-red-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-lg py-2 text-[10px] font-semibold flex justify-center items-center gap-1 cursor-pointer transition-colors"
                       >
                         <X className="h-3.5 w-3.5" /> Cancelar
                       </button>
