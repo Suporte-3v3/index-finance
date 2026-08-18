@@ -3,18 +3,32 @@ import {
   DocumentAssistantError,
   DocumentAnalysisInput,
 } from '../../backend/document-assistant.js';
+import {
+  ApiAuthenticationError,
+  requireApiCompanyPermission,
+  requireApiProfile,
+} from '../../backend/api-auth.js';
 
 export const maxDuration = 60;
 
 export async function POST(request: Request): Promise<Response> {
   let input: DocumentAnalysisInput;
   try {
+    const profile = await requireApiProfile(request);
     input = (await request.json()) as DocumentAnalysisInput;
-  } catch {
-    return Response.json(
-      { error: 'O corpo da requisição não contém um JSON válido.' },
-      { status: 400 },
-    );
+    await requireApiCompanyPermission(profile, input.companyId, 'documents.upload');
+  } catch (error) {
+    const status = error instanceof ApiAuthenticationError
+      ? error.status
+      : error instanceof SyntaxError
+        ? 400
+        : 500;
+    const message = error instanceof ApiAuthenticationError
+      ? error.message
+      : status === 400
+        ? 'O corpo da requisição não contém um JSON válido.'
+        : 'Não foi possível validar o acesso ao assistente.';
+    return Response.json({ error: message }, { status });
   }
 
   try {

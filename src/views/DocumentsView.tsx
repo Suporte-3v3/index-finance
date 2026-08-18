@@ -377,6 +377,7 @@ export default function DocumentsView() {
     try {
       const analysis = await analyzeDocumentVisually(
         file,
+        analysisCompany.id,
         analysisCompany.tradeName,
         context,
       );

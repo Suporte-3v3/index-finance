@@ -13,6 +13,7 @@ import {
 } from './backend/database.js';
 import { getAuth } from './backend/auth.js';
 import { getAuthenticatedProfile } from './backend/auth-profile.js';
+import { ApiAuthenticationError, requireApiCompanyPermission } from './backend/api-auth.js';
 import {
   CompanyApiError,
   createCompany,
@@ -1025,10 +1026,17 @@ app.get('/api/documents/status', (_request, response) => {
 
 app.post('/api/documents/upload-url', async (request, response) => {
   try {
+    await requireApiCompanyPermission(
+      response.locals.authProfile,
+      request.body?.companyId,
+      'documents.upload',
+    );
     const session = await createDocumentUploadSession(request.body);
     response.json(session);
   } catch (error) {
-    const status = error instanceof DocumentAssistantError ? error.status : 500;
+    const status = error instanceof DocumentAssistantError || error instanceof ApiAuthenticationError
+      ? error.status
+      : 500;
     response.status(status).json({
       error:
         error instanceof Error
@@ -1040,10 +1048,17 @@ app.post('/api/documents/upload-url', async (request, response) => {
 
 app.post('/api/documents/analyze', async (request, response) => {
   try {
+    await requireApiCompanyPermission(
+      response.locals.authProfile,
+      request.body?.companyId,
+      'documents.upload',
+    );
     const analysis = await analyzeDocument(request.body);
     response.json({ analysis, source: 'gemini' });
   } catch (error) {
-    const status = error instanceof DocumentAssistantError ? error.status : 500;
+    const status = error instanceof DocumentAssistantError || error instanceof ApiAuthenticationError
+      ? error.status
+      : 500;
     response.status(status).json({
       error:
         error instanceof Error

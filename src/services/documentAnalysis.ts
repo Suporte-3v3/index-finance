@@ -18,7 +18,7 @@ function inferMimeType(file: File): string {
   return file.type;
 }
 
-async function prepareFileForGemini(file: File): Promise<{
+async function prepareFileForGemini(file: File, companyId: string): Promise<{
   fileUri: string;
   uploadedFileName: string;
   mimeType: string;
@@ -26,9 +26,11 @@ async function prepareFileForGemini(file: File): Promise<{
   const mimeType = inferMimeType(file);
   const sessionResponse = await fetch('/api/documents/upload-url', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       fileName: file.name,
+      companyId,
       mimeType,
       size: file.size,
     }),
@@ -78,13 +80,13 @@ async function prepareFileForGemini(file: File): Promise<{
   };
 }
 
-export async function analyzeDocumentVisually(file: File, companyName: string, context: string): Promise<VisualDocumentAnalysis> {
+export async function analyzeDocumentVisually(file: File, companyId: string, companyName: string, context: string): Promise<VisualDocumentAnalysis> {
   let result: Response;
   try {
-    const uploaded = await prepareFileForGemini(file);
+    const uploaded = await prepareFileForGemini(file, companyId);
     result = await fetch('/api/documents/analyze', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...uploaded, fileName: file.name, companyName, context })
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...uploaded, companyId, fileName: file.name, companyName, context })
     });
   } catch (error) {
     if (error instanceof Error) throw error;

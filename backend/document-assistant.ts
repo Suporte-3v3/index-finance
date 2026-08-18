@@ -6,6 +6,7 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 
 export interface DocumentAnalysisInput {
+  companyId?: string;
   data?: string;
   fileUri?: string;
   uploadedFileName?: string;
@@ -16,6 +17,7 @@ export interface DocumentAnalysisInput {
 }
 
 export interface DocumentUploadInput {
+  companyId?: string;
   fileName: string;
   mimeType: string;
   size: number;
@@ -102,7 +104,6 @@ export async function createDocumentUploadSession(
       400,
     );
   }
-
   const uploadedFileName = `files/${crypto.randomUUID()}`;
   const uploadResponse = await fetch(
     'https://generativelanguage.googleapis.com/upload/v1beta/files',
@@ -160,6 +161,12 @@ export async function analyzeDocument(
       'Arquivo ausente ou formato não compatível com a análise visual.',
       400,
     );
+  }
+  if (input.fileUri && input.uploadedFileName) {
+    const expectedFileUri = `https://generativelanguage.googleapis.com/v1beta/${input.uploadedFileName}`;
+    if (input.fileUri !== expectedFileUri) {
+      throw new DocumentAssistantError('Referência temporária do documento inválida.', 400);
+    }
   }
 
   const ai = new GoogleGenAI({ apiKey });
