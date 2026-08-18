@@ -460,7 +460,7 @@ interface BPOContextType {
     type: string,
     filters: string,
     options?: ReportGenerationOptions,
-  ) => ReportRecord | null;
+  ) => Promise<ReportRecord | null>;
   generateBuiltReport: (input: {
     modelType: ReportModelType;
     name: string;
@@ -473,7 +473,7 @@ interface BPOContextType {
     templateId?: string;
     templateName?: string;
     recipientId?: string;
-  }) => ReportRecord | null;
+  }) => Promise<ReportRecord | null>;
   saveReportTemplate: (input: {
     id?: string;
     name: string;
@@ -2391,8 +2391,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   };
 
   // --- REPORT GENERATION ---
-  // Report generation/rendering stays fully client-side (as before); only the
-  // record's metadata is persisted, in the background, to Postgres.
+  // A renderização permanece no cliente, mas o sucesso só é informado depois
+  // que arquivo e metadados estiverem persistidos.
   const uploadReportArtifact = async (record: ReportRecord) => {
     if (record.fileUrl) return record.fileUrl;
     if (!record.fileContent || !record.fileName || !record.mimeType) {
@@ -2416,33 +2416,29 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     return payload.url;
   };
 
-  const persistReport = (record: ReportRecord) => {
-    const upload = record.fileContent
-      ? uploadReportArtifact(record).then((url) => ({ url }))
-      : Promise.resolve<{ url?: string }>({ url: record.fileUrl });
-    void upload
-      .then((uploaded: { url?: string }) =>
-        createPersistedReport({
-          companyId: record.companyId,
-          name: record.name,
-          type: record.type,
-          filters: record.filters,
-          format: record.format,
-          fileName: record.fileName,
-          mimeType: record.mimeType,
-          objectKey: uploaded.url,
-          fileSizeBytes: record.fileContent ? Math.floor((record.fileContent.length * 3) / 4) : undefined,
-          templateId: record.templateId,
-          templateName: record.templateName,
-          recipientId: record.recipientId,
-          recipientName: record.recipientName,
-          recipientRole: record.recipientRole,
-        }),
-      )
-      .then((persisted) => {
-        setReports((prev) => prev.map((item) => (item.id === record.id ? { ...item, id: persisted.id } : item)));
-      })
-      .catch((error) => console.error("Failed to persist report:", error instanceof Error ? error.message : error));
+  const persistReport = async (record: ReportRecord): Promise<ReportRecord> => {
+    const objectKey = record.fileContent ? await uploadReportArtifact(record) : record.fileUrl;
+    if (!objectKey) throw new Error("O arquivo do relatório não foi armazenado.");
+    const persisted = await createPersistedReport({
+      companyId: record.companyId,
+      name: record.name,
+      type: record.type,
+      filters: record.filters,
+      format: record.format,
+      fileName: record.fileName,
+      mimeType: record.mimeType,
+      objectKey,
+      fileSizeBytes: record.fileContent ? Math.floor((record.fileContent.length * 3) / 4) : undefined,
+      templateId: record.templateId,
+      templateName: record.templateName,
+      recipientId: record.recipientId,
+    });
+    return {
+      ...record,
+      ...persisted,
+      fileContent: record.fileContent,
+      fileUrl: persisted.fileUrl || objectKey,
+    };
   };
 
   const persistReportTemplate = (template: ReportTemplate) => {
@@ -2462,12 +2458,12 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       .catch((error) => console.error("Failed to persist report template:", error instanceof Error ? error.message : error));
   };
 
-  const generateReport = (
+  const generateReport = async (
     name: string,
     type: string,
     filters: string,
     options: ReportGenerationOptions = { format: "PDF" },
-  ): ReportRecord | null => {
+  ): Promise<ReportRecord | null> => {
     if (!hasPermission("reports.generate") || !activeCompany) return null;
 
     const matchesPeriod = (date?: string) =>
@@ -2742,14 +2738,14 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       ...artifact,
     };
 
-    setReports((prev) => [newReport, ...prev]);
-    persistReport(newReport);
+    const persistedReport = await persistReport(newReport);
+    setReports((prev) => [persistedReport, ...prev]);
     addNotification(
       "Relatório Pronto",
       `O relatório "${name}" foi gerado em ${options.format} com ${rows.length} registro(s).`,
       "SUCCESS",
     );
-    return newReport;
+    return persistedReport;
   };
 
   // --- CENTRAL DE RELATÓRIOS: construtor por blocos ---
@@ -2778,7 +2774,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const generateBuiltReport: BPOContextType["generateBuiltReport"] = (
+  const generateBuiltReport: BPOContextType["generateBuiltReport"] = async (
     input,
   ) => {
     if (!hasPermission("reports.generate") || !activeCompany) return null;
@@ -2930,17 +2926,17 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       ...artifact,
     };
 
-    setReports((prev) => [newReport, ...prev]);
-    persistReport(newReport);
+    const persistedReport = await persistReport(newReport);
+    setReports((prev) => [persistedReport, ...prev]);
     addNotification(
       "Relatório Pronto",
       `O relatório "${name}" foi gerado em ${format === "EXCEL" ? "Excel" : "PDF"}.`,
       "SUCCESS",
     );
 
-    if (recipient) sendReportToDocumentCenter(newReport, recipient.id);
+    if (recipient) await sendReportToDocumentCenter(persistedReport, recipient.id);
 
-    return newReport;
+    return persistedReport;
   };
 
   const saveReportTemplate: BPOContextType["saveReportTemplate"] = (

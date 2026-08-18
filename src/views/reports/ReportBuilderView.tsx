@@ -421,7 +421,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     setIsGenerating(true);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     try {
-      const report = generateBuiltReport({
+      const report = await generateBuiltReport({
         modelType,
         name: name.trim() || modelType,
         blocks,

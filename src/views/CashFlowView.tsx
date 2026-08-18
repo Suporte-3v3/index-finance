@@ -84,6 +84,8 @@ export default function CashFlowView() {
   const [periodRange, setPeriodRange] = useState<"7" | "15" | "30" | "MONTH" | "QUARTER" | "CUSTOM">("30");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!activeCompany) return null;
 
@@ -343,7 +345,9 @@ export default function CashFlowView() {
 
   const tableRows = getGroupedPeriods();
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    setExportError("");
+    setIsExporting(true);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let exportStart = customStart;
@@ -363,26 +367,39 @@ export default function CashFlowView() {
       exportEnd = end.toISOString().slice(0, 10);
     }
     const filterSummary = `Período: ${exportStart || "início"} a ${exportEnd || "fim"} | Conta: ${selectedAccount}, Categoria: ${selectedCategory}, Centro de Custo: ${selectedCostCenter}`;
-    const report = generateReport(
-      `Fluxo de Caixa Realizado vs Projetado`,
-      "Fluxo de Caixa",
-      filterSummary,
-      {
-        format: "EXCEL",
-        startDate: exportStart || undefined,
-        endDate: exportEnd || undefined,
-        bankAccountId:
-          selectedAccount === "ALL" ? undefined : selectedAccount,
-        category: selectedCategory === "ALL" ? undefined : selectedCategory,
-        costCenter:
-          selectedCostCenter === "ALL" ? undefined : selectedCostCenter,
-      },
-    );
-    if (report) downloadReportFile(report);
+    try {
+      const report = await generateReport(
+        `Fluxo de Caixa Realizado vs Projetado`,
+        "Fluxo de Caixa",
+        filterSummary,
+        {
+          format: "EXCEL",
+          startDate: exportStart || undefined,
+          endDate: exportEnd || undefined,
+          bankAccountId:
+            selectedAccount === "ALL" ? undefined : selectedAccount,
+          category: selectedCategory === "ALL" ? undefined : selectedCategory,
+          costCenter:
+            selectedCostCenter === "ALL" ? undefined : selectedCostCenter,
+        },
+      );
+      if (!report || !downloadReportFile(report)) {
+        throw new Error("Não foi possível gerar o arquivo do fluxo de caixa.");
+      }
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Não foi possível exportar o fluxo de caixa.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
     <div id="cash-flow-root" className="space-y-4">
+      {exportError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-500/10 dark:border-red-500/25 px-4 py-3 text-xs font-semibold text-red-700 dark:text-red-300">
+          {exportError}
+        </div>
+      )}
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -417,8 +434,8 @@ export default function CashFlowView() {
             />
           </div>
 
-          <Button variant="outline" icon={<Download className="h-4 w-4" />} onClick={handleExport}>
-            Exportar
+          <Button variant="outline" icon={<Download className="h-4 w-4" />} onClick={handleExport} loading={isExporting}>
+            {isExporting ? "Exportando..." : "Exportar"}
           </Button>
         </div>
       </div>
