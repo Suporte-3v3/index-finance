@@ -158,7 +158,7 @@ export default function ApprovalsView() {
             <p className="text-xs text-ink-soft dark:text-ink-soft-dark mb-3 -mt-2">
               Enviado por <strong className="text-ink dark:text-ink-dark">{previewApproval.requesterName}</strong>
             </p>
-            <div className="min-h-[60vh] bg-canvas dark:bg-white/[0.03] rounded-lg p-3 sm:p-5">
+            <div className="h-[60vh] bg-canvas dark:bg-white/[0.03] rounded-lg p-3 sm:p-5">
               <DocumentPreview
                 name={
                   previewApproval.attachmentName || previewApproval.description

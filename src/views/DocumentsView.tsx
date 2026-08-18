@@ -814,7 +814,7 @@ export default function DocumentsView() {
                   ? `Compartilhado com ${previewDocument.recipientName}`
                   : "Documento do seu histórico"}
             </p>
-            <div className="min-h-[60vh] bg-canvas dark:bg-white/[0.03] rounded-lg p-3 sm:p-5">
+            <div className="h-[60vh] bg-canvas dark:bg-white/[0.03] rounded-lg p-3 sm:p-5">
               <DocumentPreview
                 name={previewDocument.name}
                 url={previewDocument.signedUrl}
