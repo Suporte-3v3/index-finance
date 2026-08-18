@@ -240,7 +240,7 @@ export default function ImportEntriesActions() {
       <Card>
         <CardHeader
           title="1. Baixar planilha modelo"
-          description="O modelo já vem com as categorias, centros de custo, formas de pagamento e contas bancárias cadastradas para esta empresa."
+          description="O modelo já vem com fornecedores, clientes, categorias, centros de custo, formas de pagamento e contas bancárias cadastrados para esta empresa."
         />
         <div className="mt-4">
           <Button

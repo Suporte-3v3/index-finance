@@ -96,7 +96,7 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   ["Coluna", "Obrigatório", "Formato / observações"],
   ["Tipo", "Sim", "\"A Pagar\" ou \"A Receber\" (exatamente assim)"],
   ["Descrição", "Sim", "Texto livre, até 500 caracteres"],
-  ["Fornecedor/Cliente", "Sim", "Nome do fornecedor (contas a pagar) ou cliente (contas a receber)"],
+  ["Fornecedor/Cliente", "Sim", "Veja a aba \"Valores Válidos\" e use um fornecedor ou cliente já cadastrado"],
   ["Categoria", "Sim", "Veja a aba \"Valores Válidos\" para os nomes já cadastrados"],
   ["Centro de Custo", "Sim", "Veja a aba \"Valores Válidos\""],
   ["Competência (MM-AAAA)", "Sim", "Ex.: 08-2026"],
@@ -113,12 +113,15 @@ const INSTRUCTIONS_ROWS: (string | number)[][] = [
   [],
   ["Não altere os nomes das abas nem da linha de cabeçalho."],
   ["Apague as duas linhas de exemplo antes de enviar o arquivo."],
+  ["A importação não cria cadastros. Se faltar algum valor, importe-o primeiro na tela Cadastros."],
 ];
 
 export interface TemplateMasterData {
   categories: string[];
   costCenters: string[];
   paymentMethods: string[];
+  suppliers: string[];
+  customers: string[];
   bankAccounts: BankAccount[];
 }
 
@@ -140,6 +143,8 @@ export function buildImportTemplateMasterData(
     categories: namesOf("CATEGORY"),
     costCenters: namesOf("COST_CENTER"),
     paymentMethods: namesOf("PAYMENT_METHOD"),
+    suppliers: namesOf("SUPPLIER"),
+    customers: namesOf("CUSTOMER"),
     bankAccounts: bankAccounts.filter((account) => account.companyId === companyId),
   };
 }
@@ -197,6 +202,12 @@ export async function buildImportTemplateWorkbookBase64(reference: TemplateMaste
     [],
     ["Formas de Pagamento"],
     ...(reference.paymentMethods.length ? reference.paymentMethods.map((name) => [name]) : [["(nenhuma cadastrada ainda)"]]),
+    [],
+    ["Fornecedores"],
+    ...(reference.suppliers.length ? reference.suppliers.map((name) => [name]) : [["(nenhum cadastrado ainda)"]]),
+    [],
+    ["Clientes"],
+    ...(reference.customers.length ? reference.customers.map((name) => [name]) : [["(nenhum cadastrado ainda)"]]),
     [],
     ["Contas Bancárias"],
     ...(reference.bankAccounts.length
@@ -311,9 +322,12 @@ export function validateImportRow(
 ): ParsedImportRow {
   const fieldErrors: ParsedImportRow["fieldErrors"] = {};
   const fieldWarnings: ParsedImportRow["fieldWarnings"] = {};
-  const categorySet = new Set(reference.categories.map((name) => name.toLocaleLowerCase("pt-BR")));
-  const costCenterSet = new Set(reference.costCenters.map((name) => name.toLocaleLowerCase("pt-BR")));
-  const paymentMethodSet = new Set(reference.paymentMethods.map((name) => name.toLocaleLowerCase("pt-BR")));
+  const normalizeReference = (value: string) => value.trim().toLocaleLowerCase("pt-BR");
+  const categorySet = new Set(reference.categories.map(normalizeReference));
+  const costCenterSet = new Set(reference.costCenters.map(normalizeReference));
+  const paymentMethodSet = new Set(reference.paymentMethods.map(normalizeReference));
+  const supplierSet = new Set(reference.suppliers.map(normalizeReference));
+  const customerSet = new Set(reference.customers.map(normalizeReference));
   const bankAccountIds = new Set(reference.bankAccounts.map((account) => account.id));
 
   if (!row.type) addFieldMessage(fieldErrors, "type", 'Tipo inválido: use "A Pagar" ou "A Receber".');
@@ -324,16 +338,20 @@ export function validateImportRow(
       "partyName",
       row.type === "RECEBER" ? "Cliente é obrigatório." : "Fornecedor é obrigatório.",
     );
+  } else if (row.type === "PAGAR" && !supplierSet.has(normalizeReference(row.fields.partyName))) {
+    addFieldMessage(fieldErrors, "partyName", "Fornecedor não cadastrado. Cadastre-o antes de importar os lançamentos.");
+  } else if (row.type === "RECEBER" && !customerSet.has(normalizeReference(row.fields.partyName))) {
+    addFieldMessage(fieldErrors, "partyName", "Cliente não cadastrado. Cadastre-o antes de importar os lançamentos.");
   }
 
   if (!row.fields.category) addFieldMessage(fieldErrors, "category", "Categoria é obrigatória.");
-  else if (categorySet.size && !categorySet.has(row.fields.category.toLocaleLowerCase("pt-BR"))) {
-    addFieldMessage(fieldWarnings, "category", "Categoria não encontrada nos cadastros da empresa — será criada como texto livre.");
+  else if (!categorySet.has(normalizeReference(row.fields.category))) {
+    addFieldMessage(fieldErrors, "category", "Categoria não cadastrada. Cadastre-a antes de importar os lançamentos.");
   }
 
   if (!row.fields.costCenter) addFieldMessage(fieldErrors, "costCenter", "Centro de custo é obrigatório.");
-  else if (costCenterSet.size && !costCenterSet.has(row.fields.costCenter.toLocaleLowerCase("pt-BR"))) {
-    addFieldMessage(fieldWarnings, "costCenter", "Centro de custo não encontrado nos cadastros da empresa — será criado como texto livre.");
+  else if (!costCenterSet.has(normalizeReference(row.fields.costCenter))) {
+    addFieldMessage(fieldErrors, "costCenter", "Centro de custo não cadastrado. Cadastre-o antes de importar os lançamentos.");
   }
 
   if (!brazilianMonthToIso(row.fields.competenceMonth)) {
@@ -360,8 +378,8 @@ export function validateImportRow(
   }
 
   if (!row.fields.paymentMethod) addFieldMessage(fieldErrors, "paymentMethod", "Forma de pagamento é obrigatória.");
-  else if (paymentMethodSet.size && !paymentMethodSet.has(row.fields.paymentMethod.toLocaleLowerCase("pt-BR"))) {
-    addFieldMessage(fieldWarnings, "paymentMethod", "Forma de pagamento não encontrada nos cadastros da empresa — será criada como texto livre.");
+  else if (!paymentMethodSet.has(normalizeReference(row.fields.paymentMethod))) {
+    addFieldMessage(fieldErrors, "paymentMethod", "Forma de pagamento não cadastrada. Cadastre-a antes de importar os lançamentos.");
   }
 
   if (row.fields.bankAccountId && !bankAccountIds.has(row.fields.bankAccountId)) {

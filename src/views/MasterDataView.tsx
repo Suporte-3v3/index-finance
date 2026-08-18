@@ -13,6 +13,7 @@ import {
 import { useBPOState } from "../hooks/useBPOState";
 import { BankAccount, MasterDataOption, MasterDataType } from "../types";
 import CurrencyInput from "../components/CurrencyInput";
+import ImportMasterDataActions from "../components/ImportMasterDataActions";
 import { Badge, Button, Card, EmptyState, IconButton, Modal, useToast } from "../components/ui";
 
 const getInitials = (name: string) =>
@@ -282,12 +283,15 @@ export default function MasterDataView() {
         )}
       </Modal>
 
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">Cadastros</h1>
-        <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed mt-1">
-          Gerencie as informações utilizadas nos formulários e lançamentos de{" "}
-          {activeCompany.tradeName}.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink dark:text-ink-dark tracking-tight">Cadastros</h1>
+          <p className="text-sm text-ink-soft dark:text-ink-soft-dark leading-relaxed mt-1">
+            Gerencie as informações utilizadas nos formulários e lançamentos de{" "}
+            {activeCompany.tradeName}.
+          </p>
+        </div>
+        <ImportMasterDataActions />
       </div>
       <div className="grid lg:grid-cols-[230px_1fr] gap-4">
         <Card padding={false} className="p-2 h-fit">

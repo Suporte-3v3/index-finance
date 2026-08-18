@@ -13,6 +13,8 @@ const reference: TemplateMasterData = {
   categories: ["Aluguel"],
   costCenters: ["Administrativo"],
   paymentMethods: ["Pix"],
+  suppliers: ["Imobiliária Central"],
+  customers: ["Cliente Modelo Ltda"],
   bankAccounts: [],
 };
 
@@ -83,6 +85,35 @@ test("preserva datas reais do Excel e as apresenta como DD-MM-AAAA", () => {
   assert.equal(row.fields.issueDate, "01-08-2026");
   assert.equal(row.fields.dueDate, "10-08-2026");
   assert.equal(row.errors.length, 0);
+});
+
+test("bloqueia referências financeiras que ainda não estão cadastradas", () => {
+  const unknownReferenceRow = validRow();
+  unknownReferenceRow[2] = "Fornecedor sem cadastro";
+  unknownReferenceRow[3] = "Categoria sem cadastro";
+  unknownReferenceRow[4] = "Centro sem cadastro";
+  unknownReferenceRow[12] = "Forma sem cadastro";
+
+  const [row] = parseImportRows([header, unknownReferenceRow], reference);
+
+  assert.ok(row.fieldErrors.partyName?.some((message) => message.includes("não cadastrado")));
+  assert.ok(row.fieldErrors.category?.some((message) => message.includes("não cadastrada")));
+  assert.ok(row.fieldErrors.costCenter?.some((message) => message.includes("não cadastrado")));
+  assert.ok(row.fieldErrors.paymentMethod?.some((message) => message.includes("não cadastrada")));
+  assert.equal(row.warnings.length, 0);
+});
+
+test("bloqueia referências quando a empresa ainda não possui nenhum cadastro", () => {
+  const [row] = parseImportRows([header, validRow()], {
+    categories: [],
+    costCenters: [],
+    paymentMethods: [],
+    suppliers: [],
+    customers: [],
+    bankAccounts: [],
+  });
+
+  assert.ok(row.errors.length >= 4);
 });
 
 test("gera o modelo com cabeçalhos brasileiros e células de data formatadas", async () => {

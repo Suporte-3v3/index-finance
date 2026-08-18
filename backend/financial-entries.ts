@@ -977,6 +977,83 @@ export interface ImportEntriesResult {
 // "Novo lançamento avulso" da tela de Lançamentos faz no browser (documento
 // placeholder -> título financeiro -> documento marcado como "Lançado"), para
 // que cada linha importada apareça normalmente naquela fila/histórico.
+type ImportReferenceSets = {
+  CATEGORY: Set<string>;
+  COST_CENTER: Set<string>;
+  PAYMENT_METHOD: Set<string>;
+  SUPPLIER: Set<string>;
+  CUSTOMER: Set<string>;
+  bankAccountIds: Set<string>;
+};
+
+const normalizeImportReference = (value: unknown) =>
+  typeof value === "string" ? value.trim().toLocaleLowerCase("pt-BR") : "";
+
+async function loadImportReferenceSets(companyId: string): Promise<ImportReferenceSets> {
+  const [masterData, bankAccounts] = await Promise.all([
+    getDatabaseClient().masterDataOption.findMany({
+      where: {
+        companyId,
+        active: true,
+        type: { in: ["CATEGORY", "COST_CENTER", "PAYMENT_METHOD", "SUPPLIER", "CUSTOMER"] },
+      },
+      select: { type: true, name: true },
+    }),
+    getDatabaseClient().bankAccount.findMany({
+      where: { companyId, active: true, deletedAt: null },
+      select: { id: true },
+    }),
+  ]);
+  const references: ImportReferenceSets = {
+    CATEGORY: new Set(),
+    COST_CENTER: new Set(),
+    PAYMENT_METHOD: new Set(),
+    SUPPLIER: new Set(),
+    CUSTOMER: new Set(),
+    bankAccountIds: new Set(bankAccounts.map(({ id }) => id)),
+  };
+  masterData.forEach((item) => {
+    references[item.type as keyof Omit<ImportReferenceSets, "bankAccountIds">].add(
+      normalizeImportReference(item.name),
+    );
+  });
+  return references;
+}
+
+function validateImportedEntryReferences(
+  entry: any,
+  type: "PAGAR" | "RECEBER",
+  references: ImportReferenceSets,
+) {
+  const missing: string[] = [];
+  const requireReference = (
+    value: unknown,
+    referenceType: keyof Omit<ImportReferenceSets, "bankAccountIds">,
+    label: string,
+  ) => {
+    const normalized = normalizeImportReference(value);
+    if (normalized && !references[referenceType].has(normalized)) {
+      missing.push(`${label} "${String(value).trim()}"`);
+    }
+  };
+  requireReference(entry?.category, "CATEGORY", "categoria");
+  requireReference(entry?.costCenter, "COST_CENTER", "centro de custo");
+  requireReference(entry?.paymentMethod, "PAYMENT_METHOD", "forma de pagamento");
+  requireReference(
+    type === "PAGAR" ? entry?.supplier : entry?.customer,
+    type === "PAGAR" ? "SUPPLIER" : "CUSTOMER",
+    type === "PAGAR" ? "fornecedor" : "cliente",
+  );
+  if (entry?.bankAccountId && !references.bankAccountIds.has(String(entry.bankAccountId))) {
+    missing.push("conta bancária");
+  }
+  if (missing.length) {
+    throw new FinancialEntriesApiError(
+      `Cadastros não encontrados: ${missing.join(", ")}. Cadastre-os antes de importar os lançamentos.`,
+    );
+  }
+}
+
 async function registerDocumentForEntry(
   profile: FinancialEntriesProfile,
   companyId: string,
@@ -1028,12 +1105,14 @@ export async function importFinancialEntries(
   if (!entries.length) throw new FinancialEntriesApiError("Nenhum lançamento para importar.");
   if (entries.length > 500) throw new FinancialEntriesApiError("Limite de 500 lançamentos por importação.");
 
+  const references = await loadImportReferenceSets(companyId);
   const results: ImportEntriesResult["results"] = [];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
     const row = Number(entry?.row) || index + 1;
     try {
       if (entry?.type === "PAGAR") {
+        validateImportedEntryReferences(entry, "PAGAR", references);
         const { payables } = await createPayables(profile, { ...entry, companyId });
         const created = payables[0];
         const document = created
@@ -1041,6 +1120,7 @@ export async function importFinancialEntries(
           : undefined;
         results.push({ row, success: true, type: "PAGAR", payable: created, document });
       } else if (entry?.type === "RECEBER") {
+        validateImportedEntryReferences(entry, "RECEBER", references);
         const receivables = await createReceivables(profile, { ...entry, companyId });
         const created = receivables[0];
         const document = created
