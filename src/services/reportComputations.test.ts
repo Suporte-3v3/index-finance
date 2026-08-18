@@ -151,3 +151,107 @@ test("DRE usa a mesma fonte filtrada e preserva observações", () => {
   const comment = sections.find((section) => section.kind === "kpis" && section.title === "Comentário");
   assert.equal(comment?.kind === "kpis" ? comment.items[0].value : "", "Validado pelo financeiro.");
 });
+
+test("base de pagamento ignora títulos sem baixa e usa somente movimentos do período", () => {
+  const paymentFilters: ReportFilters = { ...filters, dateBasis: "payment" };
+  const unpaid = computeReportSections(
+    "Contas a Pagar",
+    [{ instanceId: "summary", blockKey: "AP_SUMMARY", visualization: "table" }],
+    paymentFilters,
+    { accountsPayable: [payable()], accountsReceivable: [], bankAccounts: [bank] },
+  )[0];
+  assert.equal(unpaid.kind, "kpis");
+  if (unpaid.kind === "kpis") {
+    assert.equal(unpaid.items.find((item) => item.label === "Quantidade de lançamentos")?.value, "0");
+  }
+
+  const partiallyPaid = payable({
+    status: "Parcialmente paga",
+    paidAmount: 500,
+    paymentHistory: [
+      {
+        id: "payment-june",
+        date: "2026-06-30",
+        amount: 200,
+        bankAccountId: "bank-1",
+        bankAccountName: "Banco Idex",
+        interest: 0,
+        penalty: 0,
+        discount: 0,
+        registeredById: "user-1",
+        registeredByName: "Usuário",
+        createdAt: "2026-06-30T12:00:00.000Z",
+      },
+      {
+        id: "payment-july",
+        date: "2026-07-15",
+        amount: 300,
+        bankAccountId: "bank-1",
+        bankAccountName: "Banco Idex",
+        interest: 0,
+        penalty: 0,
+        discount: 0,
+        registeredById: "user-1",
+        registeredByName: "Usuário",
+        createdAt: "2026-07-15T12:00:00.000Z",
+      },
+    ],
+  });
+  const section = computeReportSections(
+    "Contas a Pagar",
+    [{ instanceId: "summary", blockKey: "AP_SUMMARY", visualization: "table" }],
+    paymentFilters,
+    { accountsPayable: [payable(), partiallyPaid], accountsReceivable: [], bankAccounts: [bank] },
+  )[0];
+  assert.equal(section.kind, "kpis");
+  if (section.kind !== "kpis") return;
+  assert.match(section.items.find((item) => item.label === "Total geral")?.value || "", /300,00/);
+  assert.equal(section.items.find((item) => item.label === "Quantidade de lançamentos")?.value, "1");
+});
+
+test("DRE por caixa considera somente pagamentos e recebimentos do período", () => {
+  const paid = payable({
+    status: "Parcialmente paga",
+    paidAmount: 300,
+    paymentHistory: [{
+      id: "payment-1",
+      date: "2026-07-15",
+      amount: 300,
+      bankAccountId: "bank-1",
+      bankAccountName: "Banco Idex",
+      interest: 0,
+      penalty: 0,
+      discount: 0,
+      registeredById: "user-1",
+      registeredByName: "Usuário",
+      createdAt: "2026-07-15T12:00:00.000Z",
+    }],
+  });
+  const received = receivable({
+    status: "Parcialmente recebido",
+    receivedAmount: 250,
+    receiptHistory: [{
+      id: "receipt-1",
+      date: "2026-07-16",
+      amount: 250,
+      bankAccountId: "bank-1",
+      bankAccountName: "Banco Idex",
+      interest: 0,
+      penalty: 0,
+      discount: 0,
+      registeredById: "user-1",
+      registeredByName: "Usuário",
+      createdAt: "2026-07-16T12:00:00.000Z",
+    }],
+  });
+  const sections = computeDreSections(
+    { ...filters, dateBasis: "payment" },
+    { detailed: true },
+    { accountsPayable: [payable(), paid], accountsReceivable: [receivable(), received], bankAccounts: [bank] },
+  );
+  assert.equal(sections[0].kind, "kpis");
+  if (sections[0].kind !== "kpis") return;
+  assert.match(sections[0].items.find((item) => item.label === "Receita Bruta")?.value || "", /250,00/);
+  assert.match(sections[0].items.find((item) => item.label === "(-) Despesas")?.value || "", /300,00/);
+  assert.match(sections[0].items.find((item) => item.label === "(=) Resultado Líquido")?.value || "", /-.*50,00/);
+});

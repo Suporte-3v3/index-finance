@@ -46,13 +46,13 @@ const isCanceledReceivable = (status: AccountReceivable["status"]) =>
   status === "Cancelado";
 
 export const apDate = (item: AccountPayable, basis: ReportDateBasis): string => {
-  if (basis === "payment") return item.paymentDate || item.dueDate;
+  if (basis === "payment") return item.paymentHistory?.at(-1)?.date || item.paymentDate || "";
   if (basis === "competence") return `${item.competenceMonth}-01`;
   return item.dueDate;
 };
 
 export const arDate = (item: AccountReceivable, basis: ReportDateBasis): string => {
-  if (basis === "payment") return item.receiptDate || item.dueDate;
+  if (basis === "payment") return item.receiptHistory?.at(-1)?.date || item.receiptDate || "";
   if (basis === "competence") return `${item.competenceMonth}-01`;
   return item.dueDate;
 };
@@ -79,7 +79,11 @@ const filterPayables = (
   payables.filter(
     (item) =>
       !isCanceledPayable(item.status) &&
-      inRange(apDate(item, filters.dateBasis), range.startDate, range.endDate) &&
+      (filters.dateBasis === "payment"
+        ? (item.paymentHistory?.length
+            ? item.paymentHistory.some((payment) => inRange(payment.date, range.startDate, range.endDate))
+            : inRange(item.paymentDate || "", range.startDate, range.endDate))
+        : inRange(apDate(item, filters.dateBasis), range.startDate, range.endDate)) &&
       (!filters.supplier || item.supplier === filters.supplier) &&
       (!filters.category || item.category === filters.category) &&
       (!filters.costCenter || item.costCenter === filters.costCenter) &&
@@ -96,7 +100,11 @@ const filterReceivables = (
   receivables.filter(
     (item) =>
       !isCanceledReceivable(item.status) &&
-      inRange(arDate(item, filters.dateBasis), range.startDate, range.endDate) &&
+      (filters.dateBasis === "payment"
+        ? (item.receiptHistory?.length
+            ? item.receiptHistory.some((receipt) => inRange(receipt.date, range.startDate, range.endDate))
+            : inRange(item.receiptDate || "", range.startDate, range.endDate))
+        : inRange(arDate(item, filters.dateBasis), range.startDate, range.endDate)) &&
       (!filters.customer || item.customer === filters.customer) &&
       (!filters.category || item.category === filters.category) &&
       (!filters.costCenter || item.costCenter === filters.costCenter) &&
@@ -107,6 +115,44 @@ const filterReceivables = (
 
 const payablePaid = (item: AccountPayable) =>
   item.paidAmount ?? (isPaidPayable(item.status) ? item.finalAmount : 0);
+
+const payableCashMovements = (
+  item: AccountPayable,
+  range: { startDate: string; endDate: string },
+) => item.paymentHistory?.length
+  ? item.paymentHistory
+      .filter((payment) => inRange(payment.date, range.startDate, range.endDate))
+      .map((payment) => ({ date: payment.date, value: payment.amount }))
+  : item.paymentDate && inRange(item.paymentDate, range.startDate, range.endDate)
+    ? [{ date: item.paymentDate, value: payablePaid(item) }]
+    : [];
+
+const receivableCashMovements = (
+  item: AccountReceivable,
+  range: { startDate: string; endDate: string },
+) => item.receiptHistory?.length
+  ? item.receiptHistory
+      .filter((receipt) => inRange(receipt.date, range.startDate, range.endDate))
+      .map((receipt) => ({ date: receipt.date, value: receipt.amount }))
+  : item.receiptDate && inRange(item.receiptDate, range.startDate, range.endDate)
+    ? [{ date: item.receiptDate, value: item.receivedAmount }]
+    : [];
+
+const payableReportValue = (
+  item: AccountPayable,
+  filters: ReportFilters,
+  range: { startDate: string; endDate: string },
+) => filters.dateBasis === "payment"
+  ? payableCashMovements(item, range).reduce((sum, movement) => sum + movement.value, 0)
+  : item.finalAmount;
+
+const receivableReportValue = (
+  item: AccountReceivable,
+  filters: ReportFilters,
+  range: { startDate: string; endDate: string },
+) => filters.dateBasis === "payment"
+  ? receivableCashMovements(item, range).reduce((sum, movement) => sum + movement.value, 0)
+  : item.amount;
 
 const groupSum = <T,>(items: T[], keyOf: (item: T) => string, valueOf: (item: T) => number) => {
   const map = new Map<string, number>();
@@ -178,11 +224,14 @@ function computeApBlock(
   const definition = getBlockDefinition("Contas a Pagar", config.blockKey);
   const title = config.title || definition?.label || config.blockKey;
   const payables = filterPayables(data.accountsPayable, filters, range);
+  const reportValue = (item: AccountPayable) => payableReportValue(item, filters, range);
 
   switch (config.blockKey) {
     case "AP_SUMMARY": {
-      const previsto = payables.reduce((sum, item) => sum + item.finalAmount, 0);
-      const pago = payables.reduce((sum, item) => sum + payablePaid(item), 0);
+      const previsto = payables.reduce((sum, item) => sum + reportValue(item), 0);
+      const pago = filters.dateBasis === "payment"
+        ? previsto
+        : payables.reduce((sum, item) => sum + payablePaid(item), 0);
       const vencido = payables
         .filter((item) => item.dueDate < today() && !isPaidPayable(item.status))
         .reduce((sum, item) => sum + (item.finalAmount - payablePaid(item)), 0);
@@ -195,7 +244,11 @@ function computeApBlock(
       ];
       if (config.compareWithPreviousPeriod) {
         const prevPayables = filterPayables(data.accountsPayable, filters, previousPeriodRange(range.startDate, range.endDate));
-        const prevPrevisto = prevPayables.reduce((sum, item) => sum + item.finalAmount, 0);
+        const previousRange = previousPeriodRange(range.startDate, range.endDate);
+        const prevPrevisto = prevPayables.reduce(
+          (sum, item) => sum + payableReportValue(item, filters, previousRange),
+          0,
+        );
         items.push({ label: "Total previsto (período anterior)", value: money(prevPrevisto) });
       }
       return { kind: "kpis", title, items };
@@ -231,7 +284,13 @@ function computeApBlock(
       };
     }
     case "AP_BY_PERIOD": {
-      const map = groupSum(payables, (item) => apDate(item, filters.dateBasis).slice(0, 7), (item) => item.finalAmount);
+      const map = filters.dateBasis === "payment"
+        ? groupSum(
+            payables.flatMap((item) => payableCashMovements(item, range)),
+            (movement) => movement.date.slice(0, 7),
+            (movement) => movement.value,
+          )
+        : groupSum(payables, (item) => apDate(item, filters.dateBasis).slice(0, 7), reportValue);
       const sortedEntries = Array.from(map.entries()).sort(([left], [right]) => left.localeCompare(right));
       if ((config.visualization || "bar") === "table") {
         return {
@@ -250,16 +309,16 @@ function computeApBlock(
       };
     }
     case "AP_BY_CATEGORY":
-      return groupedSection(title, "Categoria", groupSum(payables, (item) => item.category, (item) => item.finalAmount), config);
+      return groupedSection(title, "Categoria", groupSum(payables, (item) => item.category, reportValue), config);
     case "AP_BY_COST_CENTER":
-      return groupedSection(title, "Centro de custo", groupSum(payables, (item) => item.costCenter, (item) => item.finalAmount), config);
+      return groupedSection(title, "Centro de custo", groupSum(payables, (item) => item.costCenter, reportValue), config);
     case "AP_BY_SUPPLIER":
-      return groupedSection(title, "Fornecedor", groupSum(payables, (item) => item.supplier, (item) => item.finalAmount), config);
+      return groupedSection(title, "Fornecedor", groupSum(payables, (item) => item.supplier, reportValue), config);
     case "AP_BY_BANK_ACCOUNT":
       return groupedSection(
         title,
         "Conta bancária",
-        groupSum(payables, (item) => accountNameOf(data, item.bankAccountId), (item) => item.finalAmount),
+        groupSum(payables, (item) => accountNameOf(data, item.bankAccountId), reportValue),
         config,
       );
     case "AP_DETAIL_LIST": {
@@ -274,7 +333,7 @@ function computeApBlock(
             Descrição: item.description,
             Categoria: item.category,
             "Centro de custo": item.costCenter,
-            Valor: money(item.finalAmount),
+            Valor: money(reportValue(item)),
             Status: item.status,
             "Conta bancária": accountNameOf(data, item.bankAccountId),
             "Número do documento": item.documentNumber,
@@ -297,11 +356,14 @@ function computeArBlock(
   const definition = getBlockDefinition("Contas a Receber", config.blockKey);
   const title = config.title || definition?.label || config.blockKey;
   const receivables = filterReceivables(data.accountsReceivable, filters, range);
+  const reportValue = (item: AccountReceivable) => receivableReportValue(item, filters, range);
 
   switch (config.blockKey) {
     case "AR_SUMMARY": {
-      const previsto = receivables.reduce((sum, item) => sum + item.amount, 0);
-      const recebido = receivables.reduce((sum, item) => sum + item.receivedAmount, 0);
+      const previsto = receivables.reduce((sum, item) => sum + reportValue(item), 0);
+      const recebido = filters.dateBasis === "payment"
+        ? previsto
+        : receivables.reduce((sum, item) => sum + item.receivedAmount, 0);
       const vencido = receivables
         .filter((item) => item.dueDate < today() && item.receivedAmount < item.amount)
         .reduce((sum, item) => sum + (item.amount - item.receivedAmount), 0);
@@ -314,7 +376,11 @@ function computeArBlock(
       ];
       if (config.compareWithPreviousPeriod) {
         const prevReceivables = filterReceivables(data.accountsReceivable, filters, previousPeriodRange(range.startDate, range.endDate));
-        const prevPrevisto = prevReceivables.reduce((sum, item) => sum + item.amount, 0);
+        const previousRange = previousPeriodRange(range.startDate, range.endDate);
+        const prevPrevisto = prevReceivables.reduce(
+          (sum, item) => sum + receivableReportValue(item, filters, previousRange),
+          0,
+        );
         items.push({ label: "Total previsto (período anterior)", value: money(prevPrevisto) });
       }
       return { kind: "kpis", title, items };
@@ -346,16 +412,16 @@ function computeArBlock(
       return groupedSection(title, "Cliente", overdueMap, config);
     }
     case "AR_BY_CUSTOMER":
-      return groupedSection(title, "Cliente", groupSum(receivables, (item) => item.customer, (item) => item.amount), config);
+      return groupedSection(title, "Cliente", groupSum(receivables, (item) => item.customer, reportValue), config);
     case "AR_BY_CATEGORY":
-      return groupedSection(title, "Categoria", groupSum(receivables, (item) => item.category, (item) => item.amount), config);
+      return groupedSection(title, "Categoria", groupSum(receivables, (item) => item.category, reportValue), config);
     case "AR_BY_COST_CENTER":
-      return groupedSection(title, "Centro de custo", groupSum(receivables, (item) => item.costCenter, (item) => item.amount), config);
+      return groupedSection(title, "Centro de custo", groupSum(receivables, (item) => item.costCenter, reportValue), config);
     case "AR_BY_BANK_ACCOUNT":
       return groupedSection(
         title,
         "Conta bancária",
-        groupSum(receivables, (item) => accountNameOf(data, item.bankAccountId), (item) => item.amount),
+        groupSum(receivables, (item) => accountNameOf(data, item.bankAccountId), reportValue),
         config,
       );
     case "AR_FORECAST_VS_REALIZED": {
@@ -370,11 +436,13 @@ function computeArBlock(
       };
     }
     case "AR_MONTHLY_EVOLUTION": {
-      const map = groupSum(
-        receivables,
-        (item) => arDate(item, filters.dateBasis).slice(0, 7),
-        (item) => item.amount,
-      );
+      const map = filters.dateBasis === "payment"
+        ? groupSum(
+            receivables.flatMap((item) => receivableCashMovements(item, range)),
+            (movement) => movement.date.slice(0, 7),
+            (movement) => movement.value,
+          )
+        : groupSum(receivables, (item) => arDate(item, filters.dateBasis).slice(0, 7), reportValue);
       const sortedEntries = Array.from(map.entries()).sort(([left], [right]) => left.localeCompare(right));
       const visualization = config.visualization === "pie" ? "bar" : config.visualization || "bar";
       if (visualization === "table") {
@@ -405,7 +473,7 @@ function computeArBlock(
             Descrição: item.description,
             Categoria: item.category,
             "Centro de custo": item.costCenter,
-            Valor: money(item.amount),
+            Valor: money(reportValue(item)),
             Status: item.status,
             "Conta bancária": accountNameOf(data, item.bankAccountId),
             "Número do documento": item.documentNumber,
@@ -450,16 +518,12 @@ function computeCfBlock(
     date: string;
   }
   const cfView = filters.cashFlowView || "realized";
-  const realizedPayableEntries: CfEntry<AccountPayable>[] = realizedPayables.map((item) => ({
-    item,
-    value: payablePaid(item),
-    date: apDate(item, "payment"),
-  }));
-  const realizedReceivableEntries: CfEntry<AccountReceivable>[] = realizedReceivables.map((item) => ({
-    item,
-    value: item.receivedAmount,
-    date: arDate(item, "payment"),
-  }));
+  const realizedPayableEntries: CfEntry<AccountPayable>[] = realizedPayables.flatMap((item) =>
+    payableCashMovements(item, range).map((movement) => ({ item, ...movement })),
+  );
+  const realizedReceivableEntries: CfEntry<AccountReceivable>[] = realizedReceivables.flatMap((item) =>
+    receivableCashMovements(item, range).map((movement) => ({ item, ...movement })),
+  );
   const projectedPayableEntries: CfEntry<AccountPayable>[] = filterPayables(
     data.accountsPayable,
     { ...filters, dateBasis: "due" },
@@ -517,9 +581,11 @@ function computeCfBlock(
       if (config.compareWithPreviousPeriod) {
         const prevRange = previousPeriodRange(range.startDate, range.endDate);
         const prevIn = filterReceivables(data.accountsReceivable, { ...filters, dateBasis: "payment" }, prevRange)
-          .reduce((sum, item) => sum + item.receivedAmount, 0);
+          .flatMap((item) => receivableCashMovements(item, prevRange))
+          .reduce((sum, movement) => sum + movement.value, 0);
         const prevOut = filterPayables(data.accountsPayable, { ...filters, dateBasis: "payment" }, prevRange)
-          .reduce((sum, item) => sum + payablePaid(item), 0);
+          .flatMap((item) => payableCashMovements(item, prevRange))
+          .reduce((sum, movement) => sum + movement.value, 0);
         items.push({ label: "Saldo do período anterior", value: money(prevIn - prevOut) });
       }
       return { kind: "kpis", title, items };
@@ -663,8 +729,15 @@ export function computeDreSections(
   const receivables = filterReceivables(data.accountsReceivable, dreFilters, range);
   const payables = filterPayables(data.accountsPayable, dreFilters, range);
 
-  const receitaBruta = receivables.reduce((sum, item) => sum + item.amount, 0);
-  const expenseByCategory = groupSum(payables, (item) => item.category, (item) => item.finalAmount);
+  const receitaBruta = receivables.reduce(
+    (sum, item) => sum + receivableReportValue(item, dreFilters, range),
+    0,
+  );
+  const expenseByCategory = groupSum(
+    payables,
+    (item) => item.category,
+    (item) => payableReportValue(item, dreFilters, range),
+  );
   const totalDespesas = Array.from(expenseByCategory.values()).reduce((sum, value) => sum + value, 0);
   const resultadoLiquido = receitaBruta - totalDespesas;
 
@@ -680,8 +753,14 @@ export function computeDreSections(
     const prevRange = previousPeriodRange(range.startDate, range.endDate);
     const prevReceivables = filterReceivables(data.accountsReceivable, dreFilters, prevRange);
     const prevPayables = filterPayables(data.accountsPayable, dreFilters, prevRange);
-    const prevReceita = prevReceivables.reduce((sum, item) => sum + item.amount, 0);
-    const prevDespesas = prevPayables.reduce((sum, item) => sum + item.finalAmount, 0);
+    const prevReceita = prevReceivables.reduce(
+      (sum, item) => sum + receivableReportValue(item, dreFilters, prevRange),
+      0,
+    );
+    const prevDespesas = prevPayables.reduce(
+      (sum, item) => sum + payableReportValue(item, dreFilters, prevRange),
+      0,
+    );
     kpiItems.push(
       { label: "Receita Bruta (período anterior)", value: money(prevReceita) },
       { label: "Resultado Líquido (período anterior)", value: money(prevReceita - prevDespesas) },

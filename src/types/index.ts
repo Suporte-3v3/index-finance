@@ -204,8 +204,25 @@ export interface AccountReceivable {
     | "Cancelado";
   responsibleId: string;
   receiptDate?: string;
+  receiptHistory?: AccountReceivableReceipt[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AccountReceivableReceipt {
+  id: string;
+  date: string;
+  amount: number;
+  bankAccountId: string;
+  bankAccountName: string;
+  interest: number;
+  penalty: number;
+  discount: number;
+  notes?: string;
+  receiptUrl?: string;
+  registeredById: string;
+  registeredByName: string;
+  createdAt: string;
 }
 
 export interface Approval {

@@ -94,6 +94,17 @@ try {
       balance: 10_000,
     },
   });
+  await database.masterDataOption.createMany({
+    data: [
+      { companyId, type: "CATEGORY", name: "Administrativo" },
+      { companyId, type: "CATEGORY", name: "Receitas" },
+      { companyId, type: "COST_CENTER", name: "Operacional" },
+      { companyId, type: "COST_CENTER", name: "Comercial" },
+      { companyId, type: "PAYMENT_METHOD", name: "PIX" },
+      { companyId, type: "SUPPLIER", name: "Fornecedor de Teste" },
+      { companyId, type: "CUSTOMER", name: "Cliente da Importação" },
+    ],
+  });
 
   const createdPayable = await createPayables(profile, { companyId, ...payableInput });
   assert.equal(createdPayable.payables.length, 1);

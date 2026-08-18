@@ -263,6 +263,16 @@ const payableInclude = {
   },
 };
 
+const receivableInclude = {
+  receipts: {
+    include: {
+      bankAccount: { select: { bankName: true } },
+      registeredBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+};
+
 function mapPayable(item: any) {
   return {
     id: item.id,
@@ -346,6 +356,21 @@ function mapReceivable(item: any) {
     status: RECEIVABLE_STATUS_FROM_DATABASE[item.status as keyof typeof RECEIVABLE_STATUS_FROM_DATABASE],
     responsibleId: item.responsibleId || item.createdById,
     receiptDate: isoDate(item.receiptDate),
+    receiptHistory: (item.receipts || []).filter((receipt: any) => receipt.date).map((receipt: any) => ({
+      id: receipt.id,
+      date: isoDate(receipt.date)!,
+      amount: Number(receipt.amount),
+      bankAccountId: receipt.bankAccountId,
+      bankAccountName: receipt.bankAccount.bankName,
+      interest: Number(receipt.interest),
+      penalty: Number(receipt.penalty),
+      discount: Number(receipt.discount),
+      notes: receipt.notes || undefined,
+      receiptUrl: receipt.receiptObjectKey || undefined,
+      registeredById: receipt.registeredById,
+      registeredByName: receipt.registeredBy.name,
+      createdAt: receipt.createdAt.toISOString(),
+    })),
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -488,6 +513,7 @@ export async function listFinancialEntries(profile: FinancialEntriesProfile) {
         deletedAt: null,
         ...(deletedReceivableIds.length ? { id: { notIn: deletedReceivableIds } } : {}),
       },
+      include: receivableInclude,
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
     }),
     getDatabaseClient().approval.findMany({
@@ -1136,6 +1162,7 @@ export async function receiveReceivable(profile: FinancialEntriesProfile, receiv
         receiptDate: date(body?.date, "Data do recebimento"),
         status: fullyReceived ? "RECEIVED" : "PARTIALLY_RECEIVED",
       },
+      include: receivableInclude,
     });
     const updatedBank = await transaction.bankAccount.update({ where: { id: bank.id }, data: { balance: { increment: receivedNow } } });
     await audit(transaction, profile, initial.company, "RECEBER_CONTA_RECEBER", "AccountReceivable", id, mapReceivable(receivable), mapReceivable(updated));
