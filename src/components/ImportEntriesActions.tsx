@@ -219,23 +219,13 @@ export default function ImportEntriesActions() {
   return (
     <>
       <Button
-        variant="outline"
-        icon={<Download className="h-4 w-4" />}
-        loading={isDownloading}
-        disabled={!canImport}
-        title={canImport ? "Baixar planilha modelo" : "Sem permissão para importar lançamentos"}
-        onClick={handleDownloadTemplate}
-      >
-        Baixar modelo
-      </Button>
-      <Button
         variant="secondary"
         icon={<Upload className="h-4 w-4" />}
         disabled={!canImport}
-        title={canImport ? "Importar planilha de lançamentos" : "Sem permissão para importar lançamentos"}
+        title={canImport ? "Importar lançamentos" : "Sem permissão para importar lançamentos"}
         onClick={() => setIsImportOpen(true)}
       >
-        Importar planilha
+        Importar lançamentos
       </Button>
 
       <Modal
