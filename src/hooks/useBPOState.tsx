@@ -491,7 +491,7 @@ interface BPOContextType {
   sendReportToDocumentCenter: (
     report: ReportRecord,
     recipientId?: string,
-  ) => boolean;
+  ) => Promise<boolean>;
 
   addCompany: (
     data: Omit<Company, "id" | "createdAt" | "status">,
@@ -2393,22 +2393,33 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   // --- REPORT GENERATION ---
   // Report generation/rendering stays fully client-side (as before); only the
   // record's metadata is persisted, in the background, to Postgres.
+  const uploadReportArtifact = async (record: ReportRecord) => {
+    if (record.fileUrl) return record.fileUrl;
+    if (!record.fileContent || !record.fileName || !record.mimeType) {
+      throw new Error("O relatório não possui um arquivo disponível para armazenamento.");
+    }
+    const response = await fetch("/api/documents/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purpose: "REPORT",
+        companyId: record.companyId,
+        data: record.fileContent,
+        fileName: record.fileName,
+        mimeType: record.mimeType,
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { url?: string; error?: string };
+    if (!response.ok || !payload.url) {
+      throw new Error(payload.error || "Não foi possível armazenar o arquivo do relatório.");
+    }
+    return payload.url;
+  };
+
   const persistReport = (record: ReportRecord) => {
     const upload = record.fileContent
-      ? fetch("/api/documents/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            purpose: "REPORT",
-            companyId: record.companyId,
-            data: record.fileContent,
-            fileName: record.fileName || `${record.name}.pdf`,
-            mimeType: record.mimeType,
-          }),
-        })
-          .then((response) => response.json())
-          .catch(() => ({}))
-      : Promise.resolve<{ url?: string }>({});
+      ? uploadReportArtifact(record).then((url) => ({ url }))
+      : Promise.resolve<{ url?: string }>({ url: record.fileUrl });
     void upload
       .then((uploaded: { url?: string }) =>
         createPersistedReport({
@@ -2742,28 +2753,27 @@ export function BPOProvider({ children }: { children: ReactNode }) {
   };
 
   // --- CENTRAL DE RELATÓRIOS: construtor por blocos ---
-  const sendReportToDocumentCenter = (
+  const sendReportToDocumentCenter = async (
     report: ReportRecord,
     recipientId?: string,
-  ): boolean => {
+  ): Promise<boolean> => {
     if (
       !hasPermission("documents.upload") ||
-      !report.fileContent ||
       !report.mimeType ||
-      !report.fileName
+      !report.fileName ||
+      (!report.fileContent && !report.fileUrl)
     )
       return false;
-    void uploadDocument({
+    const objectKey = await uploadReportArtifact(report);
+    await uploadDocument({
       name: report.fileName,
       description: `Relatório gerado: ${report.name}`,
       category: "Relatório",
       competenceMonth: report.generatedAt.slice(0, 7),
       fileSize: report.fileSize,
       mimeType: report.mimeType,
-      previewUrl: `data:${report.mimeType};base64,${report.fileContent}`,
+      previewUrl: objectKey,
       recipientId,
-    }).catch((error) => {
-      console.error("Falha ao salvar relatório na Central de Documentos:", error);
     });
     return true;
   };

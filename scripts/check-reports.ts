@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), quiet: true });
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: false, quiet: true });
 
 const { disconnectDatabase, getDatabaseClient } = await import("../backend/database.js");
+const { createDocument } = await import("../backend/document-records.js");
+const { storeDocumentFileChunk } = await import("../backend/document-files.js");
 const {
   ReportApiError,
   createReport,
@@ -56,7 +58,7 @@ const admin = profile(adminId, "Administrador BPO", [], [{ tenantId, role: "BPO_
 const generator = profile(generatorId, "Gerador", [{
   companyId,
   role: "CLIENT",
-  permissions: ["reports.view", "reports.generate"],
+  permissions: ["reports.view", "reports.generate", "documents.upload"],
 }]);
 const viewer = profile(viewerId, "Visualizador", [{
   companyId,
@@ -167,10 +169,37 @@ try {
     (error: unknown) => error instanceof ReportApiError && error.status === 400,
   );
 
+  const fileId = randomUUID();
+  const fileContents = Buffer.from("%PDF-1.4\nrelatorio de verificacao\n");
+  const storedFile = await storeDocumentFileChunk(generator, {
+    fileId,
+    companyId,
+    fileName: "relatorio-verificacao.pdf",
+    mimeType: "application/pdf",
+    size: fileContents.byteLength,
+    chunkIndex: 0,
+    totalChunks: 1,
+    data: fileContents.toString("base64"),
+  });
+  const documentResult = await createDocument(generator, {
+    companyId,
+    name: "relatorio-verificacao.pdf",
+    description: "Relatório gerado pela verificação",
+    category: "Relatório",
+    competenceMonth: "2026-08",
+    fileSize: `${fileContents.byteLength} B`,
+    mimeType: "application/pdf",
+    previewUrl: storedFile.url,
+    origin: "Documento",
+  });
+  assert.equal(documentResult.document.signedUrl, storedFile.url);
+
   console.log("Relatórios validados: RBAC de consulta, geração, modelos e exclusão.");
 } finally {
   const companyIds = [companyId, foreignCompanyId];
   await database.notification.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.document.deleteMany({ where: { companyId: { in: companyIds } } });
+  await database.documentFile.deleteMany({ where: { companyId: { in: companyIds } } });
   await database.report.deleteMany({ where: { companyId: { in: companyIds } } });
   await database.reportTemplate.deleteMany({ where: { companyId: { in: companyIds } } });
   await database.companyMembership.deleteMany({ where: { companyId: { in: companyIds } } });

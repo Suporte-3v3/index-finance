@@ -483,20 +483,33 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     setMessage(`Modelo "${saved.name}" salvo em Meus modelos.`);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!generatedReport || !recipientId) return;
     const recipient = recipients.find((user) => user.id === recipientId);
     if (!recipient) return;
-    sendReportToDocumentCenter(generatedReport, recipient.id);
-    setMessage(`Relatório enviado para ${recipient.name}.`);
+    setError("");
+    try {
+      if (!await sendReportToDocumentCenter(generatedReport, recipient.id)) {
+        throw new Error("Arquivo indisponível.");
+      }
+      setMessage(`Relatório enviado para ${recipient.name}.`);
+    } catch (error) {
+      setMessage("");
+      setError(error instanceof Error ? error.message : "Não foi possível enviar o relatório.");
+    }
   };
 
-  const handleSaveToDocumentCenter = () => {
+  const handleSaveToDocumentCenter = async () => {
     if (!generatedReport) return;
-    if (sendReportToDocumentCenter(generatedReport)) {
+    setError("");
+    try {
+      if (!await sendReportToDocumentCenter(generatedReport)) {
+        throw new Error("Arquivo indisponível.");
+      }
       setMessage("Relatório salvo na Central de Documentos.");
-    } else {
-      setError("Não foi possível salvar o relatório na Central de Documentos.");
+    } catch (error) {
+      setMessage("");
+      setError(error instanceof Error ? error.message : "Não foi possível salvar o relatório na Central de Documentos.");
     }
   };
 
