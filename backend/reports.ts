@@ -1,6 +1,7 @@
 import { Prisma } from "./generated/prisma/client.js";
 import { getDatabaseClient } from "./database.js";
 import { writeNotification } from "./notifications.js";
+import { removeReportFileIfUnreferenced } from "./report-files.js";
 
 type Role = "BPO_ADMIN" | "BPO_TEAM" | "CLIENT" | "ACCOUNTANT";
 
@@ -251,6 +252,7 @@ export async function deleteReport(profile: ReportAccessProfile, reportId: strin
   if (!report) throw new ReportApiError("Relatório não encontrado.", 404);
   await requireCompany(profile, report.companyId, "reports.generate");
   await getDatabaseClient().report.delete({ where: { id: report.id } });
+  if (report.objectKey) await removeReportFileIfUnreferenced(report.objectKey);
 }
 
 export async function listReportTemplates(profile: ReportAccessProfile) {

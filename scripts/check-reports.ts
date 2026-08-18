@@ -198,7 +198,42 @@ try {
   });
   assert.equal(documentResult.document.signedUrl, storedFile.url);
 
-  console.log("Relatórios validados: RBAC de consulta, geração, modelos e exclusão.");
+  const sharedFileReport = await createReport(generator, {
+    companyId,
+    name: "Relatório compartilhado em documentos",
+    type: "DRE Gerencial",
+    filters: {},
+    objectKey: storedFile.url,
+    fileName: "relatorio-verificacao.pdf",
+    mimeType: "application/pdf",
+  });
+  await deleteReport(generator, sharedFileReport.id);
+  assert.ok(await database.documentFile.findUnique({ where: { id: fileId } }));
+
+  const orphanFileId = randomUUID();
+  const orphanFile = await storeDocumentFileChunk(generator, {
+    fileId: orphanFileId,
+    companyId,
+    fileName: "relatorio-sem-vinculo.pdf",
+    mimeType: "application/pdf",
+    size: fileContents.byteLength,
+    chunkIndex: 0,
+    totalChunks: 1,
+    data: fileContents.toString("base64"),
+  });
+  const disposableReport = await createReport(generator, {
+    companyId,
+    name: "Relatório descartável",
+    type: "DRE Gerencial",
+    filters: {},
+    objectKey: orphanFile.url,
+    fileName: "relatorio-sem-vinculo.pdf",
+    mimeType: "application/pdf",
+  });
+  await deleteReport(generator, disposableReport.id);
+  assert.equal(await database.documentFile.findUnique({ where: { id: orphanFileId } }), null);
+
+  console.log("Relatórios validados: RBAC, isolamento, modelos, arquivos e exclusão.");
 } finally {
   const companyIds = [companyId, foreignCompanyId];
   await database.notification.deleteMany({ where: { companyId: { in: companyIds } } });
