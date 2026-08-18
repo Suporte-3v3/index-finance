@@ -483,11 +483,11 @@ interface BPOContextType {
     dreOptions?: DreReportOptions;
     notes?: string;
     orientation?: "auto" | "portrait" | "landscape";
-  }) => ReportTemplate | null;
-  duplicateReportTemplate: (id: string) => void;
-  archiveReportTemplate: (id: string, archived: boolean) => void;
-  toggleReportTemplateFavorite: (id: string) => void;
-  deleteReportTemplate: (id: string) => void;
+  }) => Promise<ReportTemplate | null>;
+  duplicateReportTemplate: (id: string) => Promise<ReportTemplate | null>;
+  archiveReportTemplate: (id: string, archived: boolean) => Promise<ReportTemplate | null>;
+  toggleReportTemplateFavorite: (id: string) => Promise<ReportTemplate | null>;
+  deleteReportTemplate: (id: string) => Promise<boolean>;
   sendReportToDocumentCenter: (
     report: ReportRecord,
     recipientId?: string,
@@ -2441,8 +2441,8 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     };
   };
 
-  const persistReportTemplate = (template: ReportTemplate) => {
-    void createPersistedReportTemplate({
+  const persistReportTemplate = (template: ReportTemplate) =>
+    createPersistedReportTemplate({
       companyId: template.companyId,
       name: template.name,
       modelType: template.modelType,
@@ -2451,12 +2451,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       dreOptions: template.dreOptions,
       notes: template.notes,
       orientation: template.orientation,
-    })
-      .then((persisted) => {
-        setReportTemplates((prev) => prev.map((item) => (item.id === template.id ? { ...item, id: persisted.id } : item)));
-      })
-      .catch((error) => console.error("Failed to persist report template:", error instanceof Error ? error.message : error));
-  };
+    });
 
   const generateReport = async (
     name: string,
@@ -2939,31 +2934,15 @@ export function BPOProvider({ children }: { children: ReactNode }) {
     return persistedReport;
   };
 
-  const saveReportTemplate: BPOContextType["saveReportTemplate"] = (
+  const saveReportTemplate: BPOContextType["saveReportTemplate"] = async (
     input,
   ) => {
     if (!hasPermission("reports.generate") || !activeCompany) return null;
     const now = new Date().toISOString();
     if (input.id) {
-      let updated: ReportTemplate | null = null;
-      setReportTemplates((prev) =>
-        prev.map((template) => {
-          if (template.id !== input.id) return template;
-          updated = {
-            ...template,
-            name: input.name,
-            modelType: input.modelType,
-            blocks: input.blocks,
-            filters: input.filters,
-            dreOptions: input.dreOptions,
-            notes: input.notes,
-            orientation: input.orientation,
-            updatedAt: now,
-          };
-          return updated;
-        }),
-      );
-      void updatePersistedReportTemplate(input.id, {
+      const existing = reportTemplates.find((template) => template.id === input.id);
+      if (!existing) return null;
+      const persisted = await updatePersistedReportTemplate(input.id, {
         name: input.name,
         modelType: input.modelType,
         blocks: input.blocks,
@@ -2971,8 +2950,9 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         dreOptions: input.dreOptions,
         notes: input.notes,
         orientation: input.orientation,
-      }).catch((error) => console.error("Failed to update report template:", error instanceof Error ? error.message : error));
-      return updated;
+      });
+      setReportTemplates((prev) => prev.map((template) => template.id === input.id ? persisted : template));
+      return persisted;
     }
     const newTemplate: ReportTemplate = {
       id: `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -2991,72 +2971,39 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       createdById: currentUser.id,
       createdByName: currentUser.name,
     };
-    setReportTemplates((prev) => [newTemplate, ...prev]);
-    persistReportTemplate(newTemplate);
-    return newTemplate;
+    const persisted = await persistReportTemplate(newTemplate);
+    setReportTemplates((prev) => [persisted, ...prev]);
+    return persisted;
   };
 
-  const duplicateReportTemplate = (id: string) => {
+  const duplicateReportTemplate = async (id: string) => {
     const original = reportTemplates.find((template) => template.id === id);
-    if (!original) return;
-    const now = new Date().toISOString();
-    const copy: ReportTemplate = {
-      ...original,
-      id: `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: `${original.name} (cópia)`,
-      favorite: false,
-      archived: false,
-      createdAt: now,
-      updatedAt: now,
-      createdById: currentUser.id,
-      createdByName: currentUser.name,
-    };
-    setReportTemplates((prev) => [copy, ...prev]);
-    void duplicatePersistedReportTemplate(id)
-      .then((persisted) =>
-        setReportTemplates((prev) => prev.map((item) => (item.id === copy.id ? { ...item, id: persisted.id } : item))),
-      )
-      .catch((error) => console.error("Failed to duplicate report template:", error instanceof Error ? error.message : error));
+    if (!original) return null;
+    const persisted = await duplicatePersistedReportTemplate(id);
+    setReportTemplates((prev) => [persisted, ...prev]);
+    return persisted;
   };
 
-  const archiveReportTemplate = (id: string, archived: boolean) => {
-    setReportTemplates((prev) =>
-      prev.map((template) =>
-        template.id === id
-          ? { ...template, archived, updatedAt: new Date().toISOString() }
-          : template,
-      ),
-    );
-    void updatePersistedReportTemplate(id, { archived }).catch((error) =>
-      console.error("Failed to archive report template:", error instanceof Error ? error.message : error),
-    );
+  const archiveReportTemplate = async (id: string, archived: boolean) => {
+    if (!reportTemplates.some((template) => template.id === id)) return null;
+    const persisted = await updatePersistedReportTemplate(id, { archived });
+    setReportTemplates((prev) => prev.map((template) => template.id === id ? persisted : template));
+    return persisted;
   };
 
-  const toggleReportTemplateFavorite = (id: string) => {
+  const toggleReportTemplateFavorite = async (id: string) => {
     const current = reportTemplates.find((template) => template.id === id);
-    setReportTemplates((prev) =>
-      prev.map((template) =>
-        template.id === id
-          ? {
-              ...template,
-              favorite: !template.favorite,
-              updatedAt: new Date().toISOString(),
-            }
-          : template,
-      ),
-    );
-    if (current) {
-      void updatePersistedReportTemplate(id, { favorite: !current.favorite }).catch((error) =>
-        console.error("Failed to update report template favorite:", error instanceof Error ? error.message : error),
-      );
-    }
+    if (!current) return null;
+    const persisted = await updatePersistedReportTemplate(id, { favorite: !current.favorite });
+    setReportTemplates((prev) => prev.map((template) => template.id === id ? persisted : template));
+    return persisted;
   };
 
-  const deleteReportTemplate = (id: string) => {
+  const deleteReportTemplate = async (id: string) => {
+    if (!reportTemplates.some((template) => template.id === id)) return false;
+    await deletePersistedReportTemplate(id);
     setReportTemplates((prev) => prev.filter((template) => template.id !== id));
-    void deletePersistedReportTemplate(id).catch((error) =>
-      console.error("Failed to delete report template:", error instanceof Error ? error.message : error),
-    );
+    return true;
   };
 
   // --- ADMINISTRATION: COMPANIES & CLIENTS ---

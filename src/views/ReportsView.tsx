@@ -102,21 +102,36 @@ export default function ReportsView() {
 
   const companyReports = reports.filter((r) => r.companyId === activeCompany.id);
 
-  const confirmRename = (template: ReportTemplate) => {
+  const confirmRename = async (template: ReportTemplate) => {
     const name = renameValue.trim();
     if (!name) {
       setRenamingId(null);
       return;
     }
-    saveReportTemplate({
-      id: template.id,
-      name,
-      modelType: template.modelType,
-      blocks: template.blocks,
-      filters: template.filters,
-      dreOptions: template.dreOptions,
-    });
-    setRenamingId(null);
+    setError("");
+    try {
+      const saved = await saveReportTemplate({
+        id: template.id,
+        name,
+        modelType: template.modelType,
+        blocks: template.blocks,
+        filters: template.filters,
+        dreOptions: template.dreOptions,
+      });
+      if (!saved) throw new Error("Não foi possível renomear o modelo.");
+      setRenamingId(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível renomear o modelo.");
+    }
+  };
+
+  const runTemplateAction = async (operation: () => Promise<unknown>, fallback: string) => {
+    setError("");
+    try {
+      await operation();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : fallback);
+    }
   };
 
   const handleDownload = (report: ReportRecord) => {
@@ -193,7 +208,7 @@ export default function ReportsView() {
                       onChange={(e) => setRenameValue(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") confirmRename(template);
+                        if (e.key === "Enter") void confirmRename(template);
                         if (e.key === "Escape") setRenamingId(null);
                       }}
                       className="w-full text-xs font-semibold border border-zinc-300 dark:border-zinc-700 rounded-lg px-1.5 py-1 bg-white dark:bg-zinc-900 text-ink dark:text-ink-dark"
@@ -213,7 +228,10 @@ export default function ReportsView() {
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    toggleReportTemplateFavorite(template.id);
+                    void runTemplateAction(
+                      () => toggleReportTemplateFavorite(template.id),
+                      "Não foi possível atualizar o favorito.",
+                    );
                   }}
                 />
               </div>
@@ -223,7 +241,7 @@ export default function ReportsView() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        confirmRename(template);
+                        void confirmRename(template);
                       }}
                       className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 px-2 py-1 cursor-pointer"
                     >
@@ -259,7 +277,10 @@ export default function ReportsView() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        duplicateReportTemplate(template.id);
+                        void runTemplateAction(
+                          () => duplicateReportTemplate(template.id),
+                          "Não foi possível duplicar o modelo.",
+                        );
                       }}
                     />
                     <IconButton
@@ -269,7 +290,10 @@ export default function ReportsView() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        archiveReportTemplate(template.id, !template.archived);
+                        void runTemplateAction(
+                          () => archiveReportTemplate(template.id, !template.archived),
+                          "Não foi possível atualizar o arquivamento.",
+                        );
                       }}
                     />
                   </>

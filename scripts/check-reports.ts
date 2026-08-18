@@ -146,7 +146,11 @@ try {
   });
   await expectForbidden(() => updateReportTemplate(viewer, template.id, { name: "Alteração indevida" }));
   await expectForbidden(() => deleteReportTemplate(viewer, template.id));
-  await updateReportTemplate(generator, template.id, { name: "Modelo atualizado" });
+  const updatedTemplate = await updateReportTemplate(generator, template.id, {
+    name: "Modelo atualizado",
+    orientation: "landscape",
+  });
+  assert.equal(updatedTemplate.orientation, "landscape");
   assert.equal((await listReportTemplates(viewer)).some((item) => item.id === template.id), false);
 
   const adminReport = await createReport(admin, {

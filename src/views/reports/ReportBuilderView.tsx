@@ -451,7 +451,7 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     }
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     setError("");
     setMessage("");
     if (!hasPermission("reports.generate")) {
@@ -465,22 +465,23 @@ export default function ReportBuilderView({ modelType, template, onClose }: Repo
     const { startDate: _s, endDate: _e, ...templateFilters } = filters;
     void _s;
     void _e;
-    const saved = saveReportTemplate({
-      id: savedTemplateId,
-      name: name.trim(),
-      modelType,
-      blocks,
-      filters: templateFilters,
-      dreOptions: modelType === "DRE Gerencial" ? dreOptions : undefined,
-      notes: notes || undefined,
-      orientation,
-    });
-    if (!saved) {
-      setError("Não foi possível salvar o modelo.");
-      return;
+    try {
+      const saved = await saveReportTemplate({
+        id: savedTemplateId,
+        name: name.trim(),
+        modelType,
+        blocks,
+        filters: templateFilters,
+        dreOptions: modelType === "DRE Gerencial" ? dreOptions : undefined,
+        notes: notes || undefined,
+        orientation,
+      });
+      if (!saved) throw new Error("Não foi possível salvar o modelo.");
+      setSavedTemplateId(saved.id);
+      setMessage(`Modelo "${saved.name}" salvo em Meus modelos.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível salvar o modelo.");
     }
-    setSavedTemplateId(saved.id);
-    setMessage(`Modelo "${saved.name}" salvo em Meus modelos.`);
   };
 
   const handleSend = async () => {

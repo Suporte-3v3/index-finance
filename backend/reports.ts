@@ -318,6 +318,11 @@ export async function updateReportTemplate(profile: ReportAccessProfile, templat
   const existing = await requireTemplate(profile, templateId);
   const data: Record<string, unknown> = {};
   if (body.name !== undefined) data.name = text(body.name, "o nome do modelo", 200);
+  if (body.modelType !== undefined) {
+    const modelType = MODEL_TYPE_TO_DATABASE[body.modelType as keyof typeof MODEL_TYPE_TO_DATABASE];
+    if (!modelType) throw new ReportApiError("Tipo de modelo inválido.");
+    data.modelType = modelType;
+  }
   if (body.favorite !== undefined) {
     if (typeof body.favorite !== "boolean") throw new ReportApiError("Valor de favorito inválido.");
     data.favorite = body.favorite;
@@ -327,6 +332,12 @@ export async function updateReportTemplate(profile: ReportAccessProfile, templat
     data.archived = body.archived;
   }
   if (body.notes !== undefined) data.notes = optionalText(body.notes, 2000);
+  if (body.orientation !== undefined) {
+    if (!["auto", "portrait", "landscape"].includes(body.orientation)) {
+      throw new ReportApiError("Orientação inválida.");
+    }
+    data.orientation = body.orientation;
+  }
   if (body.blocks !== undefined) data.blocks = asJson(body.blocks);
   if (body.filters !== undefined) data.filters = asJson(body.filters);
   if (body.dreOptions !== undefined) data.dreOptions = body.dreOptions ? asJson(body.dreOptions) : Prisma.JsonNull;
