@@ -107,8 +107,8 @@ interface BakeryCashContextType {
     status: BakeryPixReconciliationStatus,
   ) => Promise<OperationResult>;
 
-  markAwaitingClose: (shiftId: string) => void;
-  cancelPendingClose: (shiftId: string) => void;
+  markAwaitingClose: (shiftId: string) => Promise<OperationResult>;
+  cancelPendingClose: (shiftId: string) => Promise<OperationResult>;
   closeShift: (data: {
     shiftId: string;
     finalBalanceCounted: number;
@@ -262,21 +262,23 @@ export function BakeryCashProvider({ children }: { children: ReactNode }) {
   };
 
   // --- FECHAMENTO ---
-  const markAwaitingClose = (shiftId: string) => {
-    void markPersistedShiftAwaitingClose(shiftId)
+  const markAwaitingClose: BakeryCashContextType["markAwaitingClose"] = (shiftId) =>
+    markPersistedShiftAwaitingClose(shiftId)
       .then((shift) => setShifts((prev) => prev.map((item) => (item.id === shift.id ? shift : item))))
-      .catch((error) =>
-        console.error("Failed to mark shift awaiting close:", error instanceof Error ? error.message : error),
-      );
-  };
+      .then(() => ({ success: true }))
+      .catch((error) => ({
+        success: false,
+        error: errorMessage(error, "Não foi possível preparar o fechamento do turno."),
+      }));
 
-  const cancelPendingClose = (shiftId: string) => {
-    void cancelPersistedPendingClose(shiftId)
+  const cancelPendingClose: BakeryCashContextType["cancelPendingClose"] = (shiftId) =>
+    cancelPersistedPendingClose(shiftId)
       .then((shift) => setShifts((prev) => prev.map((item) => (item.id === shift.id ? shift : item))))
-      .catch((error) =>
-        console.error("Failed to cancel pending close:", error instanceof Error ? error.message : error),
-      );
-  };
+      .then(() => ({ success: true }))
+      .catch((error) => ({
+        success: false,
+        error: errorMessage(error, "Não foi possível voltar o turno para aberto."),
+      }));
 
   const closeShift: BakeryCashContextType["closeShift"] = (data) =>
     closePersistedShift(data.shiftId, {

@@ -74,6 +74,19 @@ function money(value: unknown, field: string) {
   }
   return Math.round((normalized + Number.EPSILON) * 100) / 100;
 }
+function nonNegativeMoney(value: unknown, field: string) {
+  const normalized = money(value, field);
+  if (normalized < 0) throw new BakeryCashApiError(`${field} não pode ser negativo.`);
+  return normalized;
+}
+function positiveMoney(value: unknown, field: string) {
+  const normalized = money(value, field);
+  if (normalized <= 0) throw new BakeryCashApiError(`${field} deve ser maior que zero.`);
+  return normalized;
+}
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 function num(value: Prisma.Decimal | number | null | undefined) {
   return value == null ? 0 : Number(value);
 }
@@ -350,7 +363,7 @@ export async function openShift(profile: BakeryAccessProfile, body: any) {
         operatorId: profile.id,
         operatorName: profile.name,
         status: "OPEN",
-        initialBalance: money(body?.initialBalance, "o saldo inicial"),
+        initialBalance: nonNegativeMoney(body?.initialBalance, "o saldo inicial"),
         openNote: optionalText(body?.openNote, 2000),
         initialBalanceJustification: optionalText(body?.initialBalanceJustification, 2000),
         previousShiftFinalBalance: lastClosed?.finalBalanceCounted ?? undefined,
@@ -377,7 +390,7 @@ export async function addExpense(profile: BakeryAccessProfile, body: any) {
   const shift = await requireEditableShift(profile, body?.shiftId);
   const source = body?.source === "BOLSA" ? "BOLSA" : body?.source === "CAIXA" ? "CAIXA" : null;
   if (!source) throw new BakeryCashApiError("Origem da despesa inválida.");
-  const amount = money(body?.amount, "o valor da despesa");
+  const amount = positiveMoney(body?.amount, "o valor da despesa");
   const database = getDatabaseClient();
   const bolsa = source === "BOLSA" ? await findBolsaAccount(shift.companyId) : null;
 
@@ -437,7 +450,7 @@ export async function cancelExpense(profile: BakeryAccessProfile, expenseId: str
 
 export async function addWithdrawal(profile: BakeryAccessProfile, body: any) {
   const shift = await requireEditableShift(profile, body?.shiftId);
-  const amount = money(body?.amount, "o valor da sangria");
+  const amount = positiveMoney(body?.amount, "o valor da sangria");
   const bolsa = await findBolsaAccount(shift.companyId);
   const database = getDatabaseClient();
 
@@ -490,7 +503,7 @@ export async function cancelWithdrawal(profile: BakeryAccessProfile, withdrawalI
 export async function addPixSale(profile: BakeryAccessProfile, body: any) {
   const shift = await requireEditableShift(profile, body?.shiftId);
   const bankAccountId = uuid(body?.bankAccountId, "a conta bancária");
-  const amount = money(body?.amount, "o valor da venda");
+  const amount = positiveMoney(body?.amount, "o valor da venda");
   const database = getDatabaseClient();
   const bankAccount = await database.bankAccount.findFirst({
     where: { id: bankAccountId, companyId: shift.companyId, active: true, deletedAt: null, isBolsaAccount: false },
@@ -532,7 +545,14 @@ export async function cancelPixSale(profile: BakeryAccessProfile, pixSaleId: str
   const updated = await database.$transaction(async (transaction) => {
     const canceled = await transaction.bakeryPixSale.update({
       where: { id: sale.id },
-      data: { canceled: true, canceledAt: new Date(), canceledById: profile.id },
+      data: {
+        canceled: true,
+        canceledAt: new Date(),
+        canceledById: profile.id,
+        reconciliationStatus: "AWAITING",
+        reconciledAt: null,
+        reconciledById: null,
+      },
     });
     await adjustBalance(
       transaction,
@@ -556,6 +576,7 @@ export async function setPixReconciliationStatus(profile: BakeryAccessProfile, p
     include: { company: { select: { id: true, tenantId: true } } },
   });
   if (!sale) throw new BakeryCashApiError("Venda não encontrada.", 404);
+  if (sale.canceled) throw new BakeryCashApiError("Não é possível conciliar uma venda cancelada.", 409);
   if (!isBpoForCompany(profile, sale.company)) {
     throw new BakeryCashApiError("Apenas a equipe BPO pode conciliar vendas no PIX.", 403);
   }
@@ -610,8 +631,10 @@ function computeShiftTotals(
   pixTotal: number,
   cardMachineTotal: number,
 ) {
-  const estimatedCashRevenue = finalBalanceCounted + caixaExpensesTotal + withdrawalsTotal - Number(shift.initialBalance);
-  const totalRevenue = estimatedCashRevenue + pixTotal + cardMachineTotal;
+  const estimatedCashRevenue = roundMoney(
+    finalBalanceCounted + caixaExpensesTotal + withdrawalsTotal - Number(shift.initialBalance),
+  );
+  const totalRevenue = roundMoney(estimatedCashRevenue + pixTotal + cardMachineTotal);
   return { estimatedCashRevenue, totalRevenue };
 }
 
@@ -626,14 +649,34 @@ export async function closeShift(profile: BakeryAccessProfile, body: any) {
   if (!canEdit) throw new BakeryCashApiError("Sem permissão para este turno.", 403);
   if (shift.status !== "AWAITING_CLOSE") throw new BakeryCashApiError("O turno não está aguardando fechamento.", 409);
 
-  const finalBalanceCounted = money(body?.finalBalanceCounted, "o saldo final contado");
-  const entries: Array<{ bankAccountId: string; bankAccountName: string; amount: number }> = Array.isArray(body?.cardMachineEntries)
+  const finalBalanceCounted = nonNegativeMoney(body?.finalBalanceCounted, "o saldo final contado");
+  const requestedEntries: Array<{ bankAccountId: string; amount: number }> = Array.isArray(body?.cardMachineEntries)
     ? body.cardMachineEntries.map((entry: any) => ({
         bankAccountId: uuid(entry?.bankAccountId, "a conta da maquininha"),
-        bankAccountName: text(entry?.bankAccountName, "o nome da conta", 160),
-        amount: money(entry?.amount, "o valor da maquininha"),
+        amount: positiveMoney(entry?.amount, "o valor da maquininha"),
       }))
     : [];
+  const cardMachineAccountIds = [...new Set(requestedEntries.map((entry) => entry.bankAccountId))];
+  const cardMachineAccounts = cardMachineAccountIds.length
+    ? await database.bankAccount.findMany({
+        where: {
+          id: { in: cardMachineAccountIds },
+          companyId: shift.companyId,
+          active: true,
+          deletedAt: null,
+          isBolsaAccount: false,
+        },
+        select: { id: true, bankName: true },
+      })
+    : [];
+  if (cardMachineAccounts.length !== cardMachineAccountIds.length) {
+    throw new BakeryCashApiError("Conta bancária inválida para venda na maquininha.", 404);
+  }
+  const cardMachineAccountNames = new Map(cardMachineAccounts.map((account) => [account.id, account.bankName]));
+  const entries = requestedEntries.map((entry) => ({
+    ...entry,
+    bankAccountName: cardMachineAccountNames.get(entry.bankAccountId)!,
+  }));
 
   const [caixaExpenses, withdrawals, pixSales] = await Promise.all([
     database.bakeryExpense.aggregate({ where: { shiftId: shift.id, source: "CAIXA", canceled: false }, _sum: { amount: true } }),
@@ -643,7 +686,7 @@ export async function closeShift(profile: BakeryAccessProfile, body: any) {
   const caixaExpensesTotal = num(caixaExpenses._sum.amount);
   const withdrawalsTotal = num(withdrawals._sum.amount);
   const pixTotal = num(pixSales._sum.amount);
-  const cardMachineTotal = entries.reduce((sum, entry) => sum + entry.amount, 0);
+  const cardMachineTotal = roundMoney(entries.reduce((sum, entry) => sum + entry.amount, 0));
   const { estimatedCashRevenue, totalRevenue } = computeShiftTotals(
     shift,
     finalBalanceCounted,
@@ -762,13 +805,113 @@ export async function cancelShift(profile: BakeryAccessProfile, shiftId: string)
   const database = getDatabaseClient();
   const shift = await database.bakeryShift.findFirst({
     where: { id: uuid(shiftId, "o turno") },
-    include: { company: { select: { id: true, tenantId: true, deletedAt: true } } },
+    include: {
+      company: { select: { id: true, tenantId: true, deletedAt: true } },
+      expenses: { where: { canceled: false } },
+      withdrawals: { where: { canceled: false } },
+      pixSales: { where: { canceled: false } },
+      cardMachineEntries: { where: { closeSnapshotId: null } },
+    },
   });
   if (!shift || shift.company.deletedAt) throw new BakeryCashApiError("Turno não encontrado.", 404);
   if (!isBpoForCompany(profile, shift.company)) throw new BakeryCashApiError("Apenas a equipe BPO pode cancelar turnos.", 403);
   if (shift.status === "CLOSED") throw new BakeryCashApiError("Reabra o turno antes de cancelá-lo.", 409);
+  if (shift.status === "CANCELED") throw new BakeryCashApiError("Este turno já está cancelado.", 409);
+
+  const hasBolsaMovements = shift.expenses.some((expense) => expense.source === "BOLSA") || shift.withdrawals.length > 0;
+  const bolsa = hasBolsaMovements ? await findBolsaAccount(shift.companyId) : null;
 
   const updated = await database.$transaction(async (transaction) => {
+    const canceledAt = new Date();
+    for (const expense of shift.expenses) {
+      await transaction.bakeryExpense.update({
+        where: { id: expense.id },
+        data: { canceled: true, canceledAt, canceledById: profile.id },
+      });
+      if (expense.source === "BOLSA") {
+        await adjustBalance(
+          transaction,
+          profile,
+          shift.company,
+          bolsa!.id,
+          Number(expense.amount),
+          "CAIXA_PADARIA_CANCELAR_TURNO_DESPESA_BOLSA",
+          "BakeryExpense",
+          expense.id,
+        );
+      }
+    }
+    for (const withdrawal of shift.withdrawals) {
+      await transaction.bakeryWithdrawal.update({
+        where: { id: withdrawal.id },
+        data: { canceled: true, canceledAt, canceledById: profile.id },
+      });
+      await adjustBalance(
+        transaction,
+        profile,
+        shift.company,
+        bolsa!.id,
+        -Number(withdrawal.amount),
+        "CAIXA_PADARIA_CANCELAR_TURNO_SANGRIA",
+        "BakeryWithdrawal",
+        withdrawal.id,
+      );
+    }
+    for (const sale of shift.pixSales) {
+      await transaction.bakeryPixSale.update({
+        where: { id: sale.id },
+        data: {
+          canceled: true,
+          canceledAt,
+          canceledById: profile.id,
+          reconciliationStatus: "AWAITING",
+          reconciledAt: null,
+          reconciledById: null,
+        },
+      });
+      await adjustBalance(
+        transaction,
+        profile,
+        shift.company,
+        sale.bankAccountId,
+        -Number(sale.amount),
+        "CAIXA_PADARIA_CANCELAR_TURNO_VENDA_PIX",
+        "BakeryPixSale",
+        sale.id,
+      );
+    }
+    if (shift.cardMachineEntries.length > 0) {
+      const snapshot = await transaction.bakeryShiftCloseSnapshot.create({
+        data: {
+          shiftId: shift.id,
+          closedAt: shift.closedAt!,
+          finalBalanceCounted: shift.finalBalanceCounted!,
+          estimatedCashRevenue: shift.estimatedCashRevenue!,
+          pixRevenueTotal: shift.pixRevenueTotal!,
+          cardMachineTotal: shift.cardMachineTotal!,
+          totalRevenue: shift.totalRevenue!,
+          changedById: profile.id,
+          changedByName: profile.name,
+          reason: "Turno cancelado",
+        },
+      });
+      for (const entry of shift.cardMachineEntries) {
+        await transaction.bakeryCardMachineEntry.update({
+          where: { id: entry.id },
+          data: { closeSnapshotId: snapshot.id },
+        });
+        await adjustBalance(
+          transaction,
+          profile,
+          shift.company,
+          entry.bankAccountId,
+          -Number(entry.amount),
+          "CAIXA_PADARIA_CANCELAR_TURNO_MAQUININHA",
+          "BakeryCardMachineEntry",
+          entry.id,
+        );
+      }
+    }
     const canceled = await transaction.bakeryShift.update({
       where: { id: shift.id },
       data: { status: "CANCELED" },

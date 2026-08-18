@@ -1765,9 +1765,15 @@ export default function OperatorApp() {
         setFormError={setFormError}
         onBack={() => setScreen("workspace")}
         onCalculated={(data) => {
-          if (openShift) bakery.markAwaitingClose(openShift.id);
-          setPendingClose(data);
-          setScreen("close-summary");
+          if (!openShift) return;
+          void bakery.markAwaitingClose(openShift.id).then((result) => {
+            if (!result.success) {
+              setFormError(result.error || "Não foi possível preparar o fechamento do turno.");
+              return;
+            }
+            setPendingClose(data);
+            setScreen("close-summary");
+          });
         }}
       />
     ),
