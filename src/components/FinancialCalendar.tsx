@@ -73,7 +73,8 @@ const formatMoney = (value: number) =>
   value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
 function getInitialDate(events: FinancialCalendarEvent[]) {
@@ -272,7 +273,7 @@ export default function FinancialCalendar({
             <span className="block text-[8px] font-bold uppercase text-brand-red-600 dark:text-red-300">
               A pagar
             </span>
-            <span className="text-[11px] font-bold text-ink dark:text-ink-dark">
+            <span className="block text-[9px] font-bold tabular-nums text-ink dark:text-ink-dark sm:text-[10px]">
               {formatMoney(monthPayables)}
             </span>
           </div>
@@ -280,7 +281,7 @@ export default function FinancialCalendar({
             <span className="block text-[8px] font-bold uppercase text-brand-green-600 dark:text-emerald-300">
               A receber
             </span>
-            <span className="text-[11px] font-bold text-ink dark:text-ink-dark">
+            <span className="block text-[9px] font-bold tabular-nums text-ink dark:text-ink-dark sm:text-[10px]">
               {formatMoney(monthReceivables)}
             </span>
           </div>
@@ -329,7 +330,7 @@ export default function FinancialCalendar({
                       · {meta.label}
                     </span>
                   </span>
-                  <span className={cn("shrink-0 text-[10px] font-bold", meta.amount)}>
+                  <span className={cn("shrink-0 text-right text-[9px] font-bold tabular-nums", meta.amount)}>
                     {formatMoney(event.amount)}
                   </span>
                 </button>

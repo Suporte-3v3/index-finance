@@ -43,12 +43,12 @@ import FinancialCalendar, {
   FinancialCalendarEvent,
 } from "../components/FinancialCalendar";
 
-const formatCompactCurrency = (value: number) =>
+const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    notation: "compact",
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 
 export default function DashboardView({
@@ -509,9 +509,9 @@ export default function DashboardView({
                       y="57%"
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      className="fill-brand-navy-900 text-[12px] font-black dark:fill-brand-gold-300"
+                      className="fill-brand-navy-900 text-[8px] font-black dark:fill-brand-gold-300"
                     >
-                      {formatCompactCurrency(totalOpenCommitments)}
+                      {formatCurrency(totalOpenCommitments)}
                     </text>
                   </PieChart>
                 </ResponsiveContainer>
@@ -524,8 +524,8 @@ export default function DashboardView({
                       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
                       {item.name}
                     </span>
-                    <span className="block truncate text-xs font-bold text-ink dark:text-ink-dark">
-                      {formatCompactCurrency(item.value)}
+                    <span className="block text-[10px] font-bold tabular-nums text-ink dark:text-ink-dark">
+                      {formatCurrency(item.value)}
                     </span>
                   </div>
                 ))}
@@ -560,11 +560,11 @@ export default function DashboardView({
                       tickLine={false}
                     />
                     <YAxis
-                      tickFormatter={(value) => formatCompactCurrency(value)}
-                      tick={{ fontSize: 9, fill: "#6F7687" }}
+                      tickFormatter={(value) => formatCurrency(Number(value))}
+                      tick={{ fontSize: 8, fill: "#6F7687" }}
                       axisLine={false}
                       tickLine={false}
-                      width={58}
+                      width={104}
                     />
                     <Tooltip
                       cursor={{ stroke: "#174E83", strokeOpacity: 0.15 }}
@@ -622,7 +622,7 @@ export default function DashboardView({
                   Ref: Mês Atual
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-2">
                 {margemBruta !== null ? (
                   <>
                     <span className="text-lg font-bold text-ink dark:text-ink-dark">
@@ -701,8 +701,8 @@ export default function DashboardView({
               <div className="flex items-baseline gap-2">
                 {ticketMedio !== null ? (
                   <>
-                    <span className="text-lg font-bold text-ink dark:text-ink-dark">
-                      R$ {ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+                    <span className="text-base font-bold tabular-nums text-ink dark:text-ink-dark sm:text-lg">
+                      {formatCurrency(ticketMedio)}
                     </span>
                     {ticketMedioTrendPct !== null ? (
                       <span

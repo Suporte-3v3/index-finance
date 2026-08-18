@@ -39,14 +39,11 @@ import {
 import { ChartDefs, ChartTooltip, CHART_GRADIENT, CHART_SHADOW, CHART_LINE_SHADOW } from "../components/charts";
 
 const formatCurrency = (value: number) =>
-  `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
-
-const formatCompactCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    notation: "compact",
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 
 const INCOME_CATEGORY_COLORS = [
@@ -690,12 +687,11 @@ export default function CashFlowView() {
                     tickLine={false}
                   />
                   <YAxis
-                    tickFormatter={(val) =>
-                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                    }
-                    tick={{ fontSize: 10, fill: "#6F7687" }}
+                    tickFormatter={(value) => formatCurrency(Number(value))}
+                    tick={{ fontSize: 8, fill: "#6F7687" }}
                     axisLine={false}
                     tickLine={false}
+                    width={104}
                   />
                   <Tooltip
                     cursor={{ stroke: "#174E83", strokeOpacity: 0.15 }}
@@ -864,12 +860,11 @@ export default function CashFlowView() {
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(val) =>
-                    `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                  }
-                  tick={{ fontSize: 10, fill: "#6F7687" }}
+                  tickFormatter={(value) => formatCurrency(Number(value))}
+                  tick={{ fontSize: 8, fill: "#6F7687" }}
                   axisLine={false}
                   tickLine={false}
+                  width={104}
                 />
                 <Tooltip
                   cursor={{ stroke: "#0B2C52", strokeOpacity: 0.15, strokeWidth: 1.5 }}
@@ -941,8 +936,8 @@ export default function CashFlowView() {
                     <text x="50%" y="46%" textAnchor="middle" className="fill-ink-soft text-[8px] font-bold dark:fill-ink-soft-dark">
                       TOTAL
                     </text>
-                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-green-600 text-[11px] font-black">
-                      {formatCompactCurrency(totalEntradasPorCategoria)}
+                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-green-600 text-[8px] font-black">
+                      {formatCurrency(totalEntradasPorCategoria)}
                     </text>
                   </PieChart>
                 </ResponsiveContainer>
@@ -957,8 +952,8 @@ export default function CashFlowView() {
                       />
                       <span className="truncate">{item.category}</span>
                     </span>
-                    <span className="shrink-0 font-bold text-ink dark:text-ink-dark">
-                      {formatCompactCurrency(item.value)}
+                    <span className="shrink-0 text-[9px] font-bold tabular-nums text-ink dark:text-ink-dark">
+                      {formatCurrency(item.value)}
                     </span>
                   </div>
                 ))}
@@ -1004,8 +999,8 @@ export default function CashFlowView() {
                     <text x="50%" y="46%" textAnchor="middle" className="fill-ink-soft text-[8px] font-bold dark:fill-ink-soft-dark">
                       TOTAL
                     </text>
-                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-red-600 text-[11px] font-black">
-                      {formatCompactCurrency(totalSaidasPorCategoria)}
+                    <text x="50%" y="57%" textAnchor="middle" className="fill-brand-red-600 text-[8px] font-black">
+                      {formatCurrency(totalSaidasPorCategoria)}
                     </text>
                   </PieChart>
                 </ResponsiveContainer>
@@ -1020,8 +1015,8 @@ export default function CashFlowView() {
                       />
                       <span className="truncate">{item.category}</span>
                     </span>
-                    <span className="shrink-0 font-bold text-ink dark:text-ink-dark">
-                      {formatCompactCurrency(item.value)}
+                    <span className="shrink-0 text-[9px] font-bold tabular-nums text-ink dark:text-ink-dark">
+                      {formatCurrency(item.value)}
                     </span>
                   </div>
                 ))}

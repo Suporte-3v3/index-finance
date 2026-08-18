@@ -356,7 +356,10 @@ export default function OperationsCenter({
   };
 
   const formatCurrency = (value: number) =>
-    `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+    `R$ ${value.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
   return (
     <div id="operations-center-root" className="space-y-5">
@@ -938,20 +941,14 @@ export default function OperationsCenter({
                       {previewStats.netCashFlow >= 0 ? "+" : "-"}{" "}
                       {formatCurrency(Math.abs(previewStats.netCashFlow))}
                     </span>
-                    <div className="text-[9px] text-ink-soft dark:text-ink-soft-dark flex items-center gap-2">
-                      <span className="flex items-center text-brand-green-600 dark:text-emerald-400">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[8px] tabular-nums text-ink-soft dark:text-ink-soft-dark">
+                      <span className="flex items-center gap-0.5 text-brand-green-600 dark:text-emerald-400">
                         <ArrowUpRight className="h-3 w-3" />
-                        R${" "}
-                        {previewStats.cashIn.toLocaleString("pt-BR", {
-                          maximumFractionDigits: 0,
-                        })}
+                        {formatCurrency(previewStats.cashIn)}
                       </span>
-                      <span className="flex items-center text-brand-red-600 dark:text-red-400">
+                      <span className="flex items-center gap-0.5 text-brand-red-600 dark:text-red-400">
                         <ArrowDownRight className="h-3 w-3" />
-                        R${" "}
-                        {previewStats.cashOut.toLocaleString("pt-BR", {
-                          maximumFractionDigits: 0,
-                        })}
+                        {formatCurrency(previewStats.cashOut)}
                       </span>
                     </div>
                   </div>
