@@ -8,7 +8,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: false, quie
 
 const { disconnectDatabase, getDatabaseClient } = await import("../backend/database.js");
 const { createDocument } = await import("../backend/document-records.js");
-const { storeDocumentFileChunk } = await import("../backend/document-files.js");
+const { readDocumentFile, storeDocumentFileChunk } = await import("../backend/document-files.js");
 const {
   ReportApiError,
   createReport,
@@ -232,6 +232,30 @@ try {
   });
   await deleteReport(generator, disposableReport.id);
   assert.equal(await database.documentFile.findUnique({ where: { id: orphanFileId } }), null);
+
+  const recipientFileId = randomUUID();
+  const recipientFile = await storeDocumentFileChunk(generator, {
+    fileId: recipientFileId,
+    companyId,
+    fileName: "relatorio-destinatario.pdf",
+    mimeType: "application/pdf",
+    size: fileContents.byteLength,
+    chunkIndex: 0,
+    totalChunks: 1,
+    data: fileContents.toString("base64"),
+  });
+  const recipientReport = await createReport(generator, {
+    companyId,
+    name: "Relatório para destinatário",
+    type: "DRE Gerencial",
+    filters: {},
+    objectKey: recipientFile.url,
+    fileName: "relatorio-destinatario.pdf",
+    mimeType: "application/pdf",
+    recipientId: viewerId,
+  });
+  assert.deepEqual((await readDocumentFile(viewer, recipientFileId)).data, fileContents);
+  await deleteReport(generator, recipientReport.id);
 
   console.log("Relatórios validados: RBAC, isolamento, modelos, arquivos e exclusão.");
 } finally {

@@ -147,23 +147,24 @@ export async function storeDocumentFileChunk(profile: DocumentFileProfile, body:
 
 async function canReadObjectKey(profile: DocumentFileProfile, objectKey: string) {
   const database = getDatabaseClient();
-  const document = await database.document.findFirst({
+  const documents = await database.document.findMany({
     where: { objectKey, deletedAt: null },
     include: { company: { select: { id: true, tenantId: true } } },
   });
-  if (document) {
-    return isBpoForCompany(profile, document.company) ||
-      (belongsToCompany(profile, document.companyId) &&
-        (document.uploadedById === profile.id || document.recipientId === profile.id));
-  }
-  const report = await database.report.findFirst({
+  const reports = await database.report.findMany({
     where: { objectKey },
     include: { company: { select: { id: true, tenantId: true } } },
   });
-  if (report) {
-    return isBpoForCompany(profile, report.company) ||
+  if (documents.length || reports.length) {
+    return documents.some((document) =>
+      isBpoForCompany(profile, document.company) ||
+      (belongsToCompany(profile, document.companyId) &&
+        (document.uploadedById === profile.id || document.recipientId === profile.id)),
+    ) || reports.some((report) =>
+      isBpoForCompany(profile, report.company) ||
       (belongsToCompany(profile, report.companyId) &&
-        (report.generatedById === profile.id || report.recipientId === profile.id));
+        (report.generatedById === profile.id || report.recipientId === profile.id)),
+    );
   }
   const messages = await database.supportMessage.findMany({
     where: { attachments: { not: { equals: null } } },
@@ -251,12 +252,7 @@ export async function readDocumentFile(profile: DocumentFileProfile, fileIdInput
   });
   if (!file) throw new DocumentFileError("Arquivo não encontrado.", 404);
   const objectKey = `/api/document-files/${file.id}`;
-  const linked = await getDatabaseClient().document.count({ where: { objectKey, deletedAt: null } });
-  if (linked > 0) {
-    if (!await canReadObjectKey(profile, objectKey)) {
-      throw new DocumentFileError("Sem permissão para abrir este arquivo.", 403);
-    }
-  } else if (file.uploadedById !== profile.id) {
+  if (!await canReadObjectKey(profile, objectKey) && file.uploadedById !== profile.id) {
     throw new DocumentFileError("Sem permissão para abrir este arquivo.", 403);
   }
   if (file.chunks.length !== file.totalChunks) {
