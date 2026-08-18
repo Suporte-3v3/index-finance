@@ -29,6 +29,7 @@
     "financial-entries:check": "tsx scripts/check-financial-entries.ts",
     "financial-deletions:check": "tsx scripts/check-financial-deletions.ts",
     "documents:check": "tsx scripts/check-documents.ts",
+    "reports:check": "tsx scripts/check-reports.ts",
     "reconciliation:check": "tsx scripts/check-reconciliation.ts",
     "users:check": "tsx scripts/check-users.ts"
   },

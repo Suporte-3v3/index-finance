@@ -9,7 +9,7 @@ export interface ReportAccessProfile {
   name: string;
   isPlatformAdmin: boolean;
   tenantMemberships: Array<{ tenantId: string; role: Role }>;
-  companyMemberships: Array<{ companyId: string; role: Role }>;
+  companyMemberships: Array<{ companyId: string; role: Role; permissions?: string[] }>;
 }
 
 export class ReportApiError extends Error {
@@ -67,26 +67,33 @@ function formatFileSize(value: bigint | null) {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 
-function accessibleTenantIds(profile: ReportAccessProfile) {
+function administratorTenantIds(profile: ReportAccessProfile) {
   return profile.tenantMemberships
-    .filter(({ role }) => role === "BPO_ADMIN" || role === "BPO_TEAM")
+    .filter(({ role }) => role === "BPO_ADMIN")
     .map(({ tenantId }) => tenantId);
 }
-function accessibleCompanyIds(profile: ReportAccessProfile) {
-  return profile.companyMemberships.map(({ companyId }) => companyId);
+
+function companyIdsWithPermission(profile: ReportAccessProfile, permission: "reports.view" | "reports.generate") {
+  return profile.companyMemberships
+    .filter(({ role, permissions }) => role === "BPO_ADMIN" || permissions?.includes(permission))
+    .map(({ companyId }) => companyId);
 }
 
-async function requireCompany(profile: ReportAccessProfile, companyId: string) {
+async function requireCompany(
+  profile: ReportAccessProfile,
+  companyId: string,
+  permission: "reports.view" | "reports.generate",
+) {
   const company = await getDatabaseClient().company.findFirst({
     where: { id: companyId, deletedAt: null },
     select: { id: true, tenantId: true },
   });
   if (!company) throw new ReportApiError("Empresa não encontrada.", 404);
-  const canAccess =
+  const allowed =
     profile.isPlatformAdmin ||
-    accessibleTenantIds(profile).includes(company.tenantId) ||
-    accessibleCompanyIds(profile).includes(company.id);
-  if (!canAccess) throw new ReportApiError("Sem permissão para esta empresa.", 403);
+    administratorTenantIds(profile).includes(company.tenantId) ||
+    companyIdsWithPermission(profile, permission).includes(company.id);
+  if (!allowed) throw new ReportApiError("Sem permissão para esta operação.", 403);
   return company;
 }
 
@@ -141,8 +148,8 @@ export async function listReports(profile: ReportAccessProfile) {
       : {
           deletedAt: null,
           OR: [
-            { tenantId: { in: accessibleTenantIds(profile) } },
-            { id: { in: accessibleCompanyIds(profile) } },
+            { tenantId: { in: administratorTenantIds(profile) } },
+            { id: { in: companyIdsWithPermission(profile, "reports.view") } },
           ],
         },
     select: { id: true },
@@ -156,7 +163,7 @@ export async function listReports(profile: ReportAccessProfile) {
 
 export async function createReport(profile: ReportAccessProfile, body: any) {
   const companyId = uuid(body?.companyId, "a empresa");
-  const company = await requireCompany(profile, companyId);
+  const company = await requireCompany(profile, companyId, "reports.generate");
   const format = body?.format === "PDF" || body?.format === "EXCEL" ? body.format : undefined;
 
   const report = await getDatabaseClient().report.create({
@@ -196,7 +203,7 @@ export async function createReport(profile: ReportAccessProfile, body: any) {
 export async function deleteReport(profile: ReportAccessProfile, reportId: string) {
   const report = await getDatabaseClient().report.findFirst({ where: { id: uuid(reportId, "o relatório") } });
   if (!report) throw new ReportApiError("Relatório não encontrado.", 404);
-  await requireCompany(profile, report.companyId);
+  await requireCompany(profile, report.companyId, "reports.generate");
   await getDatabaseClient().report.delete({ where: { id: report.id } });
 }
 
@@ -208,8 +215,8 @@ export async function listReportTemplates(profile: ReportAccessProfile) {
       : {
           deletedAt: null,
           OR: [
-            { tenantId: { in: accessibleTenantIds(profile) } },
-            { id: { in: accessibleCompanyIds(profile) } },
+            { tenantId: { in: administratorTenantIds(profile) } },
+            { id: { in: companyIdsWithPermission(profile, "reports.view") } },
           ],
         },
     select: { id: true },
@@ -223,7 +230,7 @@ export async function listReportTemplates(profile: ReportAccessProfile) {
 
 export async function createReportTemplate(profile: ReportAccessProfile, body: any) {
   const companyId = uuid(body?.companyId, "a empresa");
-  await requireCompany(profile, companyId);
+  await requireCompany(profile, companyId, "reports.generate");
   const modelType = MODEL_TYPE_TO_DATABASE[body?.modelType as keyof typeof MODEL_TYPE_TO_DATABASE];
   if (!modelType) throw new ReportApiError("Tipo de modelo inválido.");
 
@@ -250,7 +257,7 @@ async function requireTemplate(profile: ReportAccessProfile, templateId: string)
     include: { company: { select: { id: true, tenantId: true, deletedAt: true } } },
   });
   if (!template || template.company.deletedAt) throw new ReportApiError("Modelo não encontrado.", 404);
-  await requireCompany(profile, template.companyId);
+  await requireCompany(profile, template.companyId, "reports.generate");
   return template;
 }
 
