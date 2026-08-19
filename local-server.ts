@@ -78,6 +78,7 @@ import {
   importStatementEntries,
   listStatementEntries,
   reconcileStatementEntry,
+  reverseStatementEntry,
 } from './backend/reconciliation.js';
 import {
   analyzeDocument,
@@ -623,6 +624,13 @@ app.post('/api/reconciliation/:bankAccountId/items/:statementItemId/reconcile', 
     response.json(await reconcileStatementEntry(response.locals.authProfile, request.params.bankAccountId, request.params.statementItemId, request.body));
   } catch (error) {
     reconciliationError(response, error, 'Não foi possível conciliar o item.');
+  }
+});
+app.post('/api/reconciliation/:bankAccountId/items/:statementItemId/reverse', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {
+  try {
+    response.json(await reverseStatementEntry(response.locals.authProfile, request.params.bankAccountId, request.params.statementItemId, request.body));
+  } catch (error) {
+    reconciliationError(response, error, 'NÃ£o foi possÃ­vel estornar a conciliaÃ§Ã£o.');
   }
 });
 app.post('/api/reconciliation/:bankAccountId/items/:statementItemId/ignore', requireAuthentication, requireCompletedPasswordChange, async (request, response) => {

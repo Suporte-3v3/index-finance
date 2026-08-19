@@ -56,6 +56,13 @@ export function autoReconcilePersistedStatements(bankAccountId: string) {
   );
 }
 
+export function reversePersistedStatementItem(bankAccountId: string, statementItemId: string, reason: string) {
+  return request<{ item: BankStatementItem }>(
+    `/api/reconciliation/${encodeURIComponent(bankAccountId)}/items/${encodeURIComponent(statementItemId)}/reverse`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
 export function ignorePersistedStatementItem(bankAccountId: string, statementItemId: string, reason: string) {
   return request<BankStatementItem>(
     `/api/reconciliation/${encodeURIComponent(bankAccountId)}/items/${encodeURIComponent(statementItemId)}/ignore`,

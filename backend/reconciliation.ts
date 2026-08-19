@@ -197,6 +197,7 @@ async function reconcileInTransaction(
   if (bankAmount === 0) throw new ReconciliationApiError("Um item de valor zero não pode ser conciliado.");
   const absoluteAmount = Math.abs(bankAmount);
   let partial = false;
+  let reversalData: Prisma.InputJsonValue;
 
   if (type === "A_PAGAR") {
     if (bankAmount >= 0) throw new ReconciliationApiError("Uma entrada bancária não pode quitar uma conta a pagar.");
@@ -205,7 +206,12 @@ async function reconcileInTransaction(
     if (["PAID", "CANCELED", "REJECTED"].includes(payable.status)) throw new ReconciliationApiError("A conta a pagar não pode ser conciliada no status atual.", 409);
     const outstanding = Number(payable.amount) + Number(payable.interest) + Number(payable.penalty) - Number(payable.discount) - Number(payable.paidAmount);
     if (Math.round(outstanding * 100) !== Math.round(absoluteAmount * 100)) throw new ReconciliationApiError("O valor do extrato é diferente do saldo da conta a pagar.", 409);
-    await tx.accountPayablePayment.create({ data: { payableId: payable.id, bankAccountId: account.id, date: entry.date, amount: absoluteAmount, notes, registeredById: profile.id } });
+    const payment = await tx.accountPayablePayment.create({ data: { payableId: payable.id, bankAccountId: account.id, date: entry.date, amount: absoluteAmount, notes, registeredById: profile.id } });
+    reversalData = {
+      financialStatusBefore: payable.status,
+      financialDateBefore: payable.paymentDate?.toISOString() ?? null,
+      settlementId: payment.id,
+    };
     await tx.accountPayable.update({ where: { id: payable.id }, data: { paidAmount: Number(payable.paidAmount) + absoluteAmount, status: "PAID", paymentDate: entry.date } });
     await tx.bankAccount.update({ where: { id: account.id }, data: { balance: { decrement: absoluteAmount } } });
   } else {
@@ -217,7 +223,12 @@ async function reconcileInTransaction(
     if (Math.round(absoluteAmount * 100) > Math.round(outstanding * 100)) throw new ReconciliationApiError("O valor do extrato supera o saldo da conta a receber.", 409);
     const receivedAmount = Number(receivable.receivedAmount) + absoluteAmount;
     partial = Math.round(receivedAmount * 100) < Math.round((Number(receivable.amount) + Number(receivable.interest) + Number(receivable.penalty) - Number(receivable.discount)) * 100);
-    await tx.accountReceivableReceipt.create({ data: { receivableId: receivable.id, bankAccountId: account.id, date: entry.date, amount: absoluteAmount, notes, registeredById: profile.id } });
+    const receipt = await tx.accountReceivableReceipt.create({ data: { receivableId: receivable.id, bankAccountId: account.id, date: entry.date, amount: absoluteAmount, notes, registeredById: profile.id } });
+    reversalData = {
+      financialStatusBefore: receivable.status,
+      financialDateBefore: receivable.receiptDate?.toISOString() ?? null,
+      settlementId: receipt.id,
+    };
     await tx.accountReceivable.update({ where: { id: receivable.id }, data: { receivedAmount, status: partial ? "PARTIALLY_RECEIVED" : "RECEIVED", receiptDate: partial ? null : entry.date } });
     await tx.bankAccount.update({ where: { id: account.id }, data: { balance: { increment: absoluteAmount } } });
   }
@@ -231,6 +242,7 @@ async function reconcileInTransaction(
       financialEntityId: financialRecordId,
       amount: absoluteAmount,
       notes,
+      reversalData,
       reconciledById: profile.id,
     },
   });
@@ -281,6 +293,118 @@ export async function autoReconcileStatementEntries(profile: ReconciliationProfi
       items.push(await reconcileInTransaction(tx, profile, account, entry, match.id, bankAmount < 0 ? "A_PAGAR" : "A_RECEBER", "Conciliação automática"));
     }
     return { matchedCount: items.length, items: items.map(({ item }) => item) };
+  });
+}
+
+type ReversalData = {
+  financialStatusBefore?: string;
+  financialDateBefore?: string | null;
+  settlementId?: string;
+};
+
+function getReversalData(value: unknown): ReversalData {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const data = value as Record<string, unknown>;
+  return {
+    financialStatusBefore: typeof data.financialStatusBefore === "string" ? data.financialStatusBefore : undefined,
+    financialDateBefore: typeof data.financialDateBefore === "string" ? data.financialDateBefore : null,
+    settlementId: typeof data.settlementId === "string" ? data.settlementId : undefined,
+  };
+}
+
+function storedDate(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export async function reverseStatementEntry(profile: ReconciliationProfile, bankAccountId: string, statementItemId: string, body: any) {
+  const account = await requireBankAccount(profile, bankAccountId, "reconciliation.execute");
+  const reason = text(body?.reason, "o motivo do estorno", 10_000);
+  const entryId = uuid(statementItemId, "Item do extrato");
+  return getDatabaseClient().$transaction(async (tx) => {
+    const entry = await tx.bankStatementEntry.findFirst({
+      where: { id: entryId, bankAccountId: account.id, companyId: account.companyId },
+      include: { reconciliations: { where: { reversedAt: null }, orderBy: { createdAt: "desc" } } },
+    });
+    if (!entry) throw new ReconciliationApiError("Item do extrato nÃ£o encontrado.", 404);
+    const reconciliation = entry.reconciliations[0];
+    if (!reconciliation || !["RECONCILED", "PARTIALLY_RECONCILED"].includes(entry.reconciliationStatus)) {
+      throw new ReconciliationApiError("Este item nÃ£o possui uma conciliaÃ§Ã£o ativa para estornar.", 409);
+    }
+    const reversal = getReversalData(reconciliation.reversalData);
+    if (!reversal.settlementId || !reversal.financialStatusBefore) {
+      throw new ReconciliationApiError("Esta conciliaÃ§Ã£o antiga nÃ£o possui dados suficientes para estorno automÃ¡tico.", 409);
+    }
+
+    const amountToReverse = Number(reconciliation.amount);
+    if (reconciliation.financialEntityType === "AccountPayable") {
+      const payment = await tx.accountPayablePayment.findFirst({
+        where: { id: reversal.settlementId, payableId: reconciliation.financialEntityId, bankAccountId: account.id },
+      });
+      const payable = await tx.accountPayable.findFirst({
+        where: { id: reconciliation.financialEntityId, companyId: account.companyId, deletedAt: null },
+      });
+      if (!payment || !payable || Number(payable.paidAmount) + 0.00001 < amountToReverse) {
+        throw new ReconciliationApiError("NÃ£o foi possÃ­vel localizar a baixa financeira original para estorno.", 409);
+      }
+      await tx.accountPayablePayment.delete({ where: { id: payment.id } });
+      const paidAmount = Math.max(0, Number(payable.paidAmount) - amountToReverse);
+      const lastPayment = paidAmount > 0
+        ? await tx.accountPayablePayment.findFirst({ where: { payableId: payable.id }, orderBy: [{ date: "desc" }, { createdAt: "desc" }] })
+        : null;
+      await tx.accountPayable.update({
+        where: { id: payable.id },
+        data: {
+          paidAmount,
+          status: paidAmount > 0 ? "PARTIALLY_PAID" : reversal.financialStatusBefore as any,
+          paymentDate: lastPayment?.date ?? storedDate(reversal.financialDateBefore),
+        },
+      });
+      await tx.bankAccount.update({ where: { id: account.id }, data: { balance: { increment: amountToReverse } } });
+    } else if (reconciliation.financialEntityType === "AccountReceivable") {
+      const receipt = await tx.accountReceivableReceipt.findFirst({
+        where: { id: reversal.settlementId, receivableId: reconciliation.financialEntityId, bankAccountId: account.id },
+      });
+      const receivable = await tx.accountReceivable.findFirst({
+        where: { id: reconciliation.financialEntityId, companyId: account.companyId, deletedAt: null },
+      });
+      if (!receipt || !receivable || Number(receivable.receivedAmount) + 0.00001 < amountToReverse) {
+        throw new ReconciliationApiError("NÃ£o foi possÃ­vel localizar o recebimento original para estorno.", 409);
+      }
+      await tx.accountReceivableReceipt.delete({ where: { id: receipt.id } });
+      const receivedAmount = Math.max(0, Number(receivable.receivedAmount) - amountToReverse);
+      const lastReceipt = receivedAmount > 0
+        ? await tx.accountReceivableReceipt.findFirst({ where: { receivableId: receivable.id }, orderBy: [{ date: "desc" }, { createdAt: "desc" }] })
+        : null;
+      await tx.accountReceivable.update({
+        where: { id: receivable.id },
+        data: {
+          receivedAmount,
+          status: receivedAmount > 0 ? "PARTIALLY_RECEIVED" : reversal.financialStatusBefore as any,
+          receiptDate: lastReceipt?.date ?? storedDate(reversal.financialDateBefore),
+        },
+      });
+      await tx.bankAccount.update({ where: { id: account.id }, data: { balance: { decrement: amountToReverse } } });
+    } else {
+      throw new ReconciliationApiError("Tipo de lanÃ§amento financeiro invÃ¡lido para estorno.", 409);
+    }
+
+    const reversedAt = new Date();
+    await tx.reconciliation.update({ where: { id: reconciliation.id }, data: { reversedAt } });
+    const updatedEntry = await tx.bankStatementEntry.update({
+      where: { id: entry.id },
+      data: { reconciliationStatus: "PENDING" },
+      include: { reconciliations: { where: { reversedAt: null } } },
+    });
+    await audit(tx, profile, account.company, "ESTORNAR_CONCILIACAO", entry.id, { reconciliationId: reconciliation.id, reason, reversedAt: reversedAt.toISOString() });
+    await writeNotification(tx, {
+      companyId: account.company.id,
+      title: "ConciliaÃ§Ã£o estornada",
+      message: `${entry.description} voltou para a fila de conciliaÃ§Ã£o.`,
+      type: "WARNING",
+    });
+    return { item: mapEntry(updatedEntry) };
   });
 }
 

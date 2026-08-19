@@ -777,6 +777,7 @@ model Reconciliation {
   financialEntityId   String    @map("financial_entity_id") @db.Uuid
   amount              Decimal   @db.Decimal(18, 2)
   notes               String?   @db.Text
+  reversalData        Json?     @map("reversal_data")
   reconciledById      String    @map("reconciled_by_id") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   reversedAt          DateTime? @map("reversed_at") @db.Timestamptz(3)

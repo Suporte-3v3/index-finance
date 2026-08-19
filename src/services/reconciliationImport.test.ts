@@ -67,3 +67,12 @@ test("conversão valida o calendário e não aceita o formato ISO na entrada", (
   assert.equal(statementDateToIso("31-02-2026"), null);
   assert.equal(statementDateToIso("2026-08-17"), null);
 });
+
+test("mantém linhas idênticas como lançamentos distintos quando não há identificador", () => {
+  const duplicate = ["01-08-2026", "PIX fornecedor", "-150,00", "DOC-1", ""];
+  const rows = parseStatementRows([header, duplicate, duplicate]);
+
+  assert.equal(rows[0].errors.length, 0);
+  assert.equal(rows[1].errors.length, 0);
+  assert.notEqual(rows[0].externalId, rows[1].externalId);
+});

@@ -133,6 +133,7 @@ import {
   ignorePersistedStatementItem,
   importPersistedStatement,
   reconcilePersistedStatementItem,
+  reversePersistedStatementItem,
 } from "../services/reconciliation";
 import { fetchAuditLogs } from "../services/auditLogs";
 import {
@@ -447,8 +448,13 @@ interface BPOContextType {
     financialRecordId: string,
     type: "A_PAGAR" | "A_RECEBER",
     notes: string,
-  ) => ReconciliationResult;
+  ) => Promise<ReconciliationResult>;
   autoReconcileBank: (bankAccountId: string) => void;
+  reverseStatementItem: (
+    bankAccountId: string,
+    statementItemId: string,
+    reason: string,
+  ) => Promise<ReconciliationResult>;
   ignoreStatementItem: (
     bankAccountId: string,
     statementItemId: string,
@@ -2133,13 +2139,13 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       });
   };
 
-  const reconcileItemManually = (
+  const reconcileItemManually = async (
     bankAccountId: string,
     statementItemId: string,
     financialRecordId: string,
     type: "A_PAGAR" | "A_RECEBER",
     notes: string,
-  ): ReconciliationResult => {
+  ): Promise<ReconciliationResult> => {
     if (!hasPermission("reconciliation.execute")) {
       return { success: false, error: "Usuário sem permissão para conciliar." };
     }
@@ -2262,22 +2268,34 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       isPartial = statementCents < toCents(expectedValue);
     }
 
-    void reconcilePersistedStatementItem(
-      bankAccountId,
-      statementItemId,
-      financialRecordId,
-      type,
-      notes,
-    )
-      .then((result) => {
-        setStatementItems((previous) => ({
-          ...previous,
-          [bankAccountId]: (previous[bankAccountId] || []).map((item) =>
-            item.id === result.item.id ? result.item : item,
-          ),
-        }));
-        return Promise.all([fetchFinancialEntries(), fetchFinancialSetup()]);
-      })
+    try {
+      const persisted = await reconcilePersistedStatementItem(
+        bankAccountId,
+        statementItemId,
+        financialRecordId,
+        type,
+        notes,
+      );
+    } catch (error) {
+      console.error("Falha ao conciliar item no banco:", error);
+      void fetchStatementEntries().then(({ statementItems: saved }) => setStatementItems(saved));
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "NÃ£o foi possÃ­vel realizar a conciliaÃ§Ã£o.",
+      };
+    }
+
+    setStatementItems((prev) => {
+      const items = prev[bankAccountId] || [];
+      return {
+        ...prev,
+        [bankAccountId]: items.map((item) =>
+          item.id === persisted.item.id ? persisted.item : item,
+        ),
+      };
+    });
+
+    void Promise.all([fetchFinancialEntries(), fetchFinancialSetup()])
       .then(([entries, setup]) => {
         setAccountsPayable(entries.accountsPayable);
         setAccountsReceivable(entries.accountsReceivable);
@@ -2287,31 +2305,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         ]);
         setBankAccounts(setup.bankAccounts);
       })
-      .catch((error) => {
-        console.error("Falha ao conciliar item no banco:", error);
-        void fetchStatementEntries().then(({ statementItems: saved }) =>
-          setStatementItems(saved),
-        );
-      });
-
-    setStatementItems((prev) => {
-      const items = prev[bankAccountId] || [];
-      return {
-        ...prev,
-        [bankAccountId]: items.map((item) =>
-          item.id === statementItemId
-            ? {
-                ...item,
-                isReconciled: true,
-                reconciliationStatus: isPartial
-                  ? ("Parcialmente conciliada" as const)
-                  : ("Conciliada" as const),
-                matchedTransactionId: financialRecordId,
-              }
-            : item,
-        ),
-      };
-    });
+      .catch((error) => console.error("Falha ao atualizar dados após conciliação:", error));
 
     createAuditLog(
       "CONCILIACAO_MANUAL",
@@ -2337,6 +2331,44 @@ export function BPOProvider({ children }: { children: ReactNode }) {
       "SUCCESS",
     );
     return { success: true, partial: isPartial };
+  };
+
+  const reverseStatementItem = async (
+    bankAccountId: string,
+    statementItemId: string,
+    reason: string,
+  ): Promise<ReconciliationResult> => {
+    if (!hasPermission("reconciliation.execute")) {
+      return { success: false, error: "UsuÃ¡rio sem permissÃ£o para estornar conciliaÃ§Ã£o." };
+    }
+    try {
+      const result = await reversePersistedStatementItem(bankAccountId, statementItemId, reason);
+      setStatementItems((previous) => ({
+        ...previous,
+        [bankAccountId]: (previous[bankAccountId] || []).map((item) =>
+          item.id === result.item.id ? result.item : item,
+        ),
+      }));
+      void Promise.all([fetchFinancialEntries(), fetchFinancialSetup()])
+        .then(([entries, setup]) => {
+          setAccountsPayable(entries.accountsPayable);
+          setAccountsReceivable(entries.accountsReceivable);
+          setApprovals((current) => [
+            ...current.filter((approval) => approval.type !== "PAGAMENTO"),
+            ...entries.paymentApprovals,
+          ]);
+          setBankAccounts(setup.bankAccounts);
+        })
+        .catch((error) => console.error("Falha ao atualizar dados após estorno:", error));
+      addNotification("ConciliaÃ§Ã£o estornada", "O item voltou para a fila de conciliaÃ§Ã£o.", "WARNING");
+      return { success: true };
+    } catch (error) {
+      console.error("Falha ao estornar conciliaÃ§Ã£o:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "NÃ£o foi possÃ­vel estornar a conciliaÃ§Ã£o.",
+      };
+    }
   };
 
   const autoReconcileBank = (bankAccountId: string) => {
@@ -4495,6 +4527,7 @@ export function BPOProvider({ children }: { children: ReactNode }) {
         importStatement,
         reconcileItemManually,
         autoReconcileBank,
+        reverseStatementItem,
         ignoreStatementItem,
         generateReport,
         generateBuiltReport,

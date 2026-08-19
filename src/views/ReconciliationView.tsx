@@ -102,6 +102,7 @@ export default function ReconciliationView({
     importStatement,
     reconcileItemManually,
     autoReconcileBank,
+    reverseStatementItem,
     ignoreStatementItem,
     hasPermission,
   } = useBPOState();
@@ -116,6 +117,10 @@ export default function ReconciliationView({
     "A_PAGAR",
   );
   const [reconciliationError, setReconciliationError] = useState("");
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [itemToReverse, setItemToReverse] = useState<BankStatementItem | null>(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [isReversing, setIsReversing] = useState(false);
 
   // Statement file import (OFX/Excel)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +150,9 @@ export default function ReconciliationView({
 
   const unReconciledStatementItems = statementList.filter(
     (item) => !item.isReconciled,
+  );
+  const reconciledStatementItems = statementList.filter(
+    (item) => item.reconciliationStatus === "Conciliada" || item.reconciliationStatus === "Parcialmente conciliada",
   );
 
   // Filter financial options for manual match in accordance with the transaction amount direction
@@ -261,16 +269,18 @@ export default function ReconciliationView({
     autoReconcileBank(activeAccount.id);
   };
 
-  const handleManualReconcile = (recordId: string) => {
+  const handleManualReconcile = async (recordId: string) => {
     if (!activeAccount || !selectedStatementItem) return;
 
-    const result = reconcileItemManually(
-      activeAccount.id,
-      selectedStatementItem.id,
-      recordId,
-      ledgerType,
-      "Conciliado manualmente no painel BPO",
-    );
+    setIsReconciling(true);
+    const result = await reconcileItemManually(
+        activeAccount.id,
+        selectedStatementItem.id,
+        recordId,
+        ledgerType,
+        "Conciliado manualmente no painel BPO",
+      );
+    setIsReconciling(false);
     if (!result.success) {
       setReconciliationError(
         result.error || "Não foi possível realizar a conciliação.",
@@ -279,6 +289,20 @@ export default function ReconciliationView({
     }
     setReconciliationError("");
     setSelectedStatementItem(null);
+  };
+
+  const handleReverseReconciliation = async () => {
+    if (!activeAccount || !itemToReverse || !reversalReason.trim()) return;
+    setIsReversing(true);
+    const result = await reverseStatementItem(activeAccount.id, itemToReverse.id, reversalReason.trim());
+    setIsReversing(false);
+    if (!result.success) {
+      setReconciliationError(result.error || "NÃ£o foi possÃ­vel estornar a conciliaÃ§Ã£o.");
+      return;
+    }
+    setItemToReverse(null);
+    setReversalReason("");
+    setReconciliationError("");
   };
 
   const handleIgnore = (itemId: string) => {
@@ -849,9 +873,9 @@ export default function ReconciliationView({
                           return (
                             <div
                               key={ap.id}
-                              onClick={() =>
-                                amountMatches && handleManualReconcile(ap.id)
-                              }
+                              onClick={() => {
+                                if (amountMatches && !isReconciling) void handleManualReconcile(ap.id);
+                              }}
                               className={`p-3 flex items-center justify-between text-xs transition-colors ${
                                 amountMatches
                                   ? "hover:bg-canvas/60 dark:hover:bg-white/[0.03] cursor-pointer"
@@ -909,9 +933,9 @@ export default function ReconciliationView({
                           return (
                             <div
                               key={ar.id}
-                              onClick={() =>
-                                isCompatible && handleManualReconcile(ar.id)
-                              }
+                              onClick={() => {
+                                if (isCompatible && !isReconciling) void handleManualReconcile(ar.id);
+                              }}
                               className={`p-3 flex items-center justify-between text-xs transition-colors ${
                                 isCompatible
                                   ? "hover:bg-canvas/60 dark:hover:bg-white/[0.03] cursor-pointer"
@@ -992,6 +1016,73 @@ export default function ReconciliationView({
           </div>
         </Card>
       </div>
+
+      {reconciledStatementItems.length > 0 && (
+        <Card padding={false} className="overflow-hidden">
+          <CardHeader
+            title="Conciliações realizadas"
+            subtitle="Estorne uma conciliação somente quando houver erro confirmado. O lançamento retorna para a fila."
+          />
+          <div className="divide-y divide-line dark:divide-line-dark">
+            {reconciledStatementItems.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-ink dark:text-ink-dark">{item.description}</p>
+                  <p className="text-[10px] text-ink-soft dark:text-ink-soft-dark">
+                    {formatDate(item.date)} · {item.reconciliationStatus} · R$ {Math.abs(item.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+                {hasPermission("reconciliation.execute") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setItemToReverse(item);
+                      setReversalReason("");
+                      setReconciliationError("");
+                    }}
+                  >
+                    Desfazer
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Modal
+        open={Boolean(itemToReverse)}
+        onClose={() => !isReversing && setItemToReverse(null)}
+        title="Desfazer conciliação"
+        description="A baixa financeira e o saldo da conta serão revertidos; o item voltará a ficar pendente."
+        footer={
+          <>
+            <Button variant="outline" disabled={isReversing} onClick={() => setItemToReverse(null)}>Cancelar</Button>
+            <Button loading={isReversing} disabled={!reversalReason.trim()} onClick={() => void handleReverseReconciliation()}>
+              Confirmar estorno
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          {itemToReverse && (
+            <p className="rounded-lg border border-line bg-canvas p-3 text-ink dark:border-line-dark dark:bg-white/5 dark:text-ink-dark">
+              {itemToReverse.description} · R$ {Math.abs(itemToReverse.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+          )}
+          <label className="block">
+            <span className="mb-1 block font-semibold text-ink dark:text-ink-dark">Motivo do estorno</span>
+            <textarea
+              className="min-h-20 w-full rounded-lg border border-line bg-surface p-2 text-xs text-ink outline-none focus:ring-2 focus:ring-brand-navy-700/30 dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+              value={reversalReason}
+              onChange={(event) => setReversalReason(event.target.value)}
+              placeholder="Descreva o motivo para manter a rastreabilidade."
+            />
+          </label>
+          {reconciliationError && <p role="alert" className="text-brand-red-600 dark:text-red-400">{reconciliationError}</p>}
+        </div>
+      </Modal>
     </div>
   );
 }

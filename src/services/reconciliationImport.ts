@@ -161,6 +161,7 @@ export function validateStatementRow(row: ParsedStatementRow): ParsedStatementRo
 
 export function parseStatementRows(sheetRows: unknown[][]): ParsedStatementRow[] {
   const dataRows = sheetRows.slice(1).filter((row) => row.some((value) => String(value ?? "").trim()));
+  const occurrences = new Map<string, number>();
 
   return dataRows.map((row, index) => {
     const date = normalizeDateCell(row[0]);
@@ -169,7 +170,12 @@ export function parseStatementRows(sheetRows: unknown[][]): ParsedStatementRow[]
     const amount = parseMoney(amountRaw);
     const documentNumber = cell(row, 3) || undefined;
     const explicitId = cell(row, 4);
-    const externalId = explicitId || stableId(`${date}|${description}|${amountRaw}|${documentNumber ?? ""}`);
+    const identity = `${date}|${description}|${amountRaw}|${documentNumber ?? ""}`;
+    const occurrence = (occurrences.get(identity) ?? 0) + 1;
+    occurrences.set(identity, occurrence);
+    // Linhas iguais são movimentos distintos quando não há identificador do banco.
+    // A ocorrência mantém cada item único e continua estável ao reimportar o arquivo.
+    const externalId = explicitId || stableId(`${identity}|${occurrence}`);
 
     return validateStatementRow({
       row: index + 2,
